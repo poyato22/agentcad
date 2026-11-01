@@ -179,6 +179,11 @@ async def run_static(job: FemJob, cases: list, *, env: dict | None, sim_id: str,
         if fx is not None and fx > 1.5 * peak:
             warnings.append(f"{pre}stress at the fixed face reaches {fx:.3g} MPa (an idealised "
                             "clamp exaggerates it); real fixtures spread load")
+    if getattr(m, "failure", "ductile") == "brittle":
+        # Plan 10 E32: a laminate breaks in tension, it does not yield (research §5.3)
+        warnings.append(f"{m.name} is brittle: the safety factor above is von Mises; check the "
+                        f"max principal stress (field s1) against {m.allowable_mpa:.3g} MPa and "
+                        f"keep a safety factor of at least {m.min_safety_factor:g}")
     if env and env["temperature_c"] >= m.hdt_c - 5:
         warnings.append(f"{env['name']}: {env['temperature_c']} C is at or above {m.name}'s "
                         f"heat deflection temperature ({m.hdt_c:g} C): the part may soften or "

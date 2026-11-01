@@ -56,6 +56,23 @@ across the layers (z_strength). FDM_Z_RATIOS are TYPICAL ratios, every one an ES
 Shear moduli are on no FDM data sheet: G = E / (2 (1 + nu)) in-plane and E_z / (2 (1 + nu)) in
 the between-layer planes (estimate).
 
+Plan 10 E32 (research 2026-11-01 §5.3): engineering materials beyond filament, each with its
+process. Printed (fdm) values are XY coupons and get FDM_KNOCKDOWN; sls_mjf gets 0.85; machined,
+sheet, laminate and cast materials get 1.0 and rely on the safety factor (min_safety_factor:
+1.5 metals, 2.0 printed, 3.0 brittle). `failure="brittle"` (CF plate) is checked as max
+principal stress against the design strength, not von Mises. Sources per row (`source`):
+- PC Blend: modulus Filament2Print (Prusament PC Blend listing); strength an ESTIMATE to verify
+  against the official Prusament TDS.
+- PA12 (MJF): HP 3D High Reusability PA12 datasheet (near-isotropic).
+- PA6-CF: Bambu PA6-CF TDS v2: E 4430 MPa XY / 2170 Z, 102 MPa XY, 48 MPa Z (used as design).
+- TPU 95A: Ultimaker TPU 95A TDS (2017): E 26 MPa (XY), yield 8.6 MPa, elongation 580%;
+  hyperelastic Neo-Hooke C10 ~ E/6 (estimate), valid only in nonlinear studies.
+- POM: DuPont Delrin 150 datasheet (approximate); machined (it warps when printed).
+- Al 6061-T6, Al 7075-T6, 304 annealed: ASM / MatWeb. Steel 1018 CD, 4140 annealed and Q&T:
+  MatWeb / AZoM. Brass C360 half hard: Copper Development Association C36000.
+- CF plate (3K twill epoxy, quasi-isotropic): typical vendor sheets (e.g. Dragonplate); in-plane
+  only, brittle (design 300 of 450 MPa); interlaminar ~50 MPa, conductive.
+
 Calibration (calibration.py) replaces E, strength and the knock-down by values fitted to the
 user's own coupons for one material and printer. Such a material has basis "calibrated (n
 tests)"; every other one has "datasheet / estimate". Fatigue S-N data: fatigue.py.
@@ -68,10 +85,17 @@ import re
 import math
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import Literal
 
 from .types import SimError
 
 FDM_KNOCKDOWN = 0.7  # applied to strength (not stiffness) for every FDM material
+Process = Literal["fdm", "sls_mjf", "machined", "sheet", "laminate", "cast"]
+PROCESSES = ("fdm", "sls_mjf", "machined", "sheet", "laminate", "cast")
+# the strength knock-down each process starts from (research 2026-11-01 §5.2; sls_mjf [J])
+PROCESS_KNOCKDOWN = {"fdm": FDM_KNOCKDOWN, "sls_mjf": 0.85, "machined": 1.0, "sheet": 1.0,
+                     "laminate": 1.0, "cast": 1.0}
+METALLIC = ("machined", "sheet", "cast")
 # Nonlinear studies with plasticity use a bilinear curve: yield (the allowable, i.e. with the
 # knock-down) then the tangent modulus. Without a measured tangent the estimate is 1% of E:
 # nearly perfectly plastic (printed polymers hardly harden between yield and break).
@@ -111,6 +135,35 @@ class Material:
     calibration: dict | None = None   # summary of the applied calibration record
     basis_by_property: dict | None = None  # {e, e_z, strength, z_strength}: calibrated or not
     fdm_strength_factor: float = 1.0  # infill / walls / orientation share of the strength
+    # Plan 10 E32: process and the properties a per-part pick needs
+    process: str = "fdm"
+    uts_mpa: float | None = None          # ultimate (yield_mpa stays the design strength)
+    elongation_pct: float | None = None
+    failure: str = "ductile"              # "brittle": max principal stress vs the strength
+    max_service_c: float | None = None    # continuous use; hdt_c stays the short-term limit
+    fatigue_limit_mpa: float | None = None   # metals: endurance (5e8 cycles) strength
+    hyperelastic: dict | None = None      # TPU: {"model": "neo_hooke", "c10_mpa", "d1_per_mpa"}
+    printable: bool = True                # False: bought / machined stock
+    cost_per_kg: float | None = None      # USD, typical
+    notes: str = ""
+
+    def __post_init__(self) -> None:
+        if self.process not in PROCESSES:
+            raise SimError("bad_setup", f"unknown process {self.process!r}",
+                           hint=f"use one of {', '.join(PROCESSES)}")
+        if self.failure not in ("ductile", "brittle"):
+            raise SimError("bad_setup", "failure is ductile or brittle")
+
+    @property
+    def is_fdm(self) -> bool:
+        return self.process == "fdm"
+
+    @property
+    def min_safety_factor(self) -> float:
+        """The margin a design in this material needs [J]: brittle 3, metals 1.5, printed 2."""
+        if self.failure == "brittle":
+            return 3.0
+        return 1.5 if self.process in METALLIC else 2.0
 
     @property
     def allowable_mpa(self) -> float:
@@ -159,7 +212,13 @@ class Material:
         return self.density_g_cm3 * 1e-9
 
     def to_dict(self) -> dict:
-        if self.orthotropic:
+        if not self.is_fdm:
+            model = (f"isotropic linear elastic ({self.process}); "
+                     + ("brittle: max principal stress against the design strength"
+                        if self.failure == "brittle" else "von Mises against yield")
+                     + (f"; strength x {self.knockdown:.3g}" if self.knockdown != 1.0 else "")
+                     + f"; needs a safety factor of {self.min_safety_factor:g}")
+        elif self.orthotropic:
             d = self.build_dir
             model = (f"orthotropic linear elastic (FDM layers normal to [{d[0]:.3g}, {d[1]:.3g}, "
                      f"{d[2]:.3g}]): E {self.e_eff_mpa:.4g} MPa in-plane, E_z "
@@ -173,7 +232,7 @@ class Material:
             model += f"; stiffness x{self.stiffness_factor:.3g} for infill/walls (approximate)"
         out = {**asdict(self), "allowable_mpa": self.allowable_mpa, "e_eff_mpa": self.e_eff_mpa,
                "tangent_eff_mpa": self.tangent_eff_mpa, "tangent_source": self.tangent_source,
-               "model": model}
+               "model": model, "min_safety_factor": self.min_safety_factor}
         if self.orthotropic:
             out.update(build_dir=list(self.build_dir), e_z_eff_mpa=self.e_z_eff_mpa,
                        allowable_z_mpa=self.allowable_z_mpa)
@@ -192,6 +251,84 @@ MATERIALS: dict[str, Material] = {m.name: m for m in [
     Material("PA-CF", 3860.0, 0.35, 64.0, 1.06, 170.0, "Bambu PAHT-CF TDS v2 (X-Y modulus, Z strength)",
              0.30, 4.0e-5),
 ]}
+
+# Plan 10 E32: knock-down follows the process (FDM 0.7, SLS/MJF 0.85, stock 1.0)
+_PLAN10 = [
+    dict(name="PC", e_mpa=1900.0, nu=0.37, yield_mpa=55.0, density_g_cm3=1.22, hdt_c=110.0,
+         source="Prusament PC Blend: modulus per Filament2Print listing; strength an ESTIMATE "
+                "(verify against the official TDS)", k_w_mk=0.20, alpha_per_k=6.5e-5,
+         process="fdm", uts_mpa=63.0, max_service_c=100.0, cost_per_kg=40.0,
+         notes="tough, hot (enclosure + 270 C nozzle); Z/XY ~0.6 typical"),
+    dict(name="PA12", e_mpa=1800.0, nu=0.39, yield_mpa=48.0, density_g_cm3=1.01, hdt_c=95.0,
+         source="HP 3D HR PA12 datasheet (MJF, near-isotropic)", k_w_mk=0.25,
+         alpha_per_k=9e-5, process="sls_mjf", uts_mpa=48.0, elongation_pct=20.0,
+         max_service_c=80.0, cost_per_kg=100.0, printable=True,
+         notes="service-bureau print (MJF/SLS); no clear yield, strength = UTS"),
+    dict(name="PA6-CF", e_mpa=4430.0, nu=0.35, yield_mpa=48.0, density_g_cm3=1.17, hdt_c=186.0,
+         source="Bambu PA6-CF TDS v2: E 4430 MPa XY, 102 MPa XY, 48 MPa Z (Z used as design)",
+         k_w_mk=0.30, alpha_per_k=4e-5, e_z_mpa=2170.0, z_strength_mpa=48.0,
+         process="fdm", uts_mpa=102.0, max_service_c=120.0, cost_per_kg=70.0,
+         notes="dried and annealed; loses 30-50% when wet; hardened nozzle"),
+    dict(name="TPU 95A", e_mpa=26.0, nu=0.48, yield_mpa=8.6, density_g_cm3=1.22, hdt_c=60.0,
+         source="Ultimaker TPU 95A TDS (2017): E 26 MPa, yield 8.6 MPa, elongation 580%",
+         k_w_mk=0.20, alpha_per_k=1.5e-4, process="fdm", uts_mpa=39.0, elongation_pct=580.0,
+         max_service_c=60.0, cost_per_kg=35.0,
+         hyperelastic={"model": "neo_hooke", "c10_mpa": 4.3, "d1_per_mpa": 0.0,
+                       "note": "C10 ~ E/6, an estimate; nonlinear studies only"},
+         notes="flexible: feet, bumpers, grips, living hinges; linear studies are small-strain "
+               "only"),
+    dict(name="POM", e_mpa=3100.0, nu=0.35, yield_mpa=72.0, density_g_cm3=1.42, hdt_c=110.0,
+         source="DuPont Delrin 150 datasheet (approximate)", k_w_mk=0.31, alpha_per_k=1.1e-4,
+         process="machined", uts_mpa=72.0, elongation_pct=25.0, max_service_c=90.0,
+         printable=False, cost_per_kg=12.0,
+         notes="low friction: gears, bushings, slides; warps when printed"),
+    dict(name="Al 6061-T6", e_mpa=68900.0, nu=0.33, yield_mpa=276.0, density_g_cm3=2.70,
+         hdt_c=150.0, source="ASM / MatWeb Al 6061-T6", k_w_mk=167.0, alpha_per_k=2.36e-5,
+         process="machined", uts_mpa=310.0, elongation_pct=12.0, max_service_c=150.0,
+         fatigue_limit_mpa=96.5, printable=False, cost_per_kg=8.0,
+         notes="plate, brackets, shafts' housings; weldable; strength drops above 150 C"),
+    dict(name="Al 7075-T6", e_mpa=71700.0, nu=0.33, yield_mpa=503.0, density_g_cm3=2.81,
+         hdt_c=120.0, source="ASM / MatWeb Al 7075-T6", k_w_mk=130.0, alpha_per_k=2.34e-5,
+         process="machined", uts_mpa=572.0, elongation_pct=11.0, max_service_c=120.0,
+         fatigue_limit_mpa=159.0, printable=False, cost_per_kg=15.0,
+         notes="highly loaded arms and links; not weldable"),
+    dict(name="Steel 1018", e_mpa=205000.0, nu=0.29, yield_mpa=370.0, density_g_cm3=7.87,
+         hdt_c=400.0, source="MatWeb / AZoM AISI 1018 cold drawn", k_w_mk=51.9,
+         alpha_per_k=1.2e-5, process="machined", uts_mpa=440.0, elongation_pct=15.0,
+         max_service_c=400.0, fatigue_limit_mpa=220.0, printable=False, cost_per_kg=3.0,
+         notes="shafts, pins, dowels"),
+    dict(name="Steel 4140", e_mpa=205000.0, nu=0.29, yield_mpa=417.0, density_g_cm3=7.85,
+         hdt_c=400.0, source="AZoM AISI 4140 annealed", k_w_mk=42.6, alpha_per_k=1.22e-5,
+         process="machined", uts_mpa=655.0, elongation_pct=25.0, max_service_c=400.0,
+         fatigue_limit_mpa=300.0, printable=False, cost_per_kg=4.0,
+         notes="annealed; shafts and gears"),
+    dict(name="Steel 4140 QT", e_mpa=205000.0, nu=0.29, yield_mpa=655.0, density_g_cm3=7.85,
+         hdt_c=400.0, source="AZoM AISI 4140 quenched and tempered (~HRC 30)", k_w_mk=42.6,
+         alpha_per_k=1.22e-5, process="machined", uts_mpa=1020.0, elongation_pct=18.0,
+         max_service_c=400.0, fatigue_limit_mpa=450.0, printable=False, cost_per_kg=5.0,
+         notes="hardened shafts, gears, pins"),
+    dict(name="304 stainless", e_mpa=193000.0, nu=0.29, yield_mpa=215.0, density_g_cm3=8.00,
+         hdt_c=800.0, source="ASM / MatWeb AISI 304 annealed", k_w_mk=16.2,
+         alpha_per_k=1.73e-5, process="machined", uts_mpa=505.0, elongation_pct=70.0,
+         max_service_c=800.0, fatigue_limit_mpa=240.0, printable=False, cost_per_kg=6.0,
+         notes="corrosion resistant; low yield; work-hardens"),
+    dict(name="Brass C360", e_mpa=97000.0, nu=0.31, yield_mpa=310.0, density_g_cm3=8.50,
+         hdt_c=200.0, source="Copper Development Association C36000 half hard", k_w_mk=115.0,
+         alpha_per_k=2.05e-5, process="machined", uts_mpa=385.0, elongation_pct=25.0,
+         max_service_c=200.0, printable=False, cost_per_kg=10.0,
+         notes="bushings, threaded inserts, small gears"),
+    dict(name="CF plate", e_mpa=50000.0, nu=0.30, yield_mpa=300.0, density_g_cm3=1.55,
+         hdt_c=120.0, source="3K twill epoxy, quasi-isotropic, typical vendor sheets (e.g. "
+                             "Dragonplate); design 300 of 450-600 MPa", k_w_mk=5.0,
+         alpha_per_k=2e-6, process="laminate", uts_mpa=450.0, elongation_pct=1.0,
+         failure="brittle", max_service_c=90.0, printable=False, cost_per_kg=120.0,
+         notes="plate only: in-plane values; interlaminar ~50 MPa; conductive (blocks RF, "
+               "galvanic with aluminium)"),
+]
+for _d in _PLAN10:
+    _m = Material(**_d)
+    MATERIALS[_m.name] = replace(_m, knockdown=PROCESS_KNOCKDOWN[_m.process])
+FDM_Z_RATIOS["PA6-CF"] = (2170.0 / 4430.0, 48.0 / 48.0)
 
 MATERIALS_FILE = "sim_materials.json"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._+()-]{0,39}$")
@@ -226,9 +363,17 @@ def fdm_factors(infill_pct: float, walls: int, layer_orientation: str) -> tuple[
     return solid, FDM_KNOCKDOWN * solid * across
 
 
+def _need_fdm(m: Material, what: str) -> None:
+    if not m.is_fdm:
+        raise SimError("bad_setup", f"{m.name} is a {m.process} material: {what} applies to "
+                       "FDM prints only", hint="drop the FDM print settings for this part, or "
+                       "pick a printed material")
+
+
 def with_fdm(m: Material, infill_pct: float, walls: int, layer_orientation: str) -> Material:
     """The FDM factors on top of the material's own knock-down (FDM_KNOCKDOWN, or the fitted
-    one of a calibrated material)."""
+    one of a calibrated material). Refused for a non-FDM material."""
+    _need_fdm(m, "infill / walls / layer orientation")
     stiff, strength = fdm_factors(infill_pct, walls, layer_orientation)
     if layer_orientation == "z" and m.z_strength_mpa is not None and m.yield_mpa > 0:
         # a measured (calibrated / custom) Z strength replaces the typical 0.6
@@ -253,7 +398,8 @@ def with_anisotropy(m: Material, build_dir, e_z_ratio: float | None = None,
                     strength_z_ratio: float | None = None) -> Material:
     """The orthotropic FDM version of m, printed with its layers normal to build_dir. Z data
     the material already has (a custom material's or a calibration's) wins over the typical
-    ratios; explicit ratios win over both."""
+    ratios; explicit ratios win over both. Refused for a non-FDM material."""
+    _need_fdm(m, "a print direction (layer anisotropy)")
     typ = FDM_Z_RATIOS.get(m.name, DEFAULT_Z_RATIOS)
     e_z = (m.e_mpa * e_z_ratio if e_z_ratio is not None
            else m.e_z_mpa if m.e_z_mpa is not None else m.e_mpa * typ[0])
@@ -352,3 +498,80 @@ def delete_custom(home: Path, name: str) -> bool:
         return False
     _save_custom(home, left)
     return True
+
+
+# ---- Plan 10 E32: the agent's per-part material pick
+
+def _score(m: Material, req: dict) -> tuple[float, list[str], list[str]]:
+    """(score, reasons, refusals) for one material against requirements."""
+    why, no = [], []
+    prio = req.get("priority") or "balanced"
+    temp = req.get("max_temp_c")
+    service = m.max_service_c if m.max_service_c is not None else m.hdt_c
+    if temp is not None and service < float(temp):
+        no.append(f"service limit {service:g} C < {float(temp):g} C")
+    if req.get("printable") is True and not m.printable:
+        no.append("not printable (bought / machined stock)")
+    if req.get("printable") is False and m.printable and m.process == "fdm":
+        why.append("printed although stock was asked for")
+    procs = req.get("processes")
+    if procs and m.process not in procs:
+        no.append(f"process {m.process} not available")
+    if req.get("flexible") and (m.elongation_pct or 0) < 100:
+        no.append("not flexible")
+    if not req.get("flexible") and (m.elongation_pct or 0) > 100:
+        no.append("flexible (elastomer)")
+    if req.get("min_yield_mpa") is not None and m.allowable_mpa < float(req["min_yield_mpa"]):
+        no.append(f"allowable {m.allowable_mpa:.3g} MPa < {float(req['min_yield_mpa']):g} MPa")
+    if req.get("min_e_mpa") is not None and m.e_mpa < float(req["min_e_mpa"]):
+        no.append(f"E {m.e_mpa:g} MPa < {float(req['min_e_mpa']):g} MPa")
+    if req.get("conductive") is False and (m.process in METALLIC or m.name == "CF plate"):
+        no.append("electrically conductive (an antenna / RF window must not be)")
+    form = req.get("form")
+    if m.process == "laminate" and form is not None and form != "plate":
+        no.append("plate stock only (in-plane laminate)")
+    if req.get("low_friction") and m.name in ("POM", "Brass C360", "PA12"):
+        why.append("low friction (gears, bushings)")
+    rho = m.density_g_cm3
+    stiff, strong = m.e_mpa / rho, m.allowable_mpa / rho
+    cost = m.cost_per_kg or 50.0
+    if prio == "stiffness":
+        score = stiff / 1000.0
+        why.append(f"specific stiffness E/rho {stiff:,.0f}")
+    elif prio == "strength":
+        score = strong
+        why.append(f"specific strength {strong:.3g} MPa per g/cm3")
+    elif prio == "cost":
+        score = 100.0 / cost
+        why.append(f"~{cost:g} USD/kg")
+    elif prio == "mass":
+        score = strong / rho
+        why.append(f"strength per density^2 {strong / rho:.3g}")
+    else:
+        score = strong * 0.5 + stiff / 2000.0 + 50.0 / cost
+        why.append(f"specific strength {strong:.3g}, stiffness {stiff:,.0f}, ~{cost:g} USD/kg")
+    if m.failure == "brittle":
+        why.append("brittle: design with SF >= 3")
+    return score, why, no
+
+
+def rank_materials(req: dict | None = None, home: Path | None = None,
+                   limit: int = 6) -> list[dict]:
+    """Materials ranked for a part's requirements: {priority: stiffness|strength|mass|cost|
+    balanced, max_temp_c, printable, processes, flexible, min_yield_mpa, min_e_mpa, conductive,
+    low_friction, form: plate|shaft|block|shell}. Each row: name, process, score, reasons, the key numbers; materials that fail
+    a hard requirement come last with `rejected` reasons."""
+    req = dict(req or {})
+    rows = []
+    for m in [*MATERIALS.values(), *load_custom(home)]:
+        score, why, no = _score(m, req)
+        rows.append({"name": m.name, "process": m.process, "score": round(score, 3),
+                     "reasons": why, "rejected": no, "e_mpa": m.e_mpa,
+                     "allowable_mpa": round(m.allowable_mpa, 3),
+                     "density_g_cm3": m.density_g_cm3,
+                     "max_service_c": m.max_service_c if m.max_service_c is not None else m.hdt_c,
+                     "printable": m.printable, "failure": m.failure,
+                     "min_safety_factor": m.min_safety_factor, "cost_per_kg": m.cost_per_kg,
+                     "notes": m.notes})
+    rows.sort(key=lambda r: (bool(r["rejected"]), -r["score"]))
+    return rows[:max(1, limit)]
