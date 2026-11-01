@@ -6,7 +6,8 @@
 // open column and its left edge drags its width (dockLayout, remembered). Dragging an edge or a
 // divider never selects page text (E10). The composer sits at the foot of the Conversation (of
 // the dock while the Conversation is closed). The Conversation header holds the design focus,
-// the "needs you" count and one ⋯ menu.
+// "← Back to lead" on a sub-agent's thread (E13) and the "needs you" count. There is no ⋯ menu:
+// New run is gone (E24) and the full log and agent browser are in Profile → Developer (E22).
 import { Fragment, type ComponentChildren, type JSX } from "preact";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import type { StreamKind } from "../../api/types";
@@ -15,8 +16,8 @@ import { finishedSims } from "../../state/activity";
 import { activeBuildId } from "../../state/builds";
 import { effectiveRun, needsYou } from "../../state/selection";
 import { actions, selectedRunId } from "../../state/store";
-import { OverflowMenu } from "../common/OverflowMenu";
 import { ModelWarning } from "./cards/critique/ModelWarning";
+import { BackToLead } from "./BackToLead";
 import { CommandLine } from "./command/CommandLine";
 import { Conversation } from "./Conversation";
 import { DesignFocus } from "./DesignFocus";
@@ -29,7 +30,6 @@ import { retainBuildStudies } from "./buildStudies";
 import { SimStream, simExtras, simExtrasRunning } from "./SimStream";
 import { simRunning, splitStreams } from "./streams";
 import { markSeen, unreadOf } from "./unread";
-import { setConsoleView } from "./view";
 import { ViewStream } from "./ViewStream";
 import "./dock.css";
 
@@ -239,6 +239,7 @@ function ConversationHead(): JSX.Element {
   return (
     <div class="dock-hx" data-conversation-head>
       <DesignFocus run={current} buildId={current?.project_id ?? activeBuildId.value} />
+      {notLead && <BackToLead buildId={current?.project_id ?? activeBuildId.value} />}
       {notLead && label && <span class="dock-who dim text" data-run-label title={label}>{label}</span>}
       {current && <ModelWarning run={current} />}
       {others.length > 0 && (
@@ -247,17 +248,6 @@ function ConversationHead(): JSX.Element {
           <span class="num">{others.length}</span>
         </button>
       )}
-      <MoreMenu hasRun={current !== null} />
     </div>
-  );
-}
-
-/** The Conversation's one menu (Plan 9 D2: no button bar; P10 E24: no "New run"). */
-function MoreMenu({ hasRun }: { hasRun: boolean }): JSX.Element {
-  return (
-    <OverflowMenu label="Conversation options" class="dock-more" items={[
-      { label: "Agent browser", onSelect: () => setConsoleView("browser", false), disabled: !hasRun },
-      { label: "Full log", onSelect: () => setConsoleView("details") },
-    ]} />
   );
 }

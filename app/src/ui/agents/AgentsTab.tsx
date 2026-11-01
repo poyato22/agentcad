@@ -100,7 +100,7 @@ export function AgentsTab(): JSX.Element {
                   <div class="am-line"><span class="am-name text">{a.name}</span><span class="am-meta faint text">{a.model}</span></div>
                   {a.description && <div class="am-desc faint text">{a.description}</div>}
                   <div class="am-sub">
-                    <span class="faint">{isHidden ? "hidden from New run" : a.tools ? `${a.tools.length} tools` : "default tools"}</span>
+                    <span class="faint">{isHidden ? "hidden" : a.tools ? `${a.tools.length} tools` : "default tools"}</span>
                     <span class="am-spacer" />
                     <Button variant="ghost" aria-pressed={isHidden} onClick={() => { void toggleHidden(a.name); }}>{isHidden ? "Show" : "Hide"}</Button>
                   </div>
@@ -183,7 +183,7 @@ function AgentForm({ existing, knownTools, toolDocs, taken, onCancel, onSaved }:
       <label class="am-field">
         <span class="label">What it does</span>
         <input type="text" value={d.description} onInput={(e) => set({ description: (e.currentTarget as HTMLInputElement).value })}
-          placeholder="One line, shown in New run" />
+          placeholder="One line: what this agent is for" />
       </label>
       <label class="am-field">
         <span class="label">Model</span>

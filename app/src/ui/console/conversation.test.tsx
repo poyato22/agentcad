@@ -8,6 +8,7 @@ import type { AgentRun, CoreStatusInfo, Step } from "../../api/types";
 import { addCatalogChip, agentChips, clearAgentChips } from "../../state/agentChips";
 import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, resetStore, runs, selectedPartId, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
+import { showDockView } from "../profile/sections/DeveloperSection";
 import { ConsolePane } from "./ConsolePane";
 import { retryTextFor } from "./Conversation";
 import type { ThreadItem } from "./threadModel";
@@ -28,11 +29,6 @@ function setSteps(list: Step[]) {
   steps.value = m;
 }
 async function frame() { await act(async () => { await new Promise((r) => setTimeout(r, 40)); }); }
-/** The Conversation header's one ⋯ menu (Plan 9 D2: no button bar). */
-function openMenuItem(name: string) {
-  fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
-  fireEvent.click(within(screen.getByRole("menu", { name: "Conversation options" })).getByRole("menuitem", { name }));
-}
 
 const MODELS = {
   default: "anthropic/claude-sonnet-5-5",
@@ -170,9 +166,10 @@ describe("conversation view (default)", () => {
     expect(document.querySelector("[data-conversation-head] [data-run-label]")?.textContent).toBe("You (Mises)");
   });
 
-  it("there_is_no_button_bar_only_one_menu_in_the_conversation_header", async () => {
+  it("there_is_no_button_bar_and_no_menu_in_the_conversation_header", async () => {
     // Plan 9 D2: no agent dropdown, no Stop / New / Manage / Browser / Full log buttons, no
-    // "provider · model → agent" line; the agent browser and full log are in the ⋯ menu
+    // "provider · model → agent" line; P10 E24 took New run and E22 the agent browser and full
+    // log (Profile & settings → Developer), so the ⋯ menu is gone too
     client();
     setRuns([run("r1", { created_at: 2, task: "stiffen the upright", routed: { agent: "engineer", reason: "system build", confidence: 0.9 } })]);
     const { container } = render(<ConsolePane />);
@@ -181,28 +178,25 @@ describe("conversation view (default)", () => {
     expect(screen.queryByRole("button", { name: /^Run:/ })).toBeNull();
     expect(container.querySelector("[data-run-switcher], .cv-who, .cv-routed")).toBeNull();
     expect(container.textContent).not.toContain("fake · m");
-    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
-    const menu = screen.getByRole("menu", { name: "Conversation options" });
-    expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["Agent browser", "Full log"]);
-    fireEvent.keyDown(menu, { key: "Escape" });
-    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Conversation options" })).toBeNull();
   });
 
-  it("details_toggle_shows_the_dense_log_and_is_remembered", async () => {
+  it("E22: Developer's Show full agent log opens the dense log (not remembered); Conversation returns", async () => {
     client();
     setRuns([run(RID)]);
     setSteps(REAL);
     const { container } = render(<ConsolePane />);
     await frame();
-    openMenuItem("Full log");
+    const closed = vi.fn();
+    act(() => showDockView("details", closed));
     await frame();
+    expect(closed).toHaveBeenCalled();
     expect(container.querySelector("[data-filters]")).toBeTruthy();
     expect(container.querySelector("[data-roster]")).toBeTruthy();
-    expect(localStorage.getItem(VIEW_KEY)).toBe("details");
+    expect(localStorage.getItem(VIEW_KEY)).toBeNull();      // the dock starts on the Conversation next launch
     fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
     await frame();
     expect(container.querySelector("[data-filters]")).toBeNull();
-    expect(localStorage.getItem(VIEW_KEY)).toBe("chat");
   });
 
   it("an_evidence_link_opens_details_at_that_step_without_remembering_it", async () => {
@@ -354,10 +348,8 @@ describe("one chat per build (P10 E24)", () => {
     const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: true, queued: false, notes: [] }) });
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
-    expect(within(screen.getByRole("menu", { name: "Conversation options" })).getAllByRole("menuitem").map((b) => b.textContent))
-      .toEqual(["Agent browser", "Full log"]);
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Conversation options" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /New run/ })).toBeNull();
     expect(screen.getByTestId("target-chip").textContent).toBe("→ the build's agent (starts with your first message)");
     expect(document.querySelector("[data-chat-empty]")?.textContent).toMatch(/first message starts this build's agent/);
     send("design a two-finger gripper");

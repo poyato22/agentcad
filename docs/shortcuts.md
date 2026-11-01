@@ -17,6 +17,7 @@ noted (the viewer or the parts list focused, a focused approval card).
 | ⌘K | Focus the command line |
 | ⇧⌘A | Agent manager |
 | ⇧⌘. | Stop all runs (the composer's Stop stops the build's agents) |
+| ⌘← ⌘→ | Back / forward through where you were (page, an opened part or agent, a Home view, a full-window view); also the ← → buttons and the mouse's back / forward buttons. Not while typing in a field (there they move the caret) |
 | ⌘] | Show / hide the agent dock (inside a build; it folds to a slim "Agents" tab) |
 
 ## Top bar (inside a build)

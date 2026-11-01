@@ -28,7 +28,6 @@
 .con-bar-done i { background: var(--green); }
 .con-bar-failed i { background: var(--red); }
 .con-bar-cancelled i { background: var(--faint); }
-.con-newrun { flex: none; align-self: flex-start; margin: 6px 8px; }
 
 /* ---- filters */
 .con-filters { flex: none; display: flex; border-bottom: 1px solid var(--line); min-width: 0; }

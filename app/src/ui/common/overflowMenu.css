@@ -3,6 +3,22 @@
 .ovm-btn:hover, .ovm-btn[aria-expanded="true"] { border-color: var(--line2); color: var(--ink); }
 .ovm-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
 .ovm-menu { position: absolute; right: 0; top: 100%; z-index: 30; display: flex; flex-direction: column; min-width: 160px; padding: 3px 0; background: var(--paper2); border: 1px solid var(--line2); }
-.ovm-item { border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+.ovm-item { display: flex; align-items: center; gap: 12px; border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
 .ovm-item:hover, .ovm-item:focus-visible { background: var(--blue-tint); outline: none; }
 .ovm-item:disabled { color: var(--faint); cursor: default; background: transparent; }
+.ovm-label { flex: 1; }
+.ovm-note { color: var(--dim); font-size: var(--fs-small); }
+.ovm-divided { position: relative; margin-top: 7px; }
+.ovm-divided::before { content: ""; position: absolute; left: 6px; right: 6px; top: -4px; height: 1px; background: var(--line); }
+
+/* Plan 9 visual spec: a floating menu (radius 10, panel blur, one soft shadow, rows radius 6).
+   Opt in with class="ovm-float" (the Home Settings menu). */
+.ovm-float .ovm-menu {
+  top: calc(100% + 6px); min-width: 210px; padding: 4px; z-index: 40;
+  background: var(--surface); border-color: var(--line2); border-radius: var(--r-surface); box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  font: 500 var(--fs)/1 var(--font-ui);
+}
+.ovm-float .ovm-item { height: 30px; padding: 0 10px; border-radius: var(--r-row); }
+.ovm-float .ovm-item:hover, .ovm-float .ovm-item:focus-visible { background: var(--raised); }
+.ovm-float .ovm-item[aria-checked="true"]::after { content: "✓"; color: var(--blue); font-size: var(--fs-small); }

@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, openManualStudySetup, test, type FakeCall, type FakeControl } from "./fixtures";
+import { expect, type FakeCall, type FakeControl, homeMenu, openManualStudySetup, test } from "./fixtures";
 
 const QUAD = "q0quadframe0";
 const BENCH = "b0benchrig00";
@@ -181,7 +181,7 @@ test("M-3: the Into build picker follows a build switch after a pick", async ({ 
   const picker = async () => {
     // D22: the parts library is a Home sub-view
     if (await page.locator("[data-region=topbar]").count()) await page.getByRole("button", { name: "Home" }).click();
-    await page.locator('[data-testid="home"]').getByRole("button", { name: "Parts library", exact: true }).click();
+    await homeMenu(page, "Parts library");
     await page.getByRole("button", { name: "Motors" }).click();
     const card = page.locator('[data-item="motor_2207_class"]');
     if (await page.locator('[data-detail="motor_2207_class"]').count() === 0) await card.click();

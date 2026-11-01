@@ -30,8 +30,12 @@ export function insetsOf(viewer: DOMRect, left: DOMRect | null, right: DOMRect |
 const LEFT = "[data-region=left][data-surface], [data-region=left] [data-surface]";
 const RIGHT = "[data-region=console][data-surface], [data-region=console] [data-surface]";
 
-/** Measures the insets inside `app` now and whenever it or a surface resizes. Call again when the
- *  surfaces mount or unmount (page, fold); returns the cleanup. */
+const WATCHED = ["[data-region=viewer]", LEFT, RIGHT] as const;
+
+/** Measures the insets inside `app` now and whenever it or a surface resizes. Plan 10 E37: also
+ *  when a surface mounts, unmounts or is replaced (the dock mounting after the viewer, a fold, the
+ *  dock's columns), so the empty-assembly note and the model never sit under a surface that the
+ *  last measure missed. Returns the cleanup. */
 export function watchInsets(app: HTMLElement): () => void {
   const q = (s: string) => app.querySelector<HTMLElement>(s);
   const measure = () => {
@@ -47,9 +51,27 @@ export function watchInsets(app: HTMLElement): () => void {
   if (typeof ResizeObserver === "undefined") return () => {};
   const ro = new ResizeObserver(measure);
   ro.observe(app);
-  for (const s of ["[data-region=viewer]", LEFT, RIGHT]) {
-    const el = q(s);
-    if (el) ro.observe(el);
-  }
-  return () => ro.disconnect();
+  let seen: (HTMLElement | null)[] = [];
+  const observeSurfaces = () => {
+    const now = WATCHED.map(q);
+    if (now.every((el, i) => el === seen[i])) return false;
+    for (const el of seen) if (el && !now.includes(el)) ro.unobserve(el);
+    for (const el of now) if (el && !seen.includes(el)) ro.observe(el);
+    seen = now;
+    return true;
+  };
+  observeSurfaces();
+  // a surface element swapped in or out: observe the new one and measure (once per frame at most)
+  let pending: ReturnType<typeof setTimeout> | null = null;
+  const onMutate = () => {
+    if (pending !== null) return;
+    pending = setTimeout(() => { pending = null; if (observeSurfaces()) measure(); }, 16);
+  };
+  const mo = typeof MutationObserver === "undefined" ? null : new MutationObserver(onMutate);
+  mo?.observe(app, { childList: true, subtree: true });
+  return () => {
+    ro.disconnect();
+    mo?.disconnect();
+    if (pending !== null) clearTimeout(pending);
+  };
 }

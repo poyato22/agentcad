@@ -13,6 +13,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { conn } from "./state/store";
 import { atHome, goHome } from "./state/home";
+import { installNav } from "./state/nav";
 import { isTrustedKey, registerShortcut } from "./lib/keys";
 import { needsYou } from "./state/selection";
 import { HomePage } from "./ui/pages/home";
@@ -122,6 +123,8 @@ export function App(): JSX.Element {
   useEffect(() => installSurfaceShortcuts(), []);
   // ⇧⌘. works on Home too, which has no top bar (D23)
   useEffect(() => installStopAllShortcut(), []);
+  // Plan 10 E11: back / forward through where the user went (← → buttons, ⌘← / ⌘→, mouse buttons)
+  useEffect(() => installNav(), []);
   // ⌘0 returns to the Home grid (not while a modal is open, and only on a real key press).
   useEffect(() => registerShortcut("Meta+0", (e) => {
     if (isTrustedKey(e) && !modalOpen()) goHome();

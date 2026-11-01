@@ -121,13 +121,13 @@ test("design_focus_fits_the_conversation_header_at_360_px", async ({ page, fake 
     const head = col(page, "text").locator(".dock-h").first();
     const chip = head.locator("[data-design-focus]");
     await expect(chip).toBeVisible();
-    const parts = [await head.locator(".dock-t").boundingBox(), await chip.boundingBox(), await head.locator(".dock-more").boundingBox()];
-    const h = await head.boundingBox();
+    // the header's right end is the pinned collapse button (the ⋯ menu is gone, E22 / E24)
+    const parts = [await head.locator(".dock-t").boundingBox(), await chip.boundingBox(),
+      await page.getByRole("button", { name: "Collapse the agent console" }).boundingBox()];
     for (const p of parts) expect(p).not.toBeNull();
-    const [title, focus, more] = parts as { x: number; width: number; y: number; height: number }[];
+    const [title, focus, fold] = parts as { x: number; width: number; y: number; height: number }[];
     expect(title.x + title.width).toBeLessThanOrEqual(focus.x + 0.5);          // no overlap, in order
-    expect(focus.x + focus.width).toBeLessThanOrEqual(more.x + 0.5);
-    expect(more.x + more.width).toBeLessThanOrEqual((h?.x ?? 0) + (h?.width ?? 0) + 0.5);
+    expect(focus.x + focus.width).toBeLessThanOrEqual(fold.x + 0.5);
     expect(focus.height).toBeLessThan(30);                                       // one line
     if (SHOTS && width === 360) await head.screenshot({ path: `${SHOTS}/design-focus-360.png` });
   }
@@ -184,9 +184,7 @@ test("one_chat_per_build_edit_resends_and_a_queued_message_can_be_cancelled", as
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page);
   // no New run anywhere; ⌘N does nothing
-  await page.getByRole("button", { name: "Conversation options" }).click();
-  await expect(page.getByRole("menu", { name: "Conversation options" }).getByRole("menuitem")).toHaveText(["Agent browser", "Full log"]);
-  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Conversation options" })).toHaveCount(0);
   await page.keyboard.press("Meta+n");
   await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
   // the lead works: the message waits for it, with Cancel

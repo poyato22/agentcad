@@ -41,7 +41,7 @@ test("dock_header_has_no_button_bar_and_stays_one_line_at_1280x800", async ({ pa
   expect(label.ws).toBe("nowrap");
   expect(label.h).toBeLessThan(lineH * 1.6);
   // the column headers stay clear of the pinned collapse button (P10 E6: the rightmost is the Conversation)
-  const top = await con.locator("[data-stream=text] .dock-more").boundingBox();
+  const top = await con.locator("[data-stream=text] [data-conversation-head]").boundingBox();
   const collapse = await page.getByRole("button", { name: "Collapse the agent console" }).boundingBox();
   expect(top && collapse && top.x + top.width <= collapse.x + 0.5).toBe(true);
 });
@@ -87,16 +87,22 @@ test("failed_calls_and_errors_are_red_inline_and_another_run_needing_you_is_one_
   await expect(thread(page).locator(`[data-approval="${AID}"]`)).toBeVisible();
 });
 
-test("details_toggle_shows_the_dense_log_and_is_remembered", async ({ page }) => {
+// Plan 10 E22: the full log is a developer view (Profile → Developer), not the everyday dock: it
+// shows the same dense log, its Conversation button returns, and a relaunch starts on the
+// Conversation again.
+test("developer_full_log_shows_the_dense_log_and_is_not_remembered", async ({ page }) => {
   await open(page);
   await consoleMenu(page, "Full log");
+  await expect(page.getByRole("dialog", { name: "Profile" })).toHaveCount(0);
   await expect(consoleRegion(page).locator("[data-roster]")).toBeVisible();
   await expect(consoleRegion(page).locator("[data-filters]")).toBeVisible();
   await expect(page.locator(`[data-roster] [data-run="${DES}"]`)).toBeVisible();
-  await page.reload();
-  await expect(consoleRegion(page).locator("[data-roster]")).toBeVisible();
   await page.getByRole("button", { name: "Conversation" }).click();
   await expect(thread(page)).toBeVisible();
+  await consoleMenu(page, "Full log");
+  await page.reload();
+  await expect(thread(page)).toBeVisible();
+  await expect(consoleRegion(page).locator("[data-roster]")).toHaveCount(0);
 });
 
 test("the_first_message_starts_the_builds_lead_on_the_default_model", async ({ page, fake }) => {

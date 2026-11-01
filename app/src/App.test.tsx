@@ -55,7 +55,7 @@ describe("App shell", () => {
 
   it("one chat per build: no New run anywhere (P10 E24)", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
+    expect(screen.queryByRole("button", { name: "Conversation options" })).toBeNull();   // E22 took the rest
     expect(screen.queryByRole("menuitem", { name: /New run/ })).toBeNull();
     expect(screen.queryByRole("form", { name: "New run" })).toBeNull();
     expect(screen.queryByText("No runs yet.")).toBeNull();
