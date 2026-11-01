@@ -608,6 +608,9 @@ async def part_show(ctx: ToolContext, args: ShowArgs) -> ToolOutput:
                    else "") + f"{price}. {UNTRUSTED}",
         data={**ids, "card": ids, "part_id": card.get("part_id"),
               "item_id": card.get("item_id"),
+              # the parts-list row the part sits in: a shop row, or the inserted part's auto row
+              "bom_id": card.get("item_id") or (f"auto_{card['part_id']}"
+                                                if card.get("part_id") else None),
               "untrusted_page_data": wrap_untrusted(json.dumps(shown, ensure_ascii=False),
                                                     card.get("domain") or "")})
 

@@ -251,7 +251,7 @@ def cancel_queued(rt: Runtime, run_id: str, message_id: str) -> bool:
     for i, m in enumerate(q):
         if m["message_id"] == message_id:
             q.pop(i)
-            _drop(rt, run_id, m, "cancelled by the user")
+            _drop(rt, run_id, m, "cancelled")
             if not q:
                 rt.lead_queues.pop(run_id, None)
             return True

@@ -464,6 +464,11 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
                              hint="it was already delivered or cancelled")
         return {"ok": True}
 
+    @app.post("/runs/{run_id}/queued/{message_id}/cancel")
+    async def cancel_queued_post(run_id: str, message_id: str):
+        """E9: the app's form of the queued-message cancel (same as the DELETE route)."""
+        return await cancel_queued(run_id, message_id)
+
     @app.post("/runs/{run_id}/retry")
     async def retry(run_id: str):
         """E9: re-send the run's last user turn after an error or a stall."""

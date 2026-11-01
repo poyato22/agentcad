@@ -118,3 +118,27 @@ def test_scan_stalls_publishes_once(rt, monkeypatch):
     rt.store.update_run(run.id, last_activity_at=time.time() - 200)
     assert run.id in rt.scan_stalls()
     del got, sub
+
+
+def test_post_queued_cancel_alias_drops_with_reason_cancelled(client, rt):
+    pid = _pid(client)
+    rid = client.post(f"/projects/{pid}/chat", headers=AUTH, json={"text": "hi"}).json()["run_id"]
+    wait_status(client, rid)
+    rt.lead_queues[rid] = [{"message_id": "msg_abc", "text": "t", "shown": "t", "log": None}]
+    sub = rt.events.subscribe(rid)
+    r = client.post(f"/runs/{rid}/queued/msg_abc/cancel", headers=AUTH)
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    dropped = []
+    while not sub.queue.empty():
+        e = sub.queue.get_nowait()
+        if e.type == "message_dropped":
+            dropped.append(e.data)
+    assert dropped and dropped[0]["reason"] == "cancelled"
+    assert client.post(f"/runs/{rid}/queued/msg_abc/cancel", headers=AUTH).status_code == 404
+
+
+def test_chat_answers_like_post_runs(client):
+    pid = _pid(client)
+    a = client.post(f"/projects/{pid}/chat", headers=AUTH, json={"text": "x"}).json()
+    b = client.post("/runs", headers=AUTH, json={"prompt": "y", "project_id": pid}).json()
+    assert set(a) == set(b)
