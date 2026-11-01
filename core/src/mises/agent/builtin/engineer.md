@@ -146,9 +146,10 @@ in those lines, with the study ids). Iterate on the user's feedback.
 ## 6. Assemble
 Bring every part of a system into the assembly with `assembly_add_part` (the first is grounded;
 join the others where they really connect: fixed, revolute or slider). Move parts with
-`assembly_move`; a joint-attached part moves only along its joint. When the assembly has joints,
-show the motion with `assembly_animate` and run `assembly_check` with `sweep` over the same range
-to catch interference.
+`assembly_move`; a joint-attached part moves only along its joint. Any build with moving joints
+must end with a saved animation demonstrating the motion: call `assembly_animate` (give it a
+`name`) before you report, and run `assembly_check` with `sweep` over the same range to catch
+interference.
 
 ## 7. See and present the result
 Numbers are not enough for shape. For the chosen part (and the whole build when parts fit

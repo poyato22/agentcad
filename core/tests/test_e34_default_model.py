@@ -62,16 +62,20 @@ def test_lead_model_wins(rt):
     assert rt.default_model_ref(pid) == f"{CLAUDE_CODE}/opus"
 
 
-def test_claude_fallback_ref_only_when_unreachable(rt):
+@pytest.mark.asyncio
+async def test_fallback_only_on_no_key_when_signed_in(rt):
     _signed_in(rt, True)
-    assert rt._claude_fallback_ref("anthropic/claude-sonnet-5-5") == f"{CLAUDE_CODE}/sonnet"
-    assert rt._claude_fallback_ref(f"{CLAUDE_CODE}/opus") is None     # already Claude Code
-    assert rt._claude_fallback_ref("ollama/qwen3") is None            # needs no key
+    assert await rt._claude_fallback_for(
+        MisesError(ErrorCode.DENIED, "no API key for anthropic")) == f"{CLAUDE_CODE}/sonnet"
+    # a different DENIED (not a missing key) is not rerouted
+    assert await rt._claude_fallback_for(MisesError(ErrorCode.DENIED, "out of scope")) is None
 
 
-def test_claude_fallback_ref_none_when_not_signed_in(rt):
+@pytest.mark.asyncio
+async def test_no_fallback_when_not_signed_in(rt):
     _signed_in(rt, False)
-    assert rt._claude_fallback_ref("anthropic/claude-sonnet-5-5") is None
+    assert await rt._claude_fallback_for(
+        MisesError(ErrorCode.DENIED, "no API key for anthropic")) is None
 
 
 @pytest.mark.asyncio
@@ -79,11 +83,15 @@ async def test_start_run_falls_back_to_claude_with_note(rt, monkeypatch):
     _signed_in(rt, True)
     captured = {}
 
+    def resolver(ref):
+        raise MisesError(ErrorCode.DENIED, "no API key for anthropic")
+
+    rt.provider_resolver = resolver
+
     async def fake_start_claude(agent, prompt, alias, **kw):
         rid = rt.create_external_run(agent, provider=CLAUDE_CODE, model=alias,
                                      project_id=kw.get("project_id"))
         captured["alias"] = alias
-        captured["rid"] = rid
         return rid
 
     monkeypatch.setattr(rt, "_start_claude_run", fake_start_claude)
@@ -97,7 +105,7 @@ async def test_start_run_falls_back_to_claude_with_note(rt, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_start_run_raises_when_not_signed_in(rt, monkeypatch):
+async def test_start_run_raises_when_not_signed_in(rt):
     _signed_in(rt, False)
 
     def resolver(ref):

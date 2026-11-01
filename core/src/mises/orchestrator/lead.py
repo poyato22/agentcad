@@ -93,8 +93,9 @@ piece: create it with `place: false`. Delete a part you no longer need with `par
 first part is grounded; join each other part where it really connects (fixed, or revolute / \
 slider where it moves). Move parts with `assembly_move`; a joint-attached part moves only \
 along its joint.
-- When the assembly has joints, show the motion with `assembly_animate`, and run \
-`assembly_check` with `sweep` over the same range to catch interference.
+- Any build with moving joints must end with a saved animation of the motion: call \
+`assembly_animate` (give it a `name`) before you report, and run `assembly_check` with `sweep` \
+over the same range to catch interference.
 """
 
 

@@ -60,7 +60,7 @@ from .parallel import Limits, ParallelLimiter
 from .platform import data_home, keychain_get, register_sandbox_home
 from .print.tools import register_print_tools
 from .profile import load_profile
-from .providers.registry import DEFAULT_MODEL, VENDORS, has_key, ref_has_key, resolve
+from .providers.registry import DEFAULT_MODEL, VENDORS, has_key, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
 from . import budget as budget_mod
@@ -826,17 +826,24 @@ class Runtime:
         if caps is None:
             caps = Caps(onshape_calls_run=prof.onshape_calls_run_cap,
                         onshape_calls_year=prof.onshape_calls_year_cap)
-        # E34: warm the Claude Code sign-in cache so default_model_ref and the no-key fallback
-        # can read it without a network call on the sync resolver path
-        if model_ref is None or not ref_has_key(model_ref):
+        # E34: warm the Claude Code sign-in cache so default_model_ref can read it without a
+        # network call when the build has no key configured
+        if model_ref is None:
             with contextlib.suppress(Exception):
                 await self.claude_status_cached()
         ref = self.model_ref_for(defn, model_ref, prof, project_id=project_id)
         alias = model_alias(ref)
         fallback_from: str | None = None
+        provider = model = None
         if alias is None:
-            fb = self._claude_fallback_ref(ref)
-            if fb is not None:          # an unreachable ref + Claude Code signed in: use it
+            try:
+                provider, model = self._resolve_provider(ref, prof)
+            except MisesError as e:
+                # E34 single-point defence: an unresolvable ref (no API key) + Claude Code
+                # signed in routes to the user's Claude Code with a visible note
+                fb = await self._claude_fallback_for(e)
+                if fb is None:
+                    raise
                 fallback_from, ref, alias = ref, fb, model_alias(fb)
         if alias is not None:
             rid = await self._start_claude_run(agent, prompt, alias, edit_scope=edit_scope,
@@ -849,7 +856,7 @@ class Runtime:
             if fallback_from is not None:
                 self._note_model_fallback(rid, fallback_from, ref)
             return rid
-        provider, model = self._resolve_provider(ref, prof)
+        assert provider is not None
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id,
@@ -1050,12 +1057,13 @@ class Runtime:
             return f"{CLAUDE_CODE}/{CLAUDE_DEFAULT_ALIAS}"
         return DEFAULT_MODEL
 
-    def _claude_fallback_ref(self, ref: str) -> str | None:
-        """A reachable Claude Code ref to use in place of `ref` when `ref`'s vendor has no key
-        and the user's Claude Code is signed in (E34 single-point defence); else None. Never
-        overrides a ref that is already reachable or is itself a Claude Code alias."""
-        if model_alias(ref) is not None or ref_has_key(ref):
+    async def _claude_fallback_for(self, e: MisesError) -> str | None:
+        """The Claude Code ref to use after a provider could not be resolved for lack of an API
+        key, when the user's Claude Code is signed in (E34 single-point defence); else None."""
+        if e.code != ErrorCode.DENIED or "no API key" not in (e.message or ""):
             return None
+        with contextlib.suppress(Exception):
+            await self.claude_status_cached()
         return (f"{CLAUDE_CODE}/{CLAUDE_DEFAULT_ALIAS}" if self._claude_signed_in_cached()
                 else None)
 

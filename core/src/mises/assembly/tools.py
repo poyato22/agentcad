@@ -610,9 +610,10 @@ class AnimateArgs(BaseModel):
 @tool("assembly_animate", safety=SafetyClass.READ, scope_arg="project_id",
       description="Show a joint's motion to the user: the app plays the joint (or a sequence of "
                   "joints, one after another) from `from` to `to` over duration_s, optionally "
-                  "looping. The joints keep their values. Pass `name` to save the motion (its "
-                  "animation_id goes to present_view kind 'animation'), or `present` to show it "
-                  "as a view card right away. Returns the solved poses at key frames; check "
+                  "looping. The joints keep their values. The motion is always saved so the user "
+                  "can replay it (Play / present_view kind 'animation'); pass `name` to title it, "
+                  "or `present` to show it as a view card right away. Returns the solved poses at "
+                  "key frames; check "
                   "interference across the same range with assembly_check sweep.")
 async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
     pid = _build_of(ctx, args.project_id)
@@ -644,17 +645,20 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
         event = {"project_id": pid, "sequence": plan, "loop": loops > 1, "loops": loops}
     else:
         event = {"project_id": pid, **plan[0], "loop": loops > 1, "loops": loops}
-    name = args.name or ("Motion" if args.present else None)
+    # E5: every motion is saved so Play and present_view can replay it after a reload (survives
+    # reload), auto-named when the agent gave no name. A READ-only run (e.g. a verifier policy)
+    # may not persist build state, so it only previews; if it explicitly asked to save
+    # (name/present), that is refused, not silently ignored.
+    explicit = bool(args.name or args.present)
+    name = args.name or _auto_animation_name(plan)
+    policy = getattr(ctx, "policy", None)
+    can_save = policy is None or SafetyClass.LOCAL_MUTATE in policy.allowed_classes
     saved = None
-    if name:
-        # saving (or presenting) a named animation persists build state that cards and Play read
-        # back, so a READ-only run (e.g. a verifier policy) may not do it (FW-core M-1). The tool
-        # is classed READ for the common replay; the save is the mutation and is gated here.
-        policy = getattr(ctx, "policy", None)
-        if policy is not None and SafetyClass.LOCAL_MUTATE not in policy.allowed_classes:
-            raise MisesError(ErrorCode.OUT_OF_SCOPE, "saving an animation changes the build; "
-                             "this run may only read", hint="animate without name/present to "
-                             "preview, or run with edit permission")
+    if explicit and not can_save:
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, "saving an animation changes the build; "
+                         "this run may only read", hint="animate without name/present to "
+                         "preview, or run with edit permission")
+    if can_save:
         saved = _store(ctx).save_animation(pid, name, {"steps": plan, "loops": loops,
                                                        "duration_s": round(t0, 4)})
         event["animation_id"] = saved["id"]
@@ -686,6 +690,13 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
                               + (f" ({loops}x)" if loops > 1 else "")
                               + f"; {len(poses)} key poses returned" + note,
                       data=data, warnings=warnings, step_kind=StepKind.MEASURE)
+
+
+def _auto_animation_name(plan: list[dict]) -> str:
+    """A default name for a motion the agent did not name (E5), e.g. "<joint> motion"."""
+    if len(plan) == 1:
+        return f"{plan[0]['joint_id']} motion"
+    return f"{len(plan)} joints motion"
 
 
 def animation_plan(asm, steps) -> list[dict]:
