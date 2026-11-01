@@ -367,11 +367,36 @@ def _precise_volume(shape) -> float:
     return float(shape.volume)
 
 
+def _inertia(shape, density: float) -> dict | None:
+    """Mass properties from the B-rep (Plan 10 C3, for mises.dyn): OCCT's volume integration
+    at a tight tolerance x density (g/cm3). {mass_kg, com_mm, inertia_kgm2 (3x3, about the
+    centre of mass, part axes)}; None when OCCT finds no closed volume."""
+    try:
+        from OCP.BRepGProp import BRepGProp
+        from OCP.GProp import GProp_GProps
+        props = GProp_GProps()
+        BRepGProp.VolumeProperties_s(shape.wrapped, props, 1e-9, True)
+        vol = float(props.Mass())
+        if not (math.isfinite(vol) and vol > 0):
+            return None
+        rho = density * 1e-6                 # g/cm3 -> kg/mm3
+        c = props.CentreOfMass()
+        mat = props.MatrixOfInertia()        # mm^5 (unit density), about the centre of mass
+        inertia = [[mat.Value(i, j) * rho * 1e-6 for j in (1, 2, 3)] for i in (1, 2, 3)]
+        if not all(math.isfinite(x) for row in inertia for x in row):
+            return None
+        return {"mass_kg": vol * rho, "com_mm": [c.X(), c.Y(), c.Z()],
+                "inertia_kgm2": inertia, "density_g_cm3": density}
+    except Exception:  # noqa: BLE001 - mass properties are best effort
+        return None
+
+
 def _metrics(shape, density: float) -> dict:
     bb = shape.bounding_box()
     vol = _precise_volume(shape)
     com = shape.center()
     return {
+        "inertia": _inertia(shape, density),
         "valid": bool(shape.is_valid),
         "volume_mm3": vol,
         "area_mm2": float(shape.area),
