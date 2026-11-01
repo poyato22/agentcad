@@ -2,8 +2,10 @@
 
 - GET  /projects/{id}/agents    the lead with its sub-tree (status, live activity), plus the
                                 build's other top-level runs
-- POST /projects/{id}/feedback  {part_id, point:[x,y,z], face_id?, text} -> a message to the
-                                build's lead with the location; returns {run_id, step_id, routed}
+- POST /projects/{id}/feedback  {part_id, point:[x,y,z], face_id?, text, instance_id?,
+                                world_point?} -> a message to the build's lead with the
+                                location; returns {run_id, step_id, routed}. A pin from the
+                                assembly view names its instance and the world point (E35).
 
 Admin token only, like every app route (app.py's bearer check).
 """
@@ -28,6 +30,9 @@ class Feedback(BaseModel):
     face_id: str | None = Field(default=None, pattern=r"^f\d{1,6}$")
     text: str = Field(min_length=1, max_length=4000)
     model_ref: str | None = None
+    # Plan 10 E35: a pin dropped in the assembly view names the instance and the world point
+    instance_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    world_point: list[float] | None = Field(default=None, min_length=3, max_length=3)
 
 
 def build_agents_router(runtime: Runtime) -> APIRouter:
@@ -45,6 +50,8 @@ def build_agents_router(runtime: Runtime) -> APIRouter:
         return await _lead.submit_feedback(runtime, project_id, part_id=body.part_id,
                                            point=body.point, face_id=body.face_id,
                                            text=body.text, model_ref=body.model_ref,
-                                           default_agent=prof.default_agent)
+                                           default_agent=prof.default_agent,
+                                           instance_id=body.instance_id,
+                                           world_point=body.world_point)
 
     return r

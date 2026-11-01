@@ -151,6 +151,14 @@ function allRows(st: FakeBrowserBom, projectId: string): StoredRow[] {
 
 function view(st: FakeBrowserBom, projectId: string) {
   const items = allRows(st, projectId).filter((r) => !r.hidden).map(finish);
+  // Plan 10 E14 (core bom._geometry_refs): the part that draws each row, the item's geometry
+  const auto = st.auto?.(projectId) ?? [];
+  const inTree = new Set(auto.map((r) => r.part_id).filter(Boolean));
+  const byItem = new Map(auto.filter((r) => r.kind === "bought" && r.catalog_id).map((r) => [r.catalog_id as string, r.part_id as string]));
+  for (const it of items) {
+    it.geometry_part_id = it.part_id && inTree.has(it.part_id) ? it.part_id : byItem.get(it.catalog_id ?? "") ?? null;
+    it.geometry = null;
+  }
   items.sort((a, b) => (a.kind === "made" ? 0 : 1) - (b.kind === "made" ? 0 : 1));
   return { project_id: projectId, material: "PLA", items, totals: totalsOf(items) };
 }

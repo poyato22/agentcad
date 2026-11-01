@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import mises.runtime as runtime_mod
+from mises.assembly.model import Instance
 from mises.claude_code import ClaudeInfo
 from mises.claude_code.session import RULES_FILE, ClaudeCodeSession
 from mises.orchestrator import lead as lead_mod
@@ -421,6 +422,45 @@ async def test_feedback_pin_carries_label_and_hole(home):
     pin = rt.store.get_step(out["step_id"]).payload["feedback"]
     assert pin["part"] == "Base plate" and pin["nearby_hole"] == "Ø4.2 hole, 1.9 mm away"
     await rt.aclose()
+
+
+async def test_assembly_pin_names_the_instance_and_its_world_point(home):
+    # Plan 10 E35: a pin dropped in the assembly view is instance-aware: the core stores which
+    # instance and where in the world (the part-frame point still drives the nearby feature)
+    prov = RoleProvider(engineer=[text("noted")])
+    rt = make(home, prov)
+    pid = rt.active_project_id()
+    rt.store.register_part("plate", pid, label="Base plate")
+    inst = rt.assembly_store.add_instance(pid, Instance(part_id="plate", name="left plate"))
+    out = await lead_mod.submit_feedback(rt, pid, part_id="plate", point=[1, 2, 3], text="move it",
+                                         instance_id=inst.id, world_point=[11, 2, 3])
+    pin = rt.store.get_step(out["step_id"]).payload["feedback"]
+    assert pin["instance_id"] == inst.id and pin["instance"] == "left plate"
+    assert pin["world_point"] == [11, 2, 3] and pin["point"] == [1, 2, 3]
+    msg = lead_mod.feedback_message({k: v for k, v in pin.items() if k != "text"}, "move it",
+                                    nonce="n")
+    assert '"instance": "left plate"' in msg and "assembly" in msg
+    # an instance of another part, or one not in this build, is refused
+    other = rt.assembly_store.add_instance(pid, Instance(part_id="plate", name="right plate"))
+    rt.store.register_part("bolt", pid)
+    with pytest.raises(Exception) as e:
+        await lead_mod.submit_feedback(rt, pid, part_id="bolt", point=[0, 0, 0], text="x",
+                                       instance_id=other.id, world_point=[0, 0, 0])
+    assert "instance" in str(e.value)
+    with pytest.raises(Exception):
+        await lead_mod.submit_feedback(rt, pid, part_id="plate", point=[0, 0, 0], text="x",
+                                       instance_id="nope00000000", world_point=[0, 0, 0])
+    await rt.aclose()
+
+
+def test_assembly_pin_route_validates_the_world_point(home):
+    rt = make(home, RoleProvider(engineer=[text("noted")]))
+    with TestClient(create_app(rt, TOKEN)) as client:
+        pid = rt.active_project_id()
+        r = client.post(f"/projects/{pid}/feedback", headers=AUTH, json={
+            "part_id": "plate", "point": [0, 0, 0], "text": "x", "instance_id": "abc",
+            "world_point": [1, 2]})
+        assert r.status_code == 422
 
 
 def test_feedback_text_cannot_close_the_block():

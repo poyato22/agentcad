@@ -23,9 +23,24 @@ export interface SceneInstance {
   /** Hidden from the parts tree (Hide / Isolate, ui/left/visibility): not drawn, not hit, not
    *  cut or framed, and out of the modes' parts. */
   hidden?: boolean;
+  /** Plan 10 E36: its name under it when laid out. */
+  name?: string;
 }
 
-export interface OverlayLabel { key: string; x: number; y: number; text: string }
+export interface OverlayLabel {
+  key: string; x: number; y: number; text: string;
+  /** Plan 10: what it is (absent: an interference tag): a part's name laid out, the selected
+   *  instance's offset from the origin, a comment pin. */
+  kind?: "layout" | "delta" | "pin";
+  /** Behind the camera or cut away: drawn faint (pins). */
+  hidden?: boolean;
+}
+
+/** A world point (mm) with a text, placed on screen every frame (setMarks). */
+export interface SceneMark { key: string; point: Vec3; text: string; kind: "layout" | "delta" | "pin" }
+
+/** A click on a part: which instance, where (world mm) and the face normal there (world). */
+export interface AssemblyHit { instanceId: string; point: Vec3; normal: Vec3 }
 
 export interface SceneCallbacks {
   /** A click on a part (null: empty space). */
@@ -52,6 +67,19 @@ export interface AssemblyScene {
   modeHost(): ModeHost;
   /** Plan 10 E4: who places whom (instance id → parent, joint axis/origin, world) for the explode. */
   setStructure(links: ReadonlyMap<string, ExplodeLink>): void;
+  /** Plan 10: labelled world points re-placed after every frame (laid-out names, the offset,
+   *  pins); the source is asked each frame, so it can follow poses and the explode. */
+  setMarks(source: (() => readonly SceneMark[]) | null): void;
+  /** Plan 10 E19: a dashed line from the world origin to this point (the selected instance off
+   *  the origin); null hides it. The origin triad itself is always drawn, faint. */
+  setOffset(to: Vec3 | null): void;
+  /** The part (instance) under client pixel (x, y), with the world point and normal. */
+  pickAt(clientX: number, clientY: number): AssemblyHit | null;
+  /** Plan 10 E16: called with the part under the pointer as it moves (null: none), throttled to
+   *  one per frame. Returns the remover. */
+  onHover(cb: (hit: AssemblyHit | null, ev: PointerEvent) => void): () => void;
+  /** A world point → canvas CSS pixels (overlays). */
+  toCanvas(p: Vec3): { x: number; y: number; behind: boolean };
   /** A world point (mm) → client pixels. Test probe. */
   probe(): { project(p: Vec3): { x: number; y: number } };
   resize(w: number, h: number): void;
@@ -85,7 +113,7 @@ function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
   return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true, stencil: true });
 }
 
-interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null; material: MaterialParams | null; hidden: boolean }
+interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null; material: MaterialParams | null; hidden: boolean; name?: string }
 
 export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallbacks, deps: AssemblySceneDeps = {}): AssemblyScene {
   const renderer = (deps.createRenderer ?? defaultRenderer)(canvas);
@@ -130,6 +158,8 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   const restyled = new Set<() => void>();
   /** Who places whom, for the explode (setStructure). */
   let structure: ReadonlyMap<string, ExplodeLink> = new Map();
+  /** Labelled points placed each frame (setMarks). */
+  let markSource: (() => readonly SceneMark[]) | null = null;
 
   const draw = () => {
     frame = 0;
@@ -243,6 +273,23 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     }
   }
 
+  function pickAt(clientX: number, clientY: number): AssemblyHit | null {
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const meshes: THREE.Object3D[] = [];
+    for (const e of entries.values()) if (!e.hidden) e.body?.traverse((o) => { if (o instanceof THREE.Mesh) meshes.push(o); });
+    const plane = sectionPlane();
+    const h = ray.intersectObjects(meshes, false).find((x) => !plane || plane.distanceToPoint(x.point) >= -1e-6);
+    if (!h) return null;
+    let o: THREE.Object3D | null = h.object;
+    while (o && o.userData["instanceId"] === undefined) o = o.parent;
+    const id = o?.userData["instanceId"] as string | undefined;
+    if (!id || !entries.has(id)) return null;
+    const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : new THREE.Vector3(0, 0, 1);
+    return { instanceId: id, point: [h.point.x, h.point.y, h.point.z], normal: [n.x, n.y, n.z] };
+  }
+
   function cloneBody(t: PartScene): THREE.Object3D {
     const body = t.object.clone(true);
     body.traverse((o) => {
@@ -277,7 +324,50 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       const c = (both.isEmpty() ? box.union(box2) : both).getCenter(new THREE.Vector3()).project(camera);
       out.push({ key: `${i}`, x: ((c.x + 1) / 2) * width, y: ((1 - c.y) / 2) * height, text: p.text });
     });
+    for (const m of markSource?.() ?? []) {
+      const s = toCanvas(m.point);
+      out.push({ key: `${m.kind}:${m.key}`, x: Math.round(s.x * 10) / 10, y: Math.round(s.y * 10) / 10, text: m.text, kind: m.kind, ...(s.behind ? { hidden: true } : {}) });
+    }
     return out;
+  }
+
+  function toCanvas(p: Vec3): { x: number; y: number; behind: boolean } {
+    const v = new THREE.Vector3(...p).project(camera);
+    return { x: ((v.x + 1) / 2) * width, y: ((1 - v.y) / 2) * height, behind: v.z > 1 || v.z < -1 };
+  }
+
+  // ---- the origin (E19): a faint X / Y / Z triad at the world origin, always; a dashed line to
+  // the selected instance's origin when it sits off it
+  const triad = new THREE.Group();
+  triad.name = "origin-triad";
+  triad.renderOrder = 7;
+  scene.add(triad);
+  const AXIS_COLORS = [0xe5484d, 0x46a758, 0x3d8bff];
+  const axisMats = AXIS_COLORS.map((c) => new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.7, depthTest: false }));
+  const axisGeos = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((d) => new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(...d)]));
+  axisGeos.forEach((g, i) => { const l = new THREE.Line(g, axisMats[i]); l.renderOrder = 7; triad.add(l); });
+  const originDot = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8), new THREE.MeshBasicMaterial({ color: 0x9aa3ad, transparent: true, opacity: 0.8, depthTest: false }));
+  originDot.renderOrder = 7;
+  triad.add(originDot);
+  const offsetMat = new THREE.LineDashedMaterial({ color: colors.blue, dashSize: 3, gapSize: 2, transparent: true, opacity: 0.85, depthTest: false });
+  const offsetGeo = new THREE.BufferGeometry();
+  const offsetLine = new THREE.Line(offsetGeo, offsetMat);
+  offsetLine.renderOrder = 7;
+  offsetLine.visible = false;
+  scene.add(offsetLine);
+  let offsetTo: Vec3 | null = null;
+  /** The triad's arm length: a tenth of what is shown (it never dwarfs a small part). */
+  function placeTriad(): void {
+    const b = posedBox();
+    const s = b.isEmpty() ? 10 : Math.max(b.getSize(new THREE.Vector3()).length() * 0.1, 4);
+    triad.scale.setScalar(s);
+    offsetMat.color.set(colors.blue);
+    offsetMat.dashSize = s * 0.12; offsetMat.gapSize = s * 0.08;
+    if (offsetTo) {
+      offsetGeo.setFromPoints([new THREE.Vector3(), new THREE.Vector3(...offsetTo)]);
+      offsetLine.computeLineDistances();
+    }
+    offsetLine.visible = offsetTo !== null;
   }
 
   // ---- picking
@@ -326,6 +416,25 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   canvas.addEventListener("pointerdown", onDown);
   canvas.addEventListener("pointerup", onUp);
   canvas.addEventListener("dblclick", onDbl);
+  // E16: what is under the pointer, once a frame at most (only while someone listens)
+  const hoverers = new Set<(hit: AssemblyHit | null, ev: PointerEvent) => void>();
+  let hoverFrame = 0;
+  let hoverEv: PointerEvent | null = null;
+  const onMove = (ev: PointerEvent) => {
+    if (!hoverers.size || ev.buttons) return;
+    hoverEv = ev;
+    if (hoverFrame) return;
+    hoverFrame = requestAnimationFrame(() => {
+      hoverFrame = 0;
+      const e = hoverEv;
+      if (!e || disposed) return;
+      const h = pickAt(e.clientX, e.clientY);
+      for (const f of [...hoverers]) f(h, e);
+    });
+  };
+  const onLeave = (ev: PointerEvent) => { for (const f of [...hoverers]) f(null, ev); };
+  canvas.addEventListener("pointermove", onMove);
+  canvas.addEventListener("pointerleave", onLeave);
 
   // ---- theme
   const onTheme = () => { colors = tokens(); restyle(); };
@@ -402,7 +511,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
         const tpl = e.template;
         const group = e.group;
         s = {
-          id: e.id, color: e.color, focus: false, ...(e.material ? { material: e.material } : {}),
+          id: e.id, color: e.color, focus: false, ...(e.material ? { material: e.material } : {}), ...(e.name ? { label: e.name } : {}),
           scene: { object: body, get bbox() { group.updateMatrixWorld(true); return tpl.bbox.clone().applyMatrix4(group.matrixWorld); }, dispose() { /* the scene's */ } },
         };
         shown.set(e.id, s);
@@ -453,10 +562,14 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
         e.color = inst.color;
         e.material = inst.material ?? null;
         e.hidden = !!inst.hidden;
+        e.name = inst.name;
+        const sp = shown.get(e.id);
+        if (sp) sp.label = inst.name;
         e.group.visible = !e.hidden;
       }
       restyle();
       refitIfNew();
+      placeTriad();
     },
     setPose(pose) {
       for (const [id, m] of Object.entries(pose)) {
@@ -468,6 +581,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       root.updateMatrixWorld(true);
       rebuildOverlaps();
       refitIfNew();
+      placeTriad();
       followModes();
       requestRender();
     },
@@ -479,6 +593,17 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     setFraming(f, margin = FIT_MARGIN) { framing = f; framingMargin = margin; fit(); },
     modeHost: () => host,
     setStructure(links) { structure = links; },
+    setMarks(source) { markSource = source; requestRender(); },
+    setOffset(to) {
+      const same = to === offsetTo || (to !== null && offsetTo !== null && to.every((v, i) => Math.abs(v - (offsetTo as Vec3)[i]) < 1e-6));
+      if (same) return;
+      offsetTo = to ? [to[0], to[1], to[2]] : null;
+      placeTriad();
+      requestRender();
+    },
+    pickAt,
+    onHover(f) { hoverers.add(f); return () => { hoverers.delete(f); }; },
+    toCanvas,
     probe() {
       return {
         project(p) {
@@ -514,6 +639,14 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("dblclick", onDbl);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerleave", onLeave);
+      if (hoverFrame) cancelAnimationFrame(hoverFrame);
+      hoverers.clear();
+      for (const g of axisGeos) g.dispose();
+      for (const m of axisMats) m.dispose();
+      originDot.geometry.dispose(); (originDot.material as THREE.Material).dispose();
+      offsetGeo.dispose(); offsetMat.dispose();
       orbit.dispose();
       themeObserver?.disconnect();
       osScheme?.removeEventListener("change", onTheme);

@@ -123,6 +123,25 @@ describe("contract: measure and feedback ↔ schemas ↔ fake core", () => {
     expect(shapeDiff(r as unknown as Json, f as unknown as Json, "feedback")).toEqual([]);
   });
 
+  it("an assembly pin (E35) names the instance and the world point, in both", async () => {
+    const pid = ((await ok("GET", "/projects")) as { id: string }[])[0].id;
+    const inst = (await ok("POST", `/projects/${pid}/assembly/instances`, {
+      part_id: "mount_plate", name: "plate", fixed: true, transform: [[1, 0, 0, 30], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+    })) as { id: string };
+    const top = ((await ok("GET", "/parts")) as PartSummary[]).find((p) => p.part_id === "mount_plate")!.metrics!.face_list!.find((f) => f.normal?.[2] === 1)!;
+    const fa = (await ok("POST", `/projects/${pid}/feedback`, {
+      part_id: "mount_plate", point: [7, 0, 2.5], face_id: top.id, text: "add a fillet here", instance_id: inst.id, world_point: [37, 0, 2.5],
+    })) as { run_id: string; step_id: number };
+    expect(shapeDiff(read("project_feedback_assembly.json") as Json, fa as unknown as Json, "feedback_assembly")).toEqual([]);
+    const steps = (await ok("GET", `/runs/${fa.run_id}/steps`)) as Step[];
+    const fakePin = pinOf(steps.find((s) => s.id === fa.step_id)!.payload)!;
+    const realPin = pinOf((read("project_feedback_assembly_step.json") as Step).payload)!;
+    for (const p of [realPin, fakePin]) expect(p).toMatchObject({ instance: "plate", point: [7, 0, 2.5], world_point: [37, 0, 2.5] });
+    expect(shapeDiff(realPin as unknown as Json, fakePin as unknown as Json, "feedback")).toEqual([]);
+    // an instance that is not this part's is refused
+    expect((await req("POST", `/projects/${pid}/feedback`, { part_id: "mount_plate", point: [0, 0, 0], text: "x", instance_id: "nope", world_point: [0, 0, 0] })).status).toBe(404);
+  });
+
   it("warm: Measure mode's preload answers {part_id, warm} in both", () => {
     for (const v of [read("part_measure_warm.json"), fake.get("part_measure_warm.json")] as { status: number; body: unknown }[]) {
       expect(v.status).toBe(200);
