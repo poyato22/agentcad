@@ -92,6 +92,8 @@ def living_hinge(p: dict):
                 design={"bearing": "none", "retention": "one piece", "rom_deg": [0.0, 90.0]})
     k.plan.contacts += [("pad_a", "web"), ("web", "pad_b")]
     k.plan.inputs.append(j)
+    k.port("mount", "mount", "pad_a", (0, 0, 0), (0, 0, -1), "pad A underside")
+    k.port("output", "rot", bi, (half / 2 + fl / 2, 0, 0), Y, "pad B (bends about the web)")
     from ..sim.materials import get_material
     mat = get_material(p["material"])
     i = w * ft ** 3 / 12
@@ -297,14 +299,17 @@ def snap_fit(p: dict):
     ci = k.inst("catch")
     j = k.joint("engage", "slider", "hook", fr((t / 2 + h + 0.3 + 1.0, 0, 4.0 + L - 2.5),
                                               (0, 0, -1)), ci, fr((-1.0, 0, -1.0), (0, 0, -1)),
-                limits=[0.0, 8.0])
+                value=-8.0, limits=[-8.0, 0.0])
     k.plan.contacts.append(("hook", "catch"))
     k.plan.inputs.append(j)
+    k.port("mount", "mount", "hook", (0, 0, 0), (0, 0, -1), "hook base")
+    k.port("output", "lin", ci, (0, 0, 4.0 + L), (0, 0, -1), "mating wall (push down to snap)")
     eps = sizing.snap_fit_strain(t, h, L)
     allow = {"PLA": 0.02, "PETG": 0.04, "ABS": 0.025, "PA12": 0.06, "PC": 0.04}[p["material"]]
     k.plan.sizing = {"strain": round(eps, 4), "allowable_strain": allow}
     if eps > allow:
         k.plan.warnings.append(f"snap strain {eps:.1%} > {allow:.0%} for {p['material']}: "
                                "lengthen or thin the beam, or reduce the hook")
-    k.plan.notes = "print the beam along the layers (flat), never with layers across the bend"
+    k.plan.notes = ("print the beam along the layers (flat), never with layers across the bend; "
+                    "engaging (0) deflects the hook into the wall by design")
     return k.plan

@@ -1943,3 +1943,27 @@ def car_body(wheelbase: float = 2700.0, wheel_d: float = 680.0, length: float | 
     return me
 
 
+# ---------------------------------------------------------------- Plan 10: drivetrain recipes
+
+def _mech_shapes():
+    """mech/shapes.py (gears, pulleys and belts, shafts, bearings, mounts, links, joints),
+    loaded by path like this module and re-exported here, so part scripts call them as `ms.*`
+    too (`ms.gear_spur`, `ms.gt2_pulley`, ...)."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+    mod = sys.modules.get("mises_mech_shapes")
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(
+            "mises_mech_shapes", Path(__file__).resolve().parent.parent / "mech" / "shapes.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["mises_mech_shapes"] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
+_MECH = _mech_shapes()
+for _name in _MECH.__all__:
+    globals()[_name] = getattr(_MECH, _name)
+__all__ += list(_MECH.__all__)
+

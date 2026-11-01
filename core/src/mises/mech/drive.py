@@ -61,7 +61,8 @@ _GEAR_PARAMS = {
 
 def _pair(p: dict, helix: float = 0.0) -> Kit:
     m, z1, z2, w, d = p["module"], p["z1"], p["z2"], p["width"], p["shaft_d"]
-    a = m * (z1 + z2) / 2
+    # py_gearworks takes the normal module: a helical pair's centre is m (z1+z2) / (2 cos b)
+    a = m * (z1 + z2) / 2 / math.cos(math.radians(helix))
     _cid, D, B, bore = bearing_for(d)
     t = B
     k = Kit("frame")
@@ -110,6 +111,8 @@ def helical_pair(p: dict):
     k = _pair(p, helix=p["helix_deg"])
     sz = _gear_sizing(p["z1"], p["z2"], p["module"], p["width"], p["input_torque_nm"],
                       p["material"])
+    sz["center_distance_mm"] = round(p["module"] * (p["z1"] + p["z2"]) / 2
+                                     / math.cos(math.radians(p["helix_deg"])), 4)
     ft = 2 * p["input_torque_nm"] * 1000 / (p["module"] * p["z1"])
     sz["axial_thrust_n"] = round(ft * math.tan(math.radians(p["helix_deg"])), 2)
     k.plan.sizing = sz
@@ -117,8 +120,8 @@ def helical_pair(p: dict):
     k.plan.warnings += _gear_warnings(p["z1"], p["z2"], p["module"], sz)
     k.plan.warnings.append(f"axial thrust {sz['axial_thrust_n']} N per gear: retain the gears "
                            "axially (shoulder + snap ring) and use bearings that take thrust")
-    k.plan.notes = ("transverse module = module (py_gearworks helical); the centre distance "
-                    "is m (z1 + z2) / 2")
+    k.plan.notes = ("module is the normal module (py_gearworks helical); the centre distance "
+                    "is m (z1 + z2) / (2 cos helix)")
     return k.plan
 
 
@@ -142,7 +145,9 @@ def bevel_pair(p: dict):
     k.plate("frame", 2 * r2 + 60, 2 * r2 + 30, t, [(0, 0, D + 0.1)], origin_x=-r2 - 5)
     L2 = t + 2 + 1 + w + 6
     s2, j2, z0 = k.shaft_on_bearing("out", "frame", 0, 0, t, bore, L2)
-    gz = 2.0                                         # gear 2 base above the plate
+    # gear 2's frame above the plate: its back cone hangs below the frame origin, and the
+    # pinion block's boss needs room under the pinion axis
+    gz = max(1.0 + 0.5 * w + 2 * m, (D / 2 + 4) - m * z1 / 2 + 1.0)
     k.part("gear", "gear_bevel", f"bevel gear {z2}T", p["material"], module=m, teeth=z1,
            mate_teeth=z2, width=w, member=2, bore=float(bore))
     k.on_shaft("gear", s2, "gear", gz, z0)
@@ -206,8 +211,8 @@ def worm_drive(p: dict):
     t = B
     k.plate("frame", a + m * z / 2 + 50, worm_len + 70, t, [(0, 0, D + 0.1)],
             origin_x=-m * z / 2 - 10)
-    sw, jw, z0 = k.shaft_on_bearing("out", "frame", 0, 0, t, bore, t + 2 + 2 + w + 6)
-    wz = 2.0 + w / 2                                 # wheel mid-plane above the plate
+    wz = max(2.0 + w / 2, 16.0 / 2 + 4 + 1, m * (q + 2) / 2 + 1.5)   # worm axis height
+    sw, jw, z0 = k.shaft_on_bearing("out", "frame", 0, 0, t, bore, t + 2 + wz + w / 2 + 3)
     k.part("wheel", "worm_pair_member", f"worm wheel {z}T", "PA-CF", module=m, starts=n,
            diameter_quotient=q, teeth=z, worm_length=worm_len, wheel_width=w, member="wheel",
            bore=float(bore))
@@ -229,7 +234,7 @@ def worm_drive(p: dict):
     wi = k.inst("worm")
     k.fixed("worm_on_shaft", ws, fr((0, 0, worm_len / 2 + 14)), wi, fr())
     # the worm advances one tooth of the wheel per 360/starts deg: wheel = worm x starts/z
-    k.couple(jw, "gear", n / z, jin)
+    k.couple(jw, "gear", -n / z, jin)
     k.plan.contacts += [("worm", "wheel"), (ws, "worm"), ("block_a", ws), ("block_b", ws)]
     k.plan.inputs.append(jin)
     k.port("input", "rot", ws, (a, -worm_len / 2 - 14, wz), Y, "worm shaft")
@@ -243,7 +248,7 @@ def worm_drive(p: dict):
     k.plan.transmission = {"ratio": z / n}
     k.plan.warnings.append(f"efficiency ~{eff:.0%} (mu 0.1 assumed): the rest is heat in the "
                            "mesh; check the wheel temperature at continuous duty")
-    k.plan.notes = "the coupling sign follows a right-hand worm; check the animation direction"
+    k.plan.notes = "right-hand worm: the wheel turns -starts/z per worm degree"
     return k.plan
 
 
@@ -455,8 +460,9 @@ def planetary_compound(p: dict):
     zr2 = zs + zp1 + zp2
     m2 = 2 * a / (zr2 - zp2)
     k = Kit("ring1")
+    r1ph = ring_phase(zp1, mesh_phase(zs, 0.0, zp1, 0.0), zr1, 0.0)
     k.part("ring1", "gear_ring", f"fixed ring {zr1}T", p["material"], module=m, teeth=zr1,
-           width=w, rim=4.0, mount_holes=6)
+           width=w, rim=4.0, mount_holes=6, phase_deg=round(r1ph, 6))
     k.inst("ring1", "ring1", "fixed ring")
     k.part("sun", "gear_spur", f"sun {zs}T", p["material"], module=m, teeth=zs, width=w,
            bore=5.0)
@@ -475,7 +481,9 @@ def planetary_compound(p: dict):
                                    round(a * math.sin(2 * math.pi * i / n), 4)] for i in range(n)],
            width=m * zp2 * 0.9, thickness=3.0, bore=3.3)
     ci = k.inst("carrier")
-    jc = k.joint("carrier_rev", "revolute", "ring1", fr((0, 0, -3.6)), ci, fr())
+    jc = k.joint("carrier_rev", "revolute", "ring1", fr((0, 0, -3.6)), ci, fr(),
+                 design={"bearing": "bushing", "retention": "cover plate",
+                         "clearance_mm": 0.3})
     # planet = two stacked gears (one part per step, fixed together)
     k.part("planet1", "gear_spur", f"planet step 1 {zp1}T", p["material"], module=m, teeth=zp1,
            width=w, bore=3.3)
@@ -532,7 +540,7 @@ def cycloidal_reducer(p: dict):
     k.part("housing", "pin_ring", f"pin ring {n} pins", "PETG", pins=n, pin_circle_d=R,
            pin_d=p["pin_d"], width=w, housing_od=R + 2 * p["pin_d"] + 16)
     k.inst("housing", "housing", "pin ring (grounded)")
-    k.part("cam", "shaft", "eccentric input shaft", "Steel 1018", d=8.0, length=w + 14)
+    k.part("cam", "shaft", "eccentric input shaft", "Steel 1018", d=8.0, length=w + 7.5)
     ci = k.inst("cam", "cam", "input shaft")
     jin = k.joint("input_rev", "revolute", "housing", fr((0, 0, -3.0 - 4.0)), ci, fr(),
                   design={"bearing": "bearing_608_deep_groove", "retention": "snap ring"})
@@ -589,12 +597,14 @@ def strain_wave(p: dict):
     k.part("flex", "gear_spur", f"flexspline {zf}T (schematic)", "TPU 95A", module=m * 0.96,
            teeth=zf, width=w, bore=m * zf - 4.0)
     fi = k.inst("flex")
-    jf = k.joint("flex_rev", "revolute", "circular", fr((0, 0, 0)), fi, fr())
+    jf = k.joint("flex_rev", "revolute", "circular", fr((0, 0, 0)), fi, fr(),
+                 design={"bearing": "cross-roller (output)", "retention": "bolted flange"})
     k.part("wave", "link_plate", "wave generator (elliptical cam)", "PETG",
-           points=[[0.0, 0.0], [round(m * zf / 2 - 4.5, 3), 0.0],
-                   [round(-(m * zf / 2 - 4.5), 3), 0.0]], width=12.0, thickness=w, bore=5.0)
+           points=[[0.0, 0.0], [round(m * zf / 2 - 8.5, 3), 0.0],
+                   [round(-(m * zf / 2 - 8.5), 3), 0.0]], width=12.0, thickness=w, bore=5.0)
     wi = k.inst("wave")
-    jw = k.joint("wave_rev", "revolute", "circular", fr((0, 0, 0)), wi, fr())
+    jw = k.joint("wave_rev", "revolute", "circular", fr((0, 0, 0)), wi, fr(),
+                 design={"bearing": "thin-section ball bearing", "retention": "snap ring"})
     ratio = zf / (zc - zf)
     k.couple(jf, "gear", -1 / ratio, jw)
     k.plan.inputs.append(jw)
@@ -756,16 +766,17 @@ def belt_linear_axis(p: dict):
 def _screw(p: dict, ball: bool):
     L, d, lead = p["length"], p["d"], p["lead"]
     k = Kit("frame")
-    _cid, D, B, bore = bearing_for(8 if d >= 8 else d)
+    _cid, D, B, bore = bearing_for(d)
     t = B
     k.part("frame", "frame_plate", "frame", "PETG", length=60.0, width=60.0, thickness=t,
            bores=[[0.0, 0.0, D + 0.1]], origin_x=-20.0)
     k.inst("frame", "frame", "frame")
-    s, j, z0 = k.shaft_on_bearing("screw", "frame", 0, 0, t, bore, 4.0)
+    s, j, z0 = k.shaft_on_bearing("screw", "frame", 0, 0, t, bore, 2.0)
     k.part("screw", "lead_screw", f"{'ball' if ball else 'lead'} screw d{d:g} x lead {lead:g}",
-           "Steel 1018" if not ball else "Steel 4140 QT", d=d, lead=lead, length=L)
+           "Steel 1018" if not ball else "Steel 4140 QT", d=float(bore) - 0.02, lead=lead,
+           length=L)
     si = k.inst("screw")
-    k.fixed("screw_on_shaft", s, fr((0, 0, 3.0)), si, fr())
+    k.fixed("screw_on_shaft", s, fr((0, 0, 2.01)), si, fr())
     k.part("nut", "lead_nut", "ball nut" if ball else "lead nut", "Brass C360" if not ball
            else "Steel 4140 QT", d=d + 0.4, flange_d=d * 2.6, body_d=d * 1.3 + 2,
            length=d * 1.8, bolt_circle_d=d * 2.0)
@@ -914,7 +925,7 @@ def pillow_block_shaft(p: dict):
         bb = k.inst(f"bearing_{side}", cid, f"bearing {side}")
         k.fixed(f"bearing_{side}_seat", bi, fr((0, -B / 2 - 0.75, h), Y), bb, fr())
         k.plan.contacts.append((bi, bb))
-    k.part("shaft", "shaft", "axle", "Steel 1018", d=float(bore), length=span + 30,
+    k.part("shaft", "shaft", "axle", "Steel 1018", d=float(bore) - 0.02, length=span + 30,
            grooves=[15.0 - B / 2 - 2.5, span + 15.0 + B / 2 + 2.5])
     si = k.inst("shaft")
     j = k.joint("axle_rev", "revolute", "base", fr((-span / 2 - 15, 0, h), X), si, fr(),
@@ -961,29 +972,31 @@ def stepper_coupler_shaft(p: dict):
     cid, D, B, bore = bearing_for(d)
     shaft_m = 5.0 if frame == "NEMA17" else 8.0
     k.part("coupler", "coupler_rigid", f"coupler {shaft_m:g}-{bore:g}", "Al 6061-T6",
-           d1=shaft_m, d2=float(bore), length=25.0, od=max(18.0, bore + 10))
-    k.part("shaft", "shaft", "output shaft", "Steel 1018", d=float(bore), length=60.0)
+           d1=shaft_m + 0.05, d2=float(bore) + 0.05, length=25.0, od=max(18.0, bore + 10))
+    k.part("shaft", "shaft", "output shaft", "Steel 1018", d=float(bore) - 0.02, length=60.0)
     ci = k.inst("coupler")
-    jm = k.joint("motor_rev", "revolute", "mount", fr((0, 0, 5.0 + 6.0)), ci, fr(),
+    cz = 24.0 - 12.0 + 1.0                  # the motor shaft (to +24) enters the coupler 11 mm
+    jm = k.joint("motor_rev", "revolute", "mount", fr((0, 0, cz)), ci, fr(),
                  design={"bearing": "motor bearings + " + cid, "actuator": {
                      "item_id": item or frame.lower() + "_stepper", "ratio": 1},
                      "retention": "set screws"})
     si = k.inst("shaft")
-    k.fixed("shaft_in_coupler", ci, fr((0, 0, 12.5)), si, fr())
+    k.fixed("shaft_in_coupler", ci, fr((0, 0, 14.0)), si, fr())
     # the output bearing in a block above the coupler, so the motor takes no side load
     k.part("block", "frame_plate", "bearing plate", "PETG", length=50.0, width=50.0,
            thickness=B, bores=[[0.0, 0.0, D + 0.1]], origin_x=-15.0)
     bi = k.inst("block", "block", "bearing plate")
-    k.fixed("plate_on_mount", "mount", fr((0, 0, 5.0 + 6.0 + 25.0 + 4.0 + B)), bi, fr())
+    k.fixed("plate_on_mount", "mount", fr((0, 0, cz + 25.0 + 4.0 + B)), bi, fr())
+    shaft_top = cz + 14.0 + 60.0
     k.part(cid, catalog=cid, label="bearing", material=None)
     bb = k.inst("bearing", cid, "output bearing")
-    k.fixed("bearing_seat", bi, fr((0, 0, -B)), bb, fr())
+    k.fixed("bearing_seat", bi, fr((0, 0, -B + 0.5)), bb, fr())
     k.plan.contacts += [("motor", "coupler"), ("coupler", "shaft"), ("bearing", "shaft"),
                         ("block", "bearing"), ("mount", "motor")]
     k.plan.inputs.append(jm)
     k.plan.warnings.append("add standoffs between the mount and the bearing plate (here the "
                            "plate is fixed to the mount directly)")
-    k.port("output", "rot", si, (0, 0, 5.0 + 6.0 + 12.5 + 60.0), Z, "output shaft end")
+    k.port("output", "rot", si, (0, 0, shaft_top), Z, "output shaft end")
     k.port("mount", "mount", "mount", (0, 0, 0), (0, 0, -1))
     from ..catalog.builtin import builtin_by_id
     perf = (builtin_by_id().get(item or "", {}) or {}).get("perf") or {}
@@ -1006,23 +1019,25 @@ def wheel_gearmotor(p: dict):
     k = Kit("bracket")
     big = p["motor"] == "gearmotor_37d_class"
     md, ml = (37.0, 65.0) if big else (25.0, 60.0)
-    k.part("bracket", "servo_bracket", "motor bracket", "PETG", servo_w=md, servo_h=md * 1.6,
-           wall=4.0, length=ml, horn_d=md)
+    wall = 4.0
+    axis_z = max(md / 2 + wall + 1.0, p["wheel_d"] / 2 + 1.0)
+    k.part("bracket", "servo_bracket", "motor bracket", "PETG", servo_w=ml + 1.0,
+           servo_h=axis_z / 0.6, wall=wall, length=md + 10, horn_d=md)
     k.inst("bracket", "bracket", "bracket (grounded)")
     k.part("motor", catalog=p["motor"], label=p["motor"].replace("_", " "), material=None)
     mi = k.inst("motor")
-    axis_z = md * 1.6 * 0.6
-    k.fixed("motor_in_bracket", "bracket", fr((0, -md / 2 - 6, axis_z), (0, 1, 0)), mi,
+    k.fixed("motor_in_bracket", "bracket", fr((0, -ml / 2, axis_z), (0, 1, 0)), mi,
             fr((0, 0, 0)))
     k.part("wheel", "wheel", "wheel", "TPU 95A", d=p["wheel_d"], width=p["width"], bore=6.0,
            hub_d=20.0)
     wi = k.inst("wheel")
-    j = k.joint("axle", "revolute", "bracket", fr((0, md / 2 + 8, axis_z), (0, 1, 0)), wi, fr(),
+    wy = ml / 2 + 0.5 + wall + 2.0
+    j = k.joint("axle", "revolute", "bracket", fr((0, wy, axis_z), (0, 1, 0)), wi, fr(),
                 design={"bearing": "motor output bearing", "retention": "set screw",
                         "actuator": {"item_id": p["motor"], "ratio": 1}})
     k.plan.contacts += [("bracket", "motor"), ("motor", "wheel")]
     k.plan.inputs.append(j)
-    k.port("output", "rot", wi, (0, md / 2 + 8, axis_z), Y, "wheel")
+    k.port("output", "rot", wi, (0, wy, axis_z), Y, "wheel")
     k.port("mount", "mount", "bracket", (0, 0, 0), (0, 0, -1), "bracket base")
     r = p["wheel_d"] / 2 / 1000
     n = p["robot_mass_kg"] * 9.81 / max(1, p["wheels_driven"])
@@ -1106,7 +1121,7 @@ def bevel_differential(p: dict):
         js = k.joint(f"spider_{i}_rev", "revolute", ci, fr((0, sy * rs, 0), (0, -sy, 0)), sp,
                      fr((0, 0, 0)), design=pin_design(6.0, bearing="bushing",
                                                       retention="cross pin"))
-        k.couple(js, "gear", sy * zs / zp, jl)
+        k.couple(js, "gear", -zs / zp, jl)
         k.plan.contacts += [("side_left", sp), ("side_right", sp), (ci, sp)]
     k.plan.inputs += [jc, jl]
     k.plan.dof_intended = 2

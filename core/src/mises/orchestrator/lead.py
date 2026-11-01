@@ -40,7 +40,9 @@ LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "assembly_get", "asse
               # section sweeps, so the tools it names are always offered (FW-core M-2)
               "present_view", "render_views",
               # Plan 9 G-A: the concept stage (pitch, sketch, the user's marks)
-              "pitch_options", "concept_sketch", "concept_status")
+              "pitch_options", "concept_sketch", "concept_status",
+              # Plan 10 C2: mechanisms, closed chains and per-part materials
+              "mech_list", "mech_insert", "mech_check", "assembly_add_loop", "material_pick")
 
 LEAD_PROMPT = """\
 # You are this build's lead agent

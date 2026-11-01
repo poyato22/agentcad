@@ -51,6 +51,69 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.humanoid`: Covered humanoid starter: sculpted shells, an integrated shoulder yoke, 8 head heights.
 - `ms.quadruped`: Covered legged-robot starter: a massed body, sensor head, thigh shells over actuators.
 - `ms.car_body`: Car body starter: one shelled body loft carrying the cabin, glass cut from it, arches.
+- `ms.gear_spur`: Spur or helical involute gear (py_gearworks): axis +Z, z = 0..width, a tooth on +X.
+- `ms.gear_ring`: Internal (ring) gear for planetary sets (py_gearworks): axis +Z, z = 0..width.
+- `ms.gear_bevel`: One gear of a 90-degree bevel pair (py_gearworks), in its own joint frame.
+- `ms.gear_rack`: Straight rack (bd_warehouse RackGear) along X, teeth pointing +Y, pitch line on y = 0,
+- `ms.worm_pair_member`: The worm or the worm wheel of a meshing pair (bd_warehouse WormGear), in its joint frame.
+- `ms.mesh_phase`: Rotation (deg) of an external gear z2, centred in direction theta from a gear z1 turned
+- `ms.ring_phase`: Rotation (deg) of an internal ring zr so it meshes a planet zp centred in direction theta
+- `ms.cycloid_disc`: Cycloidal reducer disc: pins-1 lobes (an epitrochoid offset by the pin radius), axis +Z,
+- `ms.pin_ring`: The fixed pin ring of a cycloidal reducer: a housing with `pins` axial pins on the pin
+- `ms.gt2_pulley`: GT2 (2 mm) timing pulley: PD = N*2/pi, OD = PD - 0.508, axis +Z, belt face z = 0..width.
+- `ms.htd_pulley`: HTD 3M/5M/8M timing pulley (approximate arc profile): PD = N*pitch/pi, OD = PD - 2*PLD
+- `ms.timing_belt`: A closed timing belt modelled as a band around two pulleys (pulley 1 at the origin,
+- `ms.belt_length`: Open-belt pitch length: 2*sqrt(C^2 - (r2-r1)^2) + pi*(r1+r2) + 2*(r2-r1)*asin((r2-r1)/C).
+- `ms.belt_center`: The exact centre distance for an open belt of pitch `length` (bisection).
+- `ms.shaft`: Round shaft on +Z (z = 0..length): `flat` mm D-flat depth over the whole length,
+- `ms.shaft_collar`: Set-screw shaft collar (axial retention), axis +Z, z = 0..width, radial M-screw hole
+- `ms.coupler_rigid`: Rigid shaft coupler (motor shaft d1 to driven shaft d2), axis +Z, z = 0..length, two
+- `ms.bearing`: Deep-groove ball bearing (bd_warehouse races + balls when the size exists, e.g. 608 =
+- `ms.bearing_block`: Pillow block for a ball bearing: the bearing axis runs along +Y through
+- `ms.frame_plate`: Flat frame plate in XY (z = -thickness..0, top face at z = 0) carrying bearing seats or
+- `ms.motor_mount`: Stepper motor mount plate in XY (z = 0..plate): pilot hole, 4 screw holes on the frame's
+- `ms.stepper_motor`: Stepper motor (bd_warehouse OpenBuilds StepperMotor: body z -length..0, shaft on +Z to
+- `ms.servo_body`: Hobby servo envelope (MG996R defaults) with its output spline on +Z: the output axis is
+- `ms.servo_bracket`: U bracket that wraps a servo for pan-tilt or arm joints: a base in XY (z = 0..wall) and
+- `ms.bldc_actuator`: Quasi-direct-drive actuator envelope (Mini-Cheetah class: BLDC + planetary): a can of
+- `ms.link_bar`: Straight link with a bore at each end: from (0, 0) to (length, 0), z = 0..thickness.
+- `ms.link_plate`: Ternary (or larger) link: the convex hull of round pads at `points` (local x, y), a bore
+- `ms.pin`: Hinge or link pin on +Z (z = 0..length), optional head below z = 0.
+- `ms.slider_block`: Slider (crosshead) block centred on the origin in XY, z = 0..height, a pin hole on +Z
+- `ms.lead_screw`: Lead screw blank (Tr8x8 default) on +Z, z = 0..length (thread not modelled: the major
+- `ms.lead_nut`: Flanged lead-screw nut on +Z (z = 0..length), flange at z = 0, 4 bolt holes.
+- `ms.linear_rail`: Miniature linear guide rail (Hiwin MGN size, typical catalogue dims) along +X from x = 0,
+- `ms.rail_carriage`: Carriage block for a MGN rail, centred at the origin, riding z = 3..3+height over the
+- `ms.cam_disc`: Plate cam with a cycloidal rise - dwell - cycloidal fall - dwell profile (no jerk
+- `ms.follower`: Translating roller follower: a rod on +Z (z = 0..length) with a roller boss at the
+- `ms.geneva_wheel`: Geneva wheel with `slots` radial slots, axis +Z, z = 0..width; its driver sits at
+- `ms.geneva_driver`: Geneva driver: crank arm with a drive pin at radius C*sin(pi/n) on +X and a locking disc,
+- `ms.ratchet_wheel`: Ratchet wheel (saw teeth, one-way: the pawl locks against clockwise turning), axis +Z,
+- `ms.pawl`: Ratchet pawl: a pivoting tongue from its bore at the origin toward +X with a tip.
+- `ms.hinge_leaf`: One leaf of a pin hinge: the hinge axis is +X through the origin (z = 0), the leaf lies
+- `ms.ball_stud`: Ball stud: a ball centred at the origin on a neck down -Z to a mounting flange.
+- `ms.ball_socket`: Ball socket around a ball centred at the origin: a body along +Z, the spherical seat
+- `ms.u_yoke`: Universal-joint yoke: a hub on -Z (z = -hub_l..0, shaft bore) and two arms up +Z whose
+- `ms.cross_spider`: The cross of a universal joint, centred at the origin: pins along X and Y, each
+- `ms.flexure_hinge`: Living hinge (one printed part): two pads along X joined by a thin web of flex_t x flex_l
+- `ms.snap_cantilever`: Cantilever snap-fit hook: a beam t x width rising +Z from a base block (z = 0..base) to
+- `ms.gripper_jaw`: Parallel-gripper jaw: a rack (teeth +Y, pitch line y = 0, along X from 0) on a carrier
+- `ms.wheel`: Wheel on +Z (z = 0..width): a tyre ring of `tread` over a rim with a hub and bore.
+- `ms.prop_mount`: Motor mount at the end of a multirotor arm: a pad for a motor of motor_d (pattern
+- `ms.extrusion`: Aluminium T-slot extrusion envelope (2020 default) along +X from x = 0, centred on the X
+Mechanisms (`mech_list` by function, `mech_insert` builds parts + joints + couplings + loops and returns the card, then `mech_check`):
+- belt: belt_drive_gt2, belt_drive_htd
+- gear: spur_pair, helical_pair, bevel_pair, worm_drive, rack_pinion, gear_train_compound, bevel_differential
+- gripper: parallel_gripper, linkage_gripper
+- intermittent: geneva_drive, cam_follower, ratchet_pawl
+- joint: hinge, living_hinge, ball_joint, universal_joint, servo_pan_tilt, servo_arm_joint, snap_fit
+- leg: quadruped_leg_belt, quadruped_leg_linkage, jansen_leg
+- linear: belt_linear_axis, lead_screw_axis, ball_screw_axis, linear_rail_carriage, vslot_wheel_carriage
+- linkage: four_bar, parallelogram_linkage, watt_linkage, chebyshev_linkage, slider_crank, scotch_yoke
+- mobility: wheel_gearmotor, prop_motor_mount
+- motor: stepper_coupler_shaft
+- reducer: planetary, planetary_compound, cycloidal_reducer, strain_wave
+- support: pillow_block_shaft
 <!-- mises-shapes:end -->
 
 ## See the result: render, critique, fix
@@ -75,6 +138,13 @@ For a bought part (screw, bearing, motor, board), find it with `catalog_search` 
 
 ## The assembly
 When the part is one piece of a system (the user or the lead says where it goes), bring it into the assembly with `assembly_add_part` once it measures right, joined where it really connects.
+
+## Moving parts: mechanisms and joints
+For anything that moves, use the mechanism library (`mech_list`, `mech_insert`, `mech_check`):
+real gears, pulleys and belts, bearings, shafts and linkages with their joints, couplings and
+loop closures, so the motion works. Every revolute joint needs a bearing or bushing, a retained
+shaft or pin and a printed clearance of 0.2-0.4 mm; model the motor, its mount and the coupler
+too (no floating servos). Pick each part's material with `material_pick`.
 
 ## How a part looks
 When the user asks for a color or a finish (shiny, metal, chrome, rubber, clear), call `part_set_appearance` with a preset and/or a color. It changes only the look, never the geometry or the mass.

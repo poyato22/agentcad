@@ -286,8 +286,10 @@ class SetMaterialArgs(BaseModel):
 @tool("part_set_material", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
       description="Set the material a part is made of (its mass is volume x this material's "
                   "density; the BOM and the assembly total follow). Use a name from the "
-                  "materials table (PLA, PETG, ABS, ASA, PA-CF, TPU or a custom study "
-                  "material); null goes back to the build default. Does not change the "
+                  "materials table (PLA, PETG, ABS, ASA, PC, PA12, PA6-CF, PA-CF, TPU 95A, "
+                  "POM, Al 6061-T6, Al 7075-T6, Steel 1018, Steel 4140, 304 stainless, Brass "
+                  "C360, CF plate, TPU or a custom study material; material_pick ranks them); "
+                  "null goes back to the build default. Does not change the "
                   "geometry or the look (use part_set_appearance for that).")
 async def part_set_material(ctx: ToolContext, args: SetMaterialArgs) -> ToolOutput:
     from . import projects

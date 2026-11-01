@@ -16,6 +16,11 @@ BEARINGS = {3: ("bearing_623_deep_groove", 10.0, 4.0), 4: ("bearing_624_deep_gro
             17: ("bearing_6003_deep_groove", 35.0, 10.0),
             20: ("bearing_6004_deep_groove", 42.0, 12.0)}
 SLIP = 0.10        # bearing seat clearance as modelled [J, FDM]; a press fit prints D - 0.10
+SEAT_LIFT = 0.5    # a bearing sits this far above the plate's underside
+# shafts are modelled this much under their nominal d, so a shaft never shares a cylindrical
+# face with a bearing or gear bore (OCCT booleans misreport coincident cylinders as overlap);
+# the design data keeps the nominal d (a k6 / h6 fit in the real build)
+SHAFT_UNDERSIZE = 0.02
 PIN_CLEAR = 0.3    # printed pin / bore clearance (FDM 0.2-0.4 mm)
 
 
@@ -100,9 +105,10 @@ class Kit:
         cid, D, B, bore = bearing_for(shaft_d)
         bkey = self.part(cid, catalog=cid, label=f"bearing {cid.split('_')[1]}", material=None)
         bi = self.inst(f"{key}_bearing", bkey, f"{key} bearing")
-        self.fixed(f"{key}_bearing_seat", plate, fr((x, y, -plate_t)), bi, fr())
+        # 0.5 mm above the plate's underside: no coplanar faces for the interference check
+        self.fixed(f"{key}_bearing_seat", plate, fr((x, y, -plate_t + SEAT_LIFT)), bi, fr())
         skey = self.part(f"{key}_shaft", "shaft", f"{key} shaft", "Steel 1018",
-                         d=float(bore), length=float(length),
+                         d=float(bore) - SHAFT_UNDERSIZE, length=float(length),
                          grooves=[2.0 + plate_t + 1.0])
         si = self.inst(f"{key}_shaft", skey, f"{key} shaft")
         z0 = -plate_t - 2.0

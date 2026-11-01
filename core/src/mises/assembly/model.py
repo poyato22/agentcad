@@ -192,6 +192,8 @@ CREATE TABLE IF NOT EXISTS assembly_auto (
   project_id TEXT, id TEXT, PRIMARY KEY (project_id, id));
 CREATE TABLE IF NOT EXISTS assembly_loops (
   project_id TEXT, id TEXT, spec TEXT, ord INTEGER, PRIMARY KEY (project_id, id));
+CREATE TABLE IF NOT EXISTS assembly_mechs (
+  project_id TEXT, id TEXT, spec TEXT, ord INTEGER, PRIMARY KEY (project_id, id));
 CREATE TABLE IF NOT EXISTS assembly_animations (
   project_id TEXT, id TEXT, name TEXT, spec TEXT, ord INTEGER,
   PRIMARY KEY (project_id, id), UNIQUE (project_id, name));
@@ -235,6 +237,7 @@ class AssemblyStore:
                 self._db.execute("DELETE FROM assembly_animations WHERE project_id=?",
                                  (project_id,))
                 self._db.execute("DELETE FROM assembly_loops WHERE project_id=?", (project_id,))
+                self._db.execute("DELETE FROM assembly_mechs WHERE project_id=?", (project_id,))
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
@@ -555,3 +558,28 @@ class AssemblyStore:
             rows = self._db.execute("SELECT * FROM assembly_animations WHERE project_id=?"
                                     " ORDER BY ord, id", (project_id,)).fetchall()
         return [{"id": r["id"], "name": r["name"], **json.loads(r["spec"])} for r in rows]
+
+    # ---- Plan 10: library mechanisms inserted in a build (mech_insert): the card, the params
+    # and which instances / joints / loops / parts each plan key became (mech_check reads it)
+    def save_mech(self, project_id: str, gid: str, record: dict) -> dict:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO assembly_mechs (project_id, id, spec, ord) VALUES"
+                " (?,?,?,COALESCE((SELECT ord FROM assembly_mechs WHERE project_id=? AND id=?),"
+                " (SELECT COALESCE(MAX(ord), -1) + 1 FROM assembly_mechs WHERE project_id=?)))",
+                (project_id, gid, json.dumps(record), project_id, gid, project_id))
+        return {"id": gid, **record}
+
+    def get_mech(self, project_id: str, gid: str) -> dict:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM assembly_mechs WHERE project_id=? AND id=?",
+                                   (project_id, gid)).fetchone()
+        if row is None:
+            raise KeyError(gid)
+        return {"id": row["id"], **json.loads(row["spec"])}
+
+    def list_mechs(self, project_id: str) -> list[dict]:
+        with self._lock:
+            rows = self._db.execute("SELECT * FROM assembly_mechs WHERE project_id=? ORDER BY"
+                                    " ord, id", (project_id,)).fetchall()
+        return [{"id": r["id"], **json.loads(r["spec"])} for r in rows]

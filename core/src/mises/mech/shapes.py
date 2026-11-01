@@ -57,6 +57,14 @@ def _check(shape, what: str):
         if not fixed.is_valid:
             raise ValueError(f"{what}: OCCT reports the shape as invalid; check the sizes")
         shape = fixed
+    return _flat(shape)
+
+
+def _flat(shape):
+    """A library assembly (bd_warehouse bearing, stepper: a Compound with located children)
+    as a plain Compound of its solids, so moving it moves every solid exactly once."""
+    if isinstance(shape, bd.Compound) and getattr(shape, "children", None):
+        return bd.Compound(list(shape.solids()))
     return shape
 
 
@@ -495,7 +503,7 @@ def frame_plate(length: float = 80.0, width: float = 50.0, thickness: float = 5.
 
 
 def bearing_block(bearing_od: float = 22.0, bearing_width: float = 7.0, shaft_d: float = 8.0,
-                  center_height: float = 20.0, fit: str = "press", base_w: float = 50.0,
+                  center_height: float = 20.0, fit: str = "slip", base_w: float = 50.0,
                   base_t: float = 6.0, bolt_d: float = 4.5):
     """Pillow block for a ball bearing: the bearing axis runs along +Y through
     (0, 0, center_height), over a base plate (z = 0..base_t) with two bolt holes on X.
@@ -505,6 +513,9 @@ def bearing_block(bearing_od: float = 22.0, bearing_width: float = 7.0, shaft_d:
     D = _pos(bearing_od, "bearing_od")
     bore = D - 0.10 if fit == "press" else D + 0.10
     boss_r = D / 2 + 4
+    if center_height < boss_r:
+        raise ValueError(f"center_height {center_height:g} must be at least the boss radius "
+                         f"{boss_r:g} (bearing OD / 2 + 4)")
     depth = bearing_width + 1.5
     base = bd.Pos(0, 0, base_t / 2) * bd.Box(base_w, depth, base_t)
     web = bd.Pos(0, 0, center_height / 2) * bd.Box(2 * boss_r, depth, center_height)

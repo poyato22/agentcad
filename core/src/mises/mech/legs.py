@@ -134,10 +134,10 @@ def quadruped_leg_belt(p: dict):
     kp = k.inst("knee_pulley")
     k.fixed("knee_pulley_on_shank", si, fr((0, 0, 8.0 + 9.0 + 2.0)), kp, fr())
     k.couple(jk, "belt", z1 / z2, jkm, offset=kb)
-    k.part("foot", "ball_stud", "foot", "TPU 95A", ball_d=24.0, neck_d=8.0, neck_l=4.0,
-           flange_d=12.0, flange_t=2.0)
+    k.part("foot", "ball_stud", "foot", "TPU 95A", ball_d=24.0, neck_d=8.0, neck_l=1.0,
+           flange_d=8.0, flange_t=0.5)
     fi = k.inst("foot")
-    k.fixed("foot_on_shank", si, fr((Ls, 0, 4.0), X), fi, fr((0, 0, 0), X))
+    k.fixed("foot_on_shank", si, fr((Ls + 9.0 + 12.5, 0, 4.0), X), fi, fr((0, 0, 0), X))
     k.plan.contacts += [(a1, ti), (ti, dp), (ti, si), ("belt", dp), ("belt", kp), (si, kp),
                         (si, fi), ("belt", ti), (a2, dp)]
     k.plan.inputs += [jab, jh, jkm]
@@ -219,14 +219,16 @@ def quadruped_leg_linkage(p: dict):
     k.loop("knee_loop", ri, fr((round(rod, 4), 0, 0)), si,
            fr((round(lever_local[0], 4), round(lever_local[1], 4), 9.0 + 8.0 + 9.0 + 7.0 - 8.0)),
            drivers=[jc])
-    k.part("foot", "ball_stud", "foot", "TPU 95A", ball_d=24.0, neck_d=8.0, neck_l=4.0,
-           flange_d=12.0, flange_t=2.0)
+    k.part("foot", "ball_stud", "foot", "TPU 95A", ball_d=24.0, neck_d=8.0, neck_l=1.0,
+           flange_d=8.0, flange_t=0.5)
     fi = k.inst("foot")
-    k.fixed("foot_on_shank", si, fr((Ls, 0, 4.0), X), fi, fr((0, 0, 0), X))
+    k.fixed("foot_on_shank", si, fr((Ls + 8.0 + 12.5, 0, 4.0), X), fi, fr((0, 0, 0), X))
     a2 = _knee_actuator(k, hb, hgt, hh, 10.0 + hgt + 1.0 + 8.0 + 1.0 + 6.0 + 1.0 + 5.0 + 3.0)
     k.plan.contacts += [(a1, ti), (ti, ci), (ci, ri), (ri, si), (ti, si), (si, fi), (a2, ci)]
     k.plan.inputs += [jab, jh, jc]
     k.plan.dof_intended = 3
+    k.port("mount", "mount", "body", (0, 0, -6.0), (0, 0, 1), "body side")
+    k.port("foot", "end_effector", fi, (0, 0, 0), (0, 0, -1), "foot (see the solved pose)")
     k.plan.rom = {"knee": [10.0, 160.0]}
     stall = (it.get("perf") or {}).get("stall_torque_nm")
     k.plan.sizing = {"crank_mm": rc, "lever_mm": rl, "rod_mm": round(rod, 2),

@@ -142,7 +142,8 @@ def preview_part(spec):
         ns["math"] = math
         exec(compile(src, f"<catalog {spec.catalog}>", "exec"), ns)  # noqa: S102
         v = dict(vars_)
-        return ns["build"](v)
+        from .shapes import _flat
+        return _flat(ns["build"](v))
     from . import shapes
     fn = getattr(shapes, spec.recipe)
     return fn(**json.loads(json.dumps(spec.kwargs)))

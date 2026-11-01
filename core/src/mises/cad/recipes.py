@@ -15,6 +15,8 @@ from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
 
 SHAPES_FILE = Path(__file__).resolve().parent / "mises_shapes.py"
+# Plan 10: the drivetrain / mechanism recipes, re-exported by mises_shapes as `ms.*`
+MECH_SHAPES_FILE = Path(__file__).resolve().parent.parent / "mech" / "shapes.py"
 
 USAGE = ("Call recipes from build(v) as `ms.<name>(...)` (also `mises_shapes`); they are "
          "pre-imported in every part script. Units mm; aircraft recipes use X aft, Y span, Z up.")
@@ -36,10 +38,8 @@ def _signature(fn: ast.FunctionDef) -> str:
     return f"{fn.name}({', '.join(parts)})"
 
 
-@lru_cache(maxsize=1)
-def _catalog() -> tuple[tuple[str, str, str, str], ...]:
-    """(name, signature, one-line summary, full docstring) per public recipe, in __all__ order."""
-    tree = ast.parse(SHAPES_FILE.read_text())
+def _parse(path: Path) -> list[tuple[str, str, str, str]]:
+    tree = ast.parse(path.read_text())
     names: list[str] = []
     fns: dict[str, ast.FunctionDef] = {}
     for node in tree.body:
@@ -53,7 +53,14 @@ def _catalog() -> tuple[tuple[str, str, str, str], ...]:
         fn = fns[n]
         doc = ast.get_docstring(fn) or ""
         out.append((n, _signature(fn), doc.split("\n", 1)[0].strip(), doc))
-    return tuple(out)
+    return out
+
+
+@lru_cache(maxsize=1)
+def _catalog() -> tuple[tuple[str, str, str, str], ...]:
+    """(name, signature, one-line summary, full docstring) per public recipe, in __all__ order:
+    mises_shapes first, then the mechanism recipes it re-exports (mech/shapes.py)."""
+    return tuple(_parse(SHAPES_FILE) + _parse(MECH_SHAPES_FILE))
 
 
 def recipe_names() -> list[str]:
@@ -82,8 +89,21 @@ def prompt_section() -> str:
         "its result and raises ValueError with the reason: fix the arguments, do not fall back "
         "to primitives.",
         recipe_index(),
+        mechanism_index(),
         PROMPT_END,
     ])
+
+
+def mechanism_index() -> str:
+    """Plan 10 E28: the mechanism library by category, one line each (mech_list has detail)."""
+    from ..mech import library
+    by: dict[str, list[str]] = {}
+    for m in library.all_mechanisms():
+        by.setdefault(m.category, []).append(m.id)
+    lines = ["Mechanisms (`mech_list` by function, `mech_insert` builds parts + joints + "
+             "couplings + loops and returns the card, then `mech_check`):"]
+    lines += [f"- {cat}: {', '.join(ids)}" for cat, ids in sorted(by.items())]
+    return "\n".join(lines)
 
 
 def recipe_doc_text(name: str) -> str:

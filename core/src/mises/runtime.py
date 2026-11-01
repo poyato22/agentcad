@@ -235,6 +235,8 @@ class Runtime:
         register_concept_tools(self.registry)   # Plan 9 G-A: concept sketch + pitch
         from .design_tools import register_design_tools     # Plan 9 G-B
         register_design_tools(self.registry)
+        from .mech.tools import register_mech_tools          # Plan 10 C2: mechanisms
+        register_mech_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)

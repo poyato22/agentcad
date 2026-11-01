@@ -344,12 +344,12 @@ def geneva_drive(p: dict):
     k.part("wheel", "geneva_wheel", f"Geneva wheel {n} slots", "POM", slots=n, center_dist=C,
            pin_d=p["pin_d"], width=w, bore=6.0)
     wi = k.inst("wheel")
-    jw = k.joint("wheel_rev", "revolute", "ground", fr((0, 0, 1.0)), wi, fr(),
+    jw = k.joint("wheel_rev", "revolute", "ground", fr((0, 0, 1.0 + w)), wi, fr(),
                  design=pin_design(6.0, bearing="bushing", retention="e-clip"))
     k.part("driver", "geneva_driver", "Geneva driver", "PETG", slots=n, center_dist=C,
            pin_d=p["pin_d"], width=w, bore=6.0)
     di = k.inst("driver")
-    jd = k.joint("driver_rev", "revolute", "ground", fr((C, 0, 1.0 - w)), di, fr(), value=180.0,
+    jd = k.joint("driver_rev", "revolute", "ground", fr((C, 0, 0.5)), di, fr(), value=180.0,
                  design=pin_design(6.0, bearing="bushing", retention="e-clip"))
     k.plan.inputs += [jd, jw]
     k.plan.contacts += [("wheel", "driver"), ("ground", "wheel"), ("ground", "driver")]
@@ -428,8 +428,16 @@ def ratchet_pawl(p: dict):
                  design=pin_design(6.0, bearing="bushing"))
     k.part("pawl", "pawl", "pawl", "POM", length=od * 0.45, width=6.0, thickness=w, bore=3.3)
     pi_ = k.inst("pawl")
-    jp = k.joint("pawl_rev", "revolute", "ground", fr((od / 2 + 12, od / 2 - 2, 1.0)), pi_,
-                 fr(), value=200.0, limits=[190.0, 215.0],
+    px, py, pl = od / 2 + 12, od / 2 - 2, od * 0.45
+    # the pawl's round tip (r 3) just clear of the tooth tips: |tip| = od/2 + 3.3
+    lo, hi = 180.0, 250.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        tip = math.hypot(px + pl * math.cos(math.radians(mid)), py + pl * math.sin(math.radians(mid)))
+        lo, hi = (mid, hi) if tip < od / 2 + 3.3 else (lo, mid)
+    rest = round(lo, 2)
+    jp = k.joint("pawl_rev", "revolute", "ground", fr((px, py, 1.0)), pi_,
+                 fr(), value=rest, limits=[rest, rest + 25.0],
                  design=pin_design(3.0, bearing="bushing", retention="torsion spring"))
     k.plan.inputs += [jw, jp]
     k.plan.dof_intended = 2
