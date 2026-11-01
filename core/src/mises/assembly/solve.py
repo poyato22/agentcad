@@ -11,6 +11,10 @@ motion in the shared frame (rotation about local Z for revolute, translation alo
 slider, both for cylindrical, a 3-angle rotation for ball, identity for fixed).
 
 Loops in the joint graph are over-constrained for this closed-form solve and are rejected.
+Closed chains (four-bars, legs, grippers) use loop constraints instead (Plan 10): the tree
+places every body, then a scipy least-squares solve adjusts the free joints on each loop's path
+until the loop-closing frames meet. Coupled joints (gears, belts, racks, screws) take their
+partner's value x ratio (+ offset) before the tree solve.
 """
 from __future__ import annotations
 
@@ -25,6 +29,8 @@ Vec = list[float]
 
 # degrees of freedom each joint kind removes from the pair it connects
 CONSTRAINTS = {"fixed": 6, "revolute": 5, "slider": 5, "cylindrical": 4, "ball": 3}
+# ... and each loop-closure type (a coupling removes 1)
+LOOP_CONSTRAINTS = {"revolute": 5, "ball": 3, "fixed": 6}
 
 
 def identity() -> Mat:
@@ -148,6 +154,11 @@ class SolveResult:
     # path; the solve never moves a fixed instance, and the joint closing the path is not
     # applied. Fixed instances with NO joint path between them are independent and fine.
     overconstrained: list[list[str]] = field(default_factory=list)
+    # Plan 10: loop id -> how far its two frames still miss (mm); loops that cannot close
+    loop_residuals: dict[str, float] = field(default_factory=dict)
+    loop_errors: list[dict] = field(default_factory=list)
+    # joint values the loop solve or a coupling changed from the stored ones (to store back)
+    solved: dict[str, object] = field(default_factory=dict)
 
 
 class _UnionFind:
@@ -191,76 +202,297 @@ def _resolve_frame(part_id: str, frame, resolve_face: FaceResolver | None) -> Ma
     return frame_matrix(list(origin), list(axis))
 
 
+def _scalar(v) -> float:
+    if isinstance(v, (list, tuple)):
+        return float(v[0]) if v else 0.0
+    return float(v)
+
+
+def coupling_order(joints) -> list:
+    """The coupled joints in an order where every partner comes before its follower. A
+    coupling whose partner is missing is skipped (a removed joint); a cycle is an error."""
+    by_id = {j.id: j for j in joints}
+    out, state = [], {}
+
+    def visit(j) -> None:
+        st = state.get(j.id)
+        if st == 2:
+            return
+        if st == 1:
+            raise MisesError(ErrorCode.INVALID_INPUT,
+                             f"joint couplings form a cycle through {j.id}",
+                             hint="couple each follower to one driver chain, never back")
+        state[j.id] = 1
+        partner = by_id.get(j.coupling.partner_joint)
+        if partner is not None and getattr(partner, "coupling", None) is not None:
+            visit(partner)
+        state[j.id] = 2
+        if partner is not None:
+            out.append(j)
+
+    for j in joints:
+        if getattr(j, "coupling", None) is not None:
+            visit(j)
+    return out
+
+
+def apply_couplings(order, values: dict[str, object]) -> None:
+    """value = offset + ratio x partner value, for every coupled joint (in `order`)."""
+    for j in order:
+        c = j.coupling
+        values[j.id] = float(c.offset) + float(c.ratio) * _scalar(values[c.partner_joint])
+
+
+# a loop that still misses by more than this (mm, or mm-equivalent for an axis) cannot close
+LOOP_TOL_MM = 1e-3
+_AXIS_MM = 10.0          # an axis error (radians) counts like this many mm in the residual
+_NCOMP = {"revolute": 1, "slider": 1, "cylindrical": 2, "ball": 3, "fixed": 0}
+
+
+class _Tree:
+    """An assembly prepared for repeated tree solves: frames resolved once, so the loop solve
+    can re-place every body for each trial set of joint values cheaply."""
+
+    def __init__(self, assembly, resolve_face: FaceResolver | None):
+        self.instances = {inst.id: inst for inst in assembly.instances}
+        self.joints = list(assembly.joints)
+        self.loops = list(getattr(assembly, "loops", None) or [])
+        uf = _UnionFind()
+        for iid in self.instances:
+            uf.add(iid)
+        for j in self.joints:
+            for ref in (j.a, j.b):
+                if ref.instance_id not in self.instances:
+                    raise MisesError(ErrorCode.INVALID_INPUT,
+                                     f"joint {j.id} references unknown instance "
+                                     f"{ref.instance_id!r}")
+            if not uf.union(j.a.instance_id, j.b.instance_id):
+                raise MisesError(ErrorCode.INVALID_INPUT,
+                                 f"joint {j.id} closes a loop; this solve needs an open joint "
+                                 "tree", hint="close the loop with a loop constraint "
+                                 "(assembly_add_loop) instead of a joint, remove the redundant "
+                                 "joint, or ground one side")
+        for lp in self.loops:
+            for iid in (lp.joint_a, lp.joint_b):
+                if iid not in self.instances:
+                    raise MisesError(ErrorCode.INVALID_INPUT,
+                                     f"loop {lp.id} references unknown instance {iid!r}")
+        self.uf = uf
+        self._resolve_face = resolve_face
+        self._frames: dict[str, tuple[Mat, Mat]] = {}
+        self.loop_frames = {lp.id: (_resolve_frame(self.instances[lp.joint_a].part_id,
+                                                   lp.frame_a, resolve_face),
+                                    _resolve_frame(self.instances[lp.joint_b].part_id,
+                                                   lp.frame_b, resolve_face))
+                            for lp in self.loops}
+        self.order = coupling_order(self.joints)
+        comp: dict[str, list[str]] = {}
+        for iid in self.instances:
+            comp.setdefault(uf.find(iid), []).append(iid)
+        self.components = comp
+
+    def frames(self, j) -> tuple[Mat, Mat]:
+        """A joint's two frame matrices, resolved the first time the solve reaches it (a joint
+        it never applies, e.g. between two fixed instances, is never resolved)."""
+        got = self._frames.get(j.id)
+        if got is None:
+            got = (_resolve_frame(self.instances[j.a.instance_id].part_id, j.a.frame,
+                                  self._resolve_face),
+                   _resolve_frame(self.instances[j.b.instance_id].part_id, j.b.frame,
+                                  self._resolve_face))
+            self._frames[j.id] = got
+        return got
+
+    def place(self, values: dict[str, object]) -> tuple[dict[str, Mat], dict[str, object],
+                                                         dict[str, str]]:
+        """(transforms, applied values, instance -> the joint that placed it)."""
+        instances = self.instances
+        transforms: dict[str, Mat] = {}
+        applied: dict[str, object] = {}
+        via: dict[str, str] = {}
+        for inst in instances.values():
+            if inst.fixed:
+                transforms[inst.id] = [row[:] for row in inst.transform]
+        for members in self.components.values():
+            if not any(instances[m].fixed for m in members):
+                anchor = members[0]
+                transforms[anchor] = [row[:] for row in instances[anchor].transform]
+        pending = list(self.joints)
+        progress = True
+        while pending and progress:
+            progress = False
+            still: list = []
+            for j in pending:
+                a, b = j.a.instance_id, j.b.instance_id
+                ta, tb = transforms.get(a), transforms.get(b)
+                if ta is None and tb is None:
+                    still.append(j)
+                    continue
+                if ta is not None and tb is not None:
+                    # both ends already placed: only possible between two fixed roots (the joint
+                    # graph is a tree), i.e. over-constrained. Never move a fixed instance.
+                    continue
+                value = clamp_value(values.get(j.id, j.value), j.limits)
+                applied[j.id] = value
+                fa, fb = self.frames(j)
+                m = joint_motion(j.kind, value)
+                if ta is not None:
+                    transforms[b] = matmul(matmul(matmul(ta, fa), m), inverse_rigid(fb))
+                    via[b] = j.id
+                else:
+                    transforms[a] = matmul(matmul(matmul(tb, fb), inverse_rigid(m)),
+                                           inverse_rigid(fa))
+                    via[a] = j.id
+                progress = True
+            pending = still
+        for inst in instances.values():
+            transforms.setdefault(inst.id, [row[:] for row in inst.transform])
+        return transforms, applied, via
+
+    def path(self, a: str, b: str) -> list[str]:
+        """The tree joints between instances a and b (empty when they are not connected)."""
+        adj: dict[str, list[tuple[str, str]]] = {}
+        for j in self.joints:
+            adj.setdefault(j.a.instance_id, []).append((j.b.instance_id, j.id))
+            adj.setdefault(j.b.instance_id, []).append((j.a.instance_id, j.id))
+        prev: dict[str, tuple[str, str] | None] = {a: None}
+        queue = [a]
+        while queue:
+            cur = queue.pop(0)
+            if cur == b:
+                break
+            for nxt, jid in adj.get(cur, []):
+                if nxt not in prev:
+                    prev[nxt] = (cur, jid)
+                    queue.append(nxt)
+        if b not in prev:
+            return []
+        out, cur = [], b
+        while prev[cur] is not None:
+            cur, jid = prev[cur]
+            out.append(jid)
+        return out[::-1]
+
+
+def _loop_residual(tree: _Tree, lp, transforms: dict[str, Mat]) -> list[float]:
+    fa, fb = tree.loop_frames[lp.id]
+    pa = matmul(transforms[lp.joint_a], fa)
+    pb = matmul(transforms[lp.joint_b], fb)
+    r = [pa[i][3] - pb[i][3] for i in range(3)]
+    if lp.type in ("revolute", "fixed"):
+        za = [pa[i][2] for i in range(3)]
+        zb = [pb[i][2] for i in range(3)]
+        r += [c * _AXIS_MM for c in _cross(za, zb)]
+    if lp.type == "fixed":
+        xa = [pa[i][0] for i in range(3)]
+        xb = [pb[i][0] for i in range(3)]
+        r += [c * _AXIS_MM for c in _cross(xa, xb)]
+    return r
+
+
+def _solve_loops(tree: _Tree, values: dict[str, object], result: "SolveResult") -> None:
+    """Adjust the non-driver joints on each loop's path (scipy least squares, from the current
+    values so a mechanism stays on its branch) until every loop closes."""
+    by_id = {j.id: j for j in tree.joints}
+    coupled = {j.id for j in tree.order}
+    held: set[str] = set(coupled)
+    free: list[str] = []
+    for lp in tree.loops:
+        path = [jid for jid in tree.path(lp.joint_a, lp.joint_b)
+                if by_id[jid].kind != "fixed"]
+        if not path:
+            result.loop_errors.append({"loop_id": lp.id, "residual_mm": None,
+                                       "reason": "its two bodies are not joined by a joint "
+                                                 "path, so the loop has nothing to adjust"})
+            continue
+        drivers = lp.drivers if lp.drivers is not None else [
+            next((jid for jid in path if jid not in coupled), path[0])]
+        held.update(drivers)
+        free.extend(jid for jid in path if jid not in free)
+    free = [jid for jid in free if jid not in held]
+    if not free:
+        return
+    import numpy as np
+    from scipy.optimize import least_squares
+
+    slots: list[tuple[str, int]] = []
+    x0, lo, hi = [], [], []
+    for jid in free:
+        j = by_id[jid]
+        n = _NCOMP[j.kind]
+        cur = values.get(jid, j.value)
+        comps = list(cur) if isinstance(cur, (list, tuple)) else [float(cur)]
+        comps = [float(c) for c in (comps + [0.0] * n)[:n]]
+        for k in range(n):
+            slots.append((jid, k))
+            a, b = (j.limits if j.limits is not None else (-np.inf, np.inf))
+            x0.append(min(max(comps[k], a), b))
+            lo.append(a)
+            hi.append(b)
+
+    def unpack(x) -> dict[str, object]:
+        out = dict(values)
+        groups: dict[str, list[float]] = {}
+        for (jid, _k), v in zip(slots, x):
+            groups.setdefault(jid, []).append(float(v))
+        for jid, comps in groups.items():
+            out[jid] = comps[0] if len(comps) == 1 else comps
+        apply_couplings(tree.order, out)
+        return out
+
+    def residual(x):
+        tr, _applied, _via = tree.place(unpack(x))
+        r: list[float] = []
+        for lp in tree.loops:
+            r += _loop_residual(tree, lp, tr)
+        return np.array(r)
+
+    sol = least_squares(residual, np.array(x0, dtype=float), bounds=(lo, hi), method="trf",
+                        xtol=1e-12, ftol=1e-12, gtol=1e-12, max_nfev=100 * (len(x0) + 1))
+    solved = unpack(sol.x)
+    for jid in free:
+        values[jid] = solved[jid]
+    for j in tree.order:
+        values[j.id] = solved[j.id]
+
+
 def solve(assembly, *, resolve_face: FaceResolver | None = None) -> SolveResult:
     """Place every instance. ``assembly`` has ``.instances`` and ``.joints`` (pydantic models or
-    objects with the same attributes). Raises on an unknown instance or a joint loop."""
-    instances = {inst.id: inst for inst in assembly.instances}
-    joints = list(assembly.joints)
+    objects with the same attributes) and optionally ``.loops``. Raises on an unknown instance,
+    a joint loop (closed chains use loop constraints) or a coupling cycle.
 
-    uf = _UnionFind()
-    for iid in instances:
-        uf.add(iid)
-    for j in joints:
-        for ref in (j.a, j.b):
-            if ref.instance_id not in instances:
-                raise MisesError(ErrorCode.INVALID_INPUT,
-                                 f"joint {j.id} references unknown instance {ref.instance_id!r}")
-        if not uf.union(j.a.instance_id, j.b.instance_id):
-            raise MisesError(ErrorCode.INVALID_INPUT,
-                             f"joint {j.id} closes a loop; this solve needs an open joint tree",
-                             hint="remove the redundant joint or ground one side")
-
-    transforms: dict[str, Mat] = {}
-    applied: dict[str, object] = {}
-
-    # anchors: every fixed instance, plus one instance per component with no fixed member.
-    comp_members: dict[str, list[str]] = {}
-    for iid in instances:
-        comp_members.setdefault(uf.find(iid), []).append(iid)
-    for inst in assembly.instances:
-        if inst.fixed:
-            transforms[inst.id] = [row[:] for row in inst.transform]
+    Order: coupled joints take their partner's value (x ratio + offset), the joint tree places
+    every body, then (with loops) the loop solve adjusts the free joints on each loop path."""
+    tree = _Tree(assembly, resolve_face)
+    instances = tree.instances
+    values: dict[str, object] = {j.id: j.value for j in tree.joints}
+    apply_couplings(tree.order, values)
+    result = SolveResult(transforms={}, dof_remaining=0)
+    if tree.loops:
+        _solve_loops(tree, values, result)
+    transforms, applied, _via = tree.place(values)
+    for lp in tree.loops:
+        if any(e["loop_id"] == lp.id for e in result.loop_errors):
+            continue
+        r = _loop_residual(tree, lp, transforms)
+        miss = math.sqrt(sum(c * c for c in r))
+        result.loop_residuals[lp.id] = miss
+        if miss > LOOP_TOL_MM:
+            result.loop_errors.append({
+                "loop_id": lp.id, "residual_mm": round(miss, 4),
+                "reason": "the loop cannot close at this input (out of range or past a "
+                          "toggle position)"})
+    stored = {j.id: j.value for j in tree.joints}
+    loop_moved = {jid for jid in values if jid in applied and values[jid] != stored[jid]}
     overconstrained = [sorted(m for m in members if instances[m].fixed)
-                       for members in comp_members.values()
+                       for members in tree.components.values()
                        if sum(1 for m in members if instances[m].fixed) > 1]
-    for root, members in comp_members.items():
-        if not any(instances[m].fixed for m in members):
-            anchor = members[0]
-            transforms[anchor] = [row[:] for row in instances[anchor].transform]
-
-    # propagate through joints until nothing new can be placed
-    pending = list(joints)
-    progress = True
-    while pending and progress:
-        progress = False
-        still: list = []
-        for j in pending:
-            a, b = j.a.instance_id, j.b.instance_id
-            ta, tb = transforms.get(a), transforms.get(b)
-            if ta is None and tb is None:
-                still.append(j)
-                continue
-            if ta is not None and tb is not None:
-                # both ends already placed: only possible between two fixed roots (the joint graph
-                # is a tree), i.e. over-constrained. Never move a fixed instance.
-                continue
-            value = clamp_value(j.value, j.limits)
-            applied[j.id] = value
-            fa = _resolve_frame(instances[a].part_id, j.a.frame, resolve_face)
-            fb = _resolve_frame(instances[b].part_id, j.b.frame, resolve_face)
-            m = joint_motion(j.kind, value)
-            if ta is not None:
-                transforms[b] = matmul(matmul(matmul(ta, fa), m), inverse_rigid(fb))
-            else:
-                transforms[a] = matmul(matmul(matmul(tb, fb), inverse_rigid(m)), inverse_rigid(fa))
-            progress = True
-        pending = still
-
-    # free bodies that no anchor reached: leave at their stored transform
-    for inst in assembly.instances:
-        transforms.setdefault(inst.id, [row[:] for row in inst.transform])
-
     movable = sum(1 for inst in assembly.instances if not inst.fixed)
-    dof = 6 * movable - sum(CONSTRAINTS.get(j.kind, 0) for j in joints)
-    return SolveResult(transforms=transforms, dof_remaining=max(dof, 0), applied=applied,
-                       overconstrained=overconstrained)
+    dof = (6 * movable - sum(CONSTRAINTS.get(j.kind, 0) for j in tree.joints)
+           - len(tree.order) - sum(LOOP_CONSTRAINTS[lp.type] for lp in tree.loops))
+    result.transforms = transforms
+    result.dof_remaining = max(dof, 0)
+    result.applied = applied
+    result.overconstrained = overconstrained
+    result.solved = {jid: applied[jid] for jid in loop_moved}
+    return result

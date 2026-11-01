@@ -13,11 +13,16 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_serializer, model_validator
 
 from ..cad.tools import PART_ID_RE
 
 JointKind = Literal["fixed", "revolute", "slider", "cylindrical", "ball"]
+#: Plan 10 shared contract (C2 <-> C3): a coupled joint follows another joint's value
+CouplingKind = Literal["gear", "belt", "rack", "screw"]
+#: how a loop-closing joint holds its two bodies: revolute (point + axis), ball (point only),
+#: fixed (weld). C3 exports revolute/ball as MuJoCo `equality connect`, fixed as `weld`.
+LoopType = Literal["revolute", "ball", "fixed"]
 
 
 def _identity() -> list[list[float]]:
@@ -34,6 +39,13 @@ def check_part_id(v: str) -> str:
 
 def _new_id() -> str:
     return uuid.uuid4().hex[:12]
+
+
+def _extras(joint) -> tuple:
+    """The Plan 10 joint columns (coupling, design) as stored JSON (NULL when unset)."""
+    return tuple(None if getattr(joint, k) is None
+                 else json.dumps(getattr(joint, k).model_dump(mode="json", exclude_none=True))
+                 for k in ("coupling", "design"))
 
 
 class Frame(BaseModel):
@@ -71,6 +83,45 @@ class Instance(BaseModel):
         return check_part_id(v)
 
 
+class Coupling(BaseModel):
+    """Plan 10 contract: this joint's value follows `partner_joint`'s:
+    value = offset + ratio x partner value, in joint value units (deg per deg for gear and belt,
+    mm per deg for rack and screw driven by a revolute, deg per mm for a revolute following a
+    slider). An external gear pair has a negative ratio (-z1/z2). `offset` is the follower's
+    value when the partner is at 0 (e.g. a planet's mesh phase). C3's MJCF export maps it to
+    `equality joint polycoef = [offset, ratio]` (converted to radians / metres)."""
+    kind: CouplingKind
+    ratio: float = Field(allow_inf_nan=False)
+    partner_joint: str = Field(min_length=1, max_length=64)
+    offset: float = Field(default=0.0, allow_inf_nan=False)
+
+    @field_validator("ratio")
+    @classmethod
+    def _nonzero(cls, v: float) -> float:
+        if v == 0 or abs(v) > 1e6:
+            raise ValueError("ratio must be non-zero and at most 1e6")
+        return v
+
+
+class JointDesign(BaseModel):
+    """E27 design metadata of a joint (all optional): what carries it, how it is retained, how
+    much play it has and what drives it. `mech_check` reads these."""
+    bearing: str | None = Field(default=None, max_length=64,
+                                description='catalog id ("bearing_608_deep_groove"), or '
+                                            '"bushing" / "printed" / "none"')
+    shaft: dict | None = Field(default=None, description='{"d_mm": 8, "material": "Steel 1018"}')
+    retention: str | None = Field(default=None, max_length=64,
+                                  description='"snap ring", "nut", "shoulder screw", "press", '
+                                              '"set screw", "e-clip", "glue"')
+    clearance_mm: float | None = Field(default=None, ge=0, le=10)
+    actuator: dict | None = Field(default=None,
+                                  description='{"item_id": "dynamixel_xl430_w250_t", "ratio": 1}')
+    rom_deg: list[float] | None = Field(default=None, description="design range of motion "
+                                        "[lo, hi] (deg or mm); may sit inside the hard limits")
+    load_n: float | None = Field(default=None, ge=0, description="design radial load, N")
+    fastener: str | None = Field(default=None, max_length=32, description='e.g. "M3"')
+
+
 class Joint(BaseModel):
     id: str = Field(default_factory=_new_id)
     kind: JointKind
@@ -78,6 +129,8 @@ class Joint(BaseModel):
     b: JointRef
     value: float | list[float] = 0.0
     limits: list[float] | None = None
+    coupling: Coupling | None = None
+    design: JointDesign | None = None
 
     @model_validator(mode="after")
     def _check(self) -> "Joint":
@@ -85,12 +138,47 @@ class Joint(BaseModel):
             raise ValueError("limits must be [lo, hi]")
         if self.limits is not None and self.limits[0] > self.limits[1]:
             raise ValueError("limits lo must be <= hi")
+        if self.coupling is not None:
+            if self.kind not in ("revolute", "slider"):
+                raise ValueError("only a revolute or slider joint can be coupled")
+            if self.coupling.partner_joint == self.id:
+                raise ValueError("a joint cannot be coupled to itself")
         return self
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        # the Plan 10 fields stay out of payloads that don't use them: the app's fixtures and
+        # older readers see exactly the joints they did before
+        d = handler(self)
+        if isinstance(d, dict):
+            for k in ("coupling", "design"):
+                if d.get(k) is None:
+                    d.pop(k, None)
+        return d
+
+
+class Loop(BaseModel):
+    """Plan 10 contract: a loop-closure constraint `{kind: "loop", joint_a, joint_b, frame_a,
+    frame_b}`. `joint_a` / `joint_b` are the INSTANCE ids of the two bodies the loop-closing
+    joint connects (MuJoCo `connect` body1 / body2) and `frame_a` / `frame_b` that joint's frame
+    on each (part coordinates); the two frames must coincide. The tree solve places every body
+    through the ordinary joints; the loop solve then adjusts the non-driver joint values on the
+    loop's path until the frames meet. `drivers`: joints held at their value (the mechanism's
+    inputs); default the first movable joint on the path from the grounded side."""
+    id: str = Field(default_factory=_new_id)
+    kind: Literal["loop"] = "loop"
+    joint_a: str
+    joint_b: str
+    frame_a: Frame
+    frame_b: Frame
+    type: LoopType = "revolute"
+    drivers: list[str] | None = None
 
 
 class Assembly(BaseModel):
     instances: list[Instance] = Field(default_factory=list)
     joints: list[Joint] = Field(default_factory=list)
+    loops: list[Loop] = Field(default_factory=list)
 
 
 _SCHEMA = """
@@ -102,6 +190,8 @@ CREATE TABLE IF NOT EXISTS assembly_joints (
   PRIMARY KEY (project_id, id));
 CREATE TABLE IF NOT EXISTS assembly_auto (
   project_id TEXT, id TEXT, PRIMARY KEY (project_id, id));
+CREATE TABLE IF NOT EXISTS assembly_loops (
+  project_id TEXT, id TEXT, spec TEXT, ord INTEGER, PRIMARY KEY (project_id, id));
 CREATE TABLE IF NOT EXISTS assembly_animations (
   project_id TEXT, id TEXT, name TEXT, spec TEXT, ord INTEGER,
   PRIMARY KEY (project_id, id), UNIQUE (project_id, name));
@@ -111,7 +201,7 @@ CREATE TABLE IF NOT EXISTS assembly_animations (
 MAX_ANIMATIONS = 50
 
 _INSTANCE_FIELDS = {"part_id", "name", "transform", "fixed"}
-_JOINT_FIELDS = {"kind", "a", "b", "value", "limits"}
+_JOINT_FIELDS = {"kind", "a", "b", "value", "limits", "coupling", "design"}
 
 
 class AssemblyStore:
@@ -123,6 +213,10 @@ class AssemblyStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(_SCHEMA)
+        cols = {r[1] for r in self._db.execute("PRAGMA table_info(assembly_joints)")}
+        for col in ("coupling", "design"):          # Plan 10: added to existing databases
+            if col not in cols:
+                self._db.execute(f"ALTER TABLE assembly_joints ADD COLUMN {col} TEXT")
 
     def _next_ord(self, table: str, project_id: str) -> int:
         row = self._db.execute(f"SELECT COALESCE(MAX(ord), -1) + 1 FROM {table} WHERE project_id=?",
@@ -140,6 +234,7 @@ class AssemblyStore:
                 self._db.execute("DELETE FROM assembly_auto WHERE project_id=?", (project_id,))
                 self._db.execute("DELETE FROM assembly_animations WHERE project_id=?",
                                  (project_id,))
+                self._db.execute("DELETE FROM assembly_loops WHERE project_id=?", (project_id,))
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
@@ -161,9 +256,13 @@ class AssemblyStore:
             jrows = self._db.execute(
                 "SELECT * FROM assembly_joints WHERE project_id=? ORDER BY ord, id",
                 (project_id,)).fetchall()
+            lrows = self._db.execute(
+                "SELECT * FROM assembly_loops WHERE project_id=? ORDER BY ord, id",
+                (project_id,)).fetchall()
         instances = [self._instance(r) for r in irows]
         joints = [self._joint(r) for r in jrows]
-        return Assembly(instances=instances, joints=joints)
+        loops = [Loop.model_validate({**json.loads(r["spec"]), "id": r["id"]}) for r in lrows]
+        return Assembly(instances=instances, joints=joints, loops=loops)
 
     def get_instance(self, project_id: str, iid: str) -> Instance:
         with self._lock:
@@ -190,9 +289,13 @@ class AssemblyStore:
 
     @staticmethod
     def _joint(row: sqlite3.Row) -> Joint:
+        keys = row.keys()
+        extra = {k: json.loads(row[k]) for k in ("coupling", "design")
+                 if k in keys and row[k] is not None}
         return Joint(id=row["id"], kind=row["kind"], a=JointRef(**json.loads(row["a"])),
                      b=JointRef(**json.loads(row["b"])), value=json.loads(row["value"]),
-                     limits=json.loads(row["limits"]) if row["limits"] is not None else None)
+                     limits=json.loads(row["limits"]) if row["limits"] is not None else None,
+                     **extra)
 
     # ---- instance mutations
     def add_instance(self, project_id: str, inst: Instance, ord: int | None = None) -> Instance:
@@ -251,6 +354,12 @@ class AssemblyStore:
                              (project_id, iid))
             self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
                              (project_id, iid))
+            for r in self._db.execute("SELECT id, spec FROM assembly_loops WHERE project_id=?",
+                                      (project_id,)).fetchall():
+                spec = json.loads(r["spec"])
+                if iid in (spec.get("joint_a"), spec.get("joint_b")):
+                    self._db.execute("DELETE FROM assembly_loops WHERE project_id=? AND id=?",
+                                     (project_id, r["id"]))
         return removed
 
     # ---- Plan 9 D10: instances the core placed by itself (assembly/autoplace.py), until an
@@ -280,6 +389,7 @@ class AssemblyStore:
             used = [i for i in asm.instances if i.part_id in set(part_ids)]
             ids = {i.id for i in used}
             joints = [j for j in asm.joints if j.a.instance_id in ids or j.b.instance_id in ids]
+            loops = [lp for lp in asm.loops if lp.joint_a in ids or lp.joint_b in ids]
             orders = self.orders(project_id)
             auto = self.auto_ids(project_id)
             for i in used:
@@ -287,7 +397,8 @@ class AssemblyStore:
         return {"instances": [{**i.model_dump(mode="json"), "_ord": orders["instances"].get(i.id),
                                "_auto": i.id in auto} for i in used],
                 "joints": [{**j.model_dump(mode="json"), "_ord": orders["joints"].get(j.id)}
-                           for j in joints]}
+                           for j in joints],
+                **({"loops": [lp.model_dump(mode="json") for lp in loops]} if loops else {})}
 
     def put_back(self, project_id: str, data: dict) -> tuple[int, int]:
         """Undo of take_out: the instances (ids, places, marks), then the joints whose two ends
@@ -312,6 +423,11 @@ class AssemblyStore:
                     nj += 1
                 except Exception:  # noqa: BLE001 - its other end is gone now
                     continue
+            for raw in data.get("loops") or []:
+                try:
+                    self.add_loop(project_id, Loop.model_validate(raw))
+                except Exception:  # noqa: BLE001 - one of its bodies is gone now
+                    continue
             for iid in marked:              # after the joints (a joint clears its b side's mark)
                 self.mark_auto(project_id, iid)
         return ni, nj
@@ -324,12 +440,13 @@ class AssemblyStore:
                 raise KeyError(ref.instance_id)
         with self._lock:
             self._db.execute(
-                "INSERT INTO assembly_joints (project_id, id, kind, a, b, value, limits, ord)"
-                " VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO assembly_joints (project_id, id, kind, a, b, value, limits, ord,"
+                " coupling, design) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (project_id, joint.id, joint.kind, joint.a.model_dump_json(),
                  joint.b.model_dump_json(), json.dumps(joint.value),
                  json.dumps(joint.limits) if joint.limits is not None else None,
-                 self._next_ord("assembly_joints", project_id) if ord is None else int(ord)))
+                 self._next_ord("assembly_joints", project_id) if ord is None else int(ord),
+                 *_extras(joint)))
             # the joined (b) side is placed where it goes: no longer the core's own placement
             # (a part only joined TO keeps it: assembly_add_part may still ground it)
             self._db.execute("DELETE FROM assembly_auto WHERE project_id=? AND id=?",
@@ -350,13 +467,21 @@ class AssemblyStore:
             merged = merged.model_copy(update={"value": min(max(float(merged.value), lo), hi)})
         with self._lock:
             self._db.execute(
-                "UPDATE assembly_joints SET kind=?, a=?, b=?, value=?, limits=?"
-                " WHERE project_id=? AND id=?",
+                "UPDATE assembly_joints SET kind=?, a=?, b=?, value=?, limits=?, coupling=?,"
+                " design=? WHERE project_id=? AND id=?",
                 (merged.kind, merged.a.model_dump_json(), merged.b.model_dump_json(),
                  json.dumps(merged.value),
                  json.dumps(merged.limits) if merged.limits is not None else None,
-                 project_id, jid))
+                 *_extras(merged), project_id, jid))
         return merged
+
+    def set_values(self, project_id: str, values: dict[str, object]) -> None:
+        """Store solved joint values (loop-solved and coupled joints that follow a driver), so a
+        reader solving the stored values without the loop solve still sees the closed pose."""
+        with self._lock:
+            for jid, v in values.items():
+                self._db.execute("UPDATE assembly_joints SET value=? WHERE project_id=? AND id=?",
+                                 (json.dumps(v), project_id, jid))
 
     def delete_joint(self, project_id: str, jid: str) -> None:
         with self._lock:
@@ -364,6 +489,33 @@ class AssemblyStore:
                                    (project_id, jid))
             if cur.rowcount == 0:
                 raise KeyError(jid)
+            # a joint coupled to the removed one no longer follows anything
+            for r in self._db.execute("SELECT id, coupling FROM assembly_joints WHERE"
+                                      " project_id=? AND coupling IS NOT NULL",
+                                      (project_id,)).fetchall():
+                if (json.loads(r["coupling"]) or {}).get("partner_joint") == jid:
+                    self._db.execute("UPDATE assembly_joints SET coupling=NULL WHERE"
+                                     " project_id=? AND id=?", (project_id, r["id"]))
+
+    # ---- Plan 10: loop-closure constraints (closed chains: four-bar, Jansen, grippers)
+    def add_loop(self, project_id: str, loop: Loop, ord: int | None = None) -> Loop:
+        known = {i.id for i in self.get(project_id).instances}
+        for iid in (loop.joint_a, loop.joint_b):
+            if iid not in known:
+                raise KeyError(iid)
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO assembly_loops (project_id, id, spec, ord) VALUES (?,?,?,?)",
+                (project_id, loop.id, json.dumps(loop.model_dump(mode="json", exclude={"id"})),
+                 self._next_ord("assembly_loops", project_id) if ord is None else int(ord)))
+        return loop
+
+    def delete_loop(self, project_id: str, lid: str) -> None:
+        with self._lock:
+            cur = self._db.execute("DELETE FROM assembly_loops WHERE project_id=? AND id=?",
+                                   (project_id, lid))
+            if cur.rowcount == 0:
+                raise KeyError(lid)
 
     # ---- named animations (Plan 9 G-D): an agent's motion, kept so a view card can replay it
     def save_animation(self, project_id: str, name: str, spec: dict) -> dict:

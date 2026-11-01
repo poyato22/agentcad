@@ -13,6 +13,7 @@ dependencies = [
   "numpy>=2.0",  # study post-processing and the built-in wind (lattice-Boltzmann) solver
   "ezdxf==1.4.5",  # drawing import: DXF geometry + DIMENSION entities, parsed in a sandboxed child
   "pypdfium2==5.14.0",  # drawing import: PDF pages rasterized in a sandboxed child
+  "py-gearworks==0.0.24",  # mises.mech bevel/ring/cycloid gears, mesh phasing (Apache-2.0; 0.0.x, pinned)
 ]
 
 [project.scripts]
