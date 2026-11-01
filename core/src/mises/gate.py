@@ -10,6 +10,7 @@ from . import announce, budget
 from .approvals import ApprovalService, hash_payload
 from .events import Event, EventBus
 from .store import Store
+from .tools.names import resolve_tool_name, unknown_tool_hint
 from .tools.registry import ToolContext, ToolDef, ToolRegistry
 from .types import (ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput,
                     canonical_json, sha256_hex)
@@ -38,7 +39,9 @@ class Gate:
 
     async def call(self, run_id: str, tool_name: str, raw_input: dict, *, call_id: str,
                    workdir: Path, agent: bool = False) -> ToolOutput:
-        """`agent`: the call came straight from a model (ToolContext.agent_call)."""
+        """`agent`: the call came straight from a model (ToolContext.agent_call). A decorated
+        or bare form of a real tool's name (`mcp__mises__x`, `Mises.X`) is that tool (P11 F3)."""
+        tool_name = resolve_tool_name(tool_name, self._names()) or tool_name
         self.store.append_step(run_id, StepKind.TOOL_CALL,
                                {"call_id": call_id, "name": tool_name, "input": raw_input})
         self.events.publish(Event(type="tool_call", run_id=run_id,
@@ -60,6 +63,9 @@ class Gate:
             raise
         return out
 
+    def _names(self) -> list[str]:
+        return [t.name for t in self.registry.list()]
+
     def _error(self, run_id: str, name: str, call_id: str, e: MisesError) -> None:
         self.store.append_step(run_id, StepKind.ERROR, {"call_id": call_id, "name": name,
                                                         **e.to_dict()})
@@ -69,7 +75,12 @@ class Gate:
 
     async def _run(self, run_id: str, name: str, raw_input: dict, call_id: str,
                    workdir: Path, agent: bool = False) -> ToolOutput:
-        t = self.registry.get(name)                                              # 1
+        try:                                                                     # 1
+            t = self.registry.get(name)
+        except MisesError as e:
+            # recoverable: the model gets the closest real names and calls one of them
+            raise MisesError(ErrorCode.NOT_FOUND, e.message,
+                             hint=unknown_tool_hint(name, self._names())) from None
         try:                                                                     # 2
             args = t.input_model.model_validate(raw_input)
         except Exception as e:

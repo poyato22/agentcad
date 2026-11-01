@@ -14,6 +14,7 @@ from mcp.server import Server
 from mcp.server.context import ServerRequestContext
 from mcp.shared.exceptions import MCPError
 
+from ..tools.names import resolve_tool_name
 from ..tools.registry import ToolDef
 from ..types import ErrorCode, MisesError, SafetyClass, canonical_json
 
@@ -72,15 +73,21 @@ def build_mcp_server(runtime: Runtime) -> Server:
         # JSON-RPC request ids are only unique per client connection, so they cannot key the
         # gate's per-call dedupe; every MCP call gets a fresh call id.
         call_id = f"mcp_{uuid.uuid4().hex}"
+        # P11 F3: a decorated name is the tool it names (the Gate maps it the same way), so
+        # the internal-only check sees the real name
+        name = resolve_tool_name(params.name, [t.name for t in runtime.registry.list()]) \
+            or params.name
         try:
-            if params.name in INTERNAL_ONLY:
+            if name in INTERNAL_ONLY:
                 raise MisesError(ErrorCode.NOT_FOUND, f"unknown tool: {params.name}")
-            out = await runtime.gate.call(run_id, params.name, dict(params.arguments or {}),
+            out = await runtime.gate.call(run_id, name, dict(params.arguments or {}),
                                           call_id=call_id, workdir=runtime.workdir(run_id),
                                           agent=True)
         except MisesError as e:
+            notes = getattr(runtime, "tool_notes", {}).pop(run_id, None)
             return types.CallToolResult(
-                content=[types.TextContent(type="text", text=canonical_json(e.to_dict()))],
+                content=[types.TextContent(type="text", text=canonical_json(e.to_dict()))]
+                + [types.TextContent(type="text", text=n) for n in notes or ()],
                 is_error=True)
         # images (e.g. renders the caller should look at) go back as MCP image content beside
         # the JSON text, so a vision model such as Claude Code's sees the pixels directly
@@ -88,6 +95,10 @@ def build_mcp_server(runtime: Runtime) -> Server:
             type="text", text=canonical_json(out.model_dump(mode="json", exclude={"images"})))]
         content += [types.ImageContent(type="image", data=i.data_b64, mime_type=i.media_type)
                     for i in out.images]
+        # P11 F3: what Mises has to tell the model since its last call (e.g. the real names of
+        # a tool it called by a name Claude Code does not have), once
+        notes = getattr(runtime, "tool_notes", {}).pop(run_id, None)
+        content += [types.TextContent(type="text", text=n) for n in notes or ()]
         return types.CallToolResult(content=content, is_error=not out.ok)
 
     return Server("mises", version="0.1.0",

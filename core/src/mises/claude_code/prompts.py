@@ -32,6 +32,10 @@ _TOOL_ONLY_BASE = f"""\
 - You act only through the `mises` tools (named `mcp__mises__...`). You have no shell, no \
 file access and no web access; do not ask for them. Every call goes through the Mises gate, \
 which enforces the run's scope, budget and approvals.
+- Call a Mises tool only by its full listed name, `mcp__mises__<tool>` (e.g. \
+`mcp__mises__mirror_part_create`, never `mirror_part_create`), and only tools in your list: a \
+bare or invented name fails with "No such tool available". If one does, pick the right name \
+from your list and call it; do not stop.
 - Call `mcp__mises__mises_context_get` for the user's current selection in the Mises app, \
 the selected part's latest metrics and variables, the open Onshape document and the most \
 recent simulation.

@@ -22,6 +22,12 @@ Run through a `claude` shim on PATH. Never touches the network or any real Claud
     peek:<path>   tries to read <path>; answers "peek:denied" or "peek:read"
     rogue         an assistant tool_use of the built-in Bash tool
     agent:<type>  an assistant tool_use of the Agent tool with that subagent_type
+    bare:<name>   a tool_use of <name> it does not have (a Mises tool's bare name, an invented
+                  one): answered with its own "No such tool available" error, then text
+    sneaky:<name> the same, but the tool_result comes back without an error
+    recap?        answers with the text it was sent (a recap block shows in it)
+  `--resume <id>` with <cwd>/fake_gone_sessions listing <id>: prints Claude Code's
+  "No conversation found with session ID: <id>" to stderr and exits 1 at once
   <cwd>/fake_init.json, if present, overrides system/init: a list (the tools) or an object
   with any of "tools", "mcp_servers", "agents", and "skip": true (emit no init at all).
 """
@@ -199,6 +205,22 @@ class Session:
             self.assistant([{"type": "tool_use", "id": "toolu_9", "name": "Bash",
                              "input": {"command": "cat ~/.ssh/id_rsa"}}])
             self.result("ran bash")
+        elif text.startswith(("bare:", "sneaky:")):
+            name = text.split(":", 1)[1].strip()
+            emit({"type": "stream_event", "session_id": self.session_id,
+                  "parent_tool_use_id": None,
+                  "event": {"type": "content_block_start", "index": 0,
+                            "content_block": {"type": "tool_use", "id": "toolu_b", "name": name,
+                                              "input": {}}}})
+            self.assistant([{"type": "tool_use", "id": "toolu_b", "name": name, "input": {}}])
+            sneaky = text.startswith("sneaky:")
+            emit({"type": "user", "session_id": self.session_id, "parent_tool_use_id": None,
+                  "message": {"role": "user", "content": [
+                      {"type": "tool_result", "tool_use_id": "toolu_b", "is_error": not sneaky,
+                       "content": "ran" if sneaky else
+                       f"<tool_use_error>Error: No such tool available: {name}</tool_use_error>"}]}})
+            self.assistant([{"type": "text", "text": f"recovered from {name}"}])
+            self.result(f"recovered from {name}")
         elif text.startswith("agent:"):
             kind = text.split(":", 1)[1].strip()
             self.assistant([{"type": "tool_use", "id": "toolu_a", "name": "Agent",
@@ -239,7 +261,13 @@ async def session(argv: list[str]) -> int:
         text = content if isinstance(content, str) else "".join(
             b.get("text", "") for b in content if b.get("type") == "text")
         # the first prompt may carry a context block: the command is its last line
-        await s.turn(text.strip().splitlines()[-1] if text.strip() else "")
+        last = text.strip().splitlines()[-1] if text.strip() else ""
+        if last.startswith("recap?"):
+            s.init()
+            s.assistant([{"type": "text", "text": text}])
+            s.result(text)
+            continue
+        await s.turn(last)
 
 
 def main(argv: list[str]) -> int:
@@ -257,6 +285,11 @@ def main(argv: list[str]) -> int:
         print("Successfully logged out")
         return 0
     if "-p" in argv:
+        gone = Path.cwd() / "fake_gone_sessions"
+        sid = flag(argv, "--resume")
+        if sid and gone.exists() and sid in gone.read_text().split():
+            print(f"No conversation found with session ID: {sid}", file=sys.stderr, flush=True)
+            return 1
         return asyncio.run(session(argv))
     print(f"fake claude: unsupported args {argv}", file=sys.stderr)
     return 2

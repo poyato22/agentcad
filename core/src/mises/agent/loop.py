@@ -32,6 +32,7 @@ from ..providers.base import (Done, ModelProvider, ModelRequest, ReasoningDelta,
                               ToolCall, ToolSchema, Usage)
 from ..store import Store
 from ..tools.registry import ToolRegistry
+from ..tools.names import resolve_tool_name, unknown_tool_hint
 from ..types import (Block, ErrorCode, ImageBlock, Message, MisesError, SafetyClass, StepKind,
                      TextBlock, ToolOutput, ToolResultBlock, ToolUseBlock, canonical_json)
 from .definitions import AgentDefinition
@@ -346,8 +347,11 @@ class AgentLoop:
         if c.raw is not None:
             err = MisesError(ErrorCode.INVALID_INPUT, f"arguments for {c.name} are not valid JSON",
                              hint="send the arguments as a JSON object matching the schema")
-        elif c.name not in offered and self._registered(c.name):
-            err = MisesError(ErrorCode.NOT_FOUND, f"tool {c.name} is not available to this agent")
+        elif (real := resolve_tool_name(c.name, [t.name for t in self.registry.list()])
+              or c.name) not in offered and self._registered(real):
+            # P11 F3: a decorated name (`mcp__mises__x`) is checked as the tool it names
+            err = MisesError(ErrorCode.NOT_FOUND, f"tool {c.name} is not available to this agent",
+                             hint=unknown_tool_hint(c.name, offered))
         if err is not None:
             self.store.append_step(self.run_id, StepKind.ERROR,
                                    {"call_id": c.id, "name": c.name, **err.to_dict()})
@@ -355,6 +359,7 @@ class AgentLoop:
         else:
             self._to_gate.add(c.id)
             try:
+                # P11 F3: the Gate maps a decorated name (`mcp__mises__x`) to the tool it names
                 out = await self.gate.call(self.run_id, c.name, c.input, call_id=c.id,
                                            workdir=self.workdir, agent=True)
             except MisesError as e:

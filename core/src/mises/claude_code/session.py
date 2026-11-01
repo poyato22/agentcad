@@ -65,6 +65,20 @@ AGENT_TOOLS = frozenset({"Agent", "Task"})
 # claude, statusline-setup, claude-code-guide), denied with Agent(<type>) rules.
 BUILTIN_AGENT_TYPES = ("general-purpose", "Explore", "Plan", "claude", "statusline-setup",
                        "claude-code-guide")
+# Claude Code's own tools that act (files, shell, web, ...): a tool_use of one still fails the run
+# at once, before it could run (the init already said none is available, so one in the stream
+# means the confinement is not what Mises set up). Any other name it does not have, e.g. a Mises
+# tool's bare name or an invented one (P11 F3), Claude Code answers itself with "No such tool
+# available"; that error is the model's to recover from, so the run goes on. Should such a call
+# come back without an error, it ran after all and the run fails then.
+CLAUDE_CODE_TOOLS = frozenset({
+    "Bash", "BashOutput", "KillShell", "KillBash", "Read", "Write", "Edit", "MultiEdit",
+    "NotebookEdit", "NotebookRead", "Glob", "Grep", "LS", "WebFetch", "WebSearch", "TodoWrite",
+    "TodoRead", "Skill", "SlashCommand", "ExitPlanMode", "EnterPlanMode", "AskUserQuestion",
+    "ListMcpResourcesTool", "ReadMcpResourceTool", "Monitor", "ToolSearch", "LSP",
+    "EnterWorktree", "ExitWorktree", "TaskStop", "TaskOutput", "SendMessage"})
+# stderr of a `--resume` whose conversation Claude Code no longer has (P11 F3)
+RESUME_LOST = re.compile(r"No conversation found with session ID", re.I)
 UNVERIFIED = "Claude Code output not recognised — confinement unverified"
 STDIO_LIMIT = 50 * 1024 * 1024
 STDERR_KEEP_BYTES = 8192
@@ -168,6 +182,9 @@ class ClaudeCodeSession:
         self._failed = False
         self._closed = False
         self._cost_seen = 0.0          # this process's last total_cost_usd (cumulative)
+        self._unknown: dict[str, str] = {}   # tool_use id -> a name Claude Code does not have
+        self.prompt_recorded = False   # the last prompt's user message step was written
+        self.resume_lost = False       # --resume found no conversation (P11 F3)
         runtime.register_cancel_hook(run_id, self.cancel)
 
     @property
@@ -302,11 +319,15 @@ class ClaudeCodeSession:
 
     async def prompt(self, text: str, *, context: dict | None = None,
                      images: list[tuple[str, str]] | None = None,
-                     log: dict | None = None) -> str:
+                     log: dict | None = None, seed: str | None = None,
+                     record: bool = True) -> str:
         """Send one user message; returns the turn's assistant text when `result` arrives.
         `context` (the Mises UI context) is prepended as a data block to the first prompt only.
         `images` ((media_type, base64) pairs, e.g. a sketch photo) follow the text as image
-        content blocks."""
+        content blocks. `seed` (a recap of the thread for a fresh session) goes before the text
+        to Claude Code only; `record=False` skips the user message step (already written by
+        the attempt this one retries)."""
+        self.prompt_recorded = False
         proc = self._proc
         if proc is None or proc.returncode is not None or self._closed or self._aborted:
             raise MisesError(ErrorCode.INVALID_INPUT, "Claude Code session is not running",
@@ -329,10 +350,10 @@ class ClaudeCodeSession:
             self._finish("failed")
             raise
         self._reopen()
-        content = text
+        content = text if seed is None else f"{seed}\n{text}"
         body: dict = {"role": "user", "text": text}
         if not self._first_sent and context is not None:
-            content = context_block(context) + "\n" + text
+            content = context_block(context) + "\n" + content
             body["context"] = context
         self._first_sent = True
         message_content: str | list[dict] = content
@@ -343,7 +364,9 @@ class ClaudeCodeSession:
                 for m, d in images]
         if log:          # the stored step shows the user's own words (e.g. a feedback note)
             body.update(log)
-        self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, body)
+        if record:
+            self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, body)
+            self.prompt_recorded = True
         self._turn = asyncio.get_running_loop().create_future()
         self._turn_text = []
         line = json.dumps({"type": "user", "message": {"role": "user", "content": message_content},
@@ -360,6 +383,17 @@ class ClaudeCodeSession:
                 await asyncio.shield(self.cancel())
             raise
 
+    async def lost_resume(self) -> bool:
+        """Whether this `--resume` session died because Claude Code has no such conversation
+        (P11 F3). Waits for an exited process's readers, so the answer is in."""
+        if not self.resumed or self._init_ok or self._proc is None:
+            return False
+        if self._proc.returncode is not None and self._readers:
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(asyncio.shield(
+                    asyncio.gather(*self._readers, return_exceptions=True)), 3)
+        return self.resume_lost
+
     async def cancel(self) -> None:
         if self._cancelling or self._closed:
             return
@@ -375,7 +409,8 @@ class ClaudeCodeSession:
         mid_turn = self._turn is not None and not self._turn.done()
         await self._shutdown(kill=self._aborted or self._cancelling or mid_turn)
         self._fail_turn(MisesError(ErrorCode.CANCELLED, "session closed"))
-        self._finish("failed" if self._failed else "cancelled" if mid_turn else "done")
+        if not self.resume_lost:     # a lost resume hands the run on to a fresh session
+            self._finish("failed" if self._failed else "cancelled" if mid_turn else "done")
         self._closed = True
         self.runtime.unregister_cancel_hook(self.run_id)
 
@@ -501,6 +536,17 @@ class ClaudeCodeSession:
         (self.workdir / MCP_FILE).unlink(missing_ok=True)
         if self._stopping or self._aborted:
             return
+        if self.resumed and not self._init_ok and RESUME_LOST.search(self.stderr_tail):
+            # Claude Code no longer has this conversation (its own history was cleared or
+            # expired): not a failure, the runtime starts a fresh session seeded with a recap
+            self.resume_lost = True
+            self.runtime.store.append_step(self.run_id, StepKind.DECISION, {
+                "claude_code": "resume_lost", "session_id": self.session_id,
+                "note": "Claude Code no longer has this conversation; Mises starts a fresh "
+                        "session with a recap of the thread"})
+            self._fail_turn(MisesError(ErrorCode.NOT_FOUND, "Claude Code session not found",
+                                       hint="start a fresh session"))
+            return
         turn_open = self._turn is not None and not self._turn.done()
         msg = (f"Claude Code exited (code {rc}) before finishing the turn" if turn_open
                else f"Claude Code exited (code {rc})")
@@ -564,10 +610,11 @@ class ClaudeCodeSession:
                           error=msg.get("error"), error_status=msg.get("error_status"))
 
     def _tool_allowed(self, name: Any, tool_input: Any) -> str | None:
-        """None if a tool_use is within the confinement, else what it tried to use."""
+        """None if a tool_use is within the confinement, else what it tried to use. A name
+        Claude Code does not have (`_absent`) is within it: Claude Code refuses it itself."""
         if not isinstance(name, str):
             return "a tool without a name"
-        if name.startswith(MISES_TOOL_PREFIX) or name == "EndConversation":
+        if name.startswith(MISES_TOOL_PREFIX) or name == "EndConversation" or self._absent(name):
             return None
         if name in AGENT_TOOLS:
             kind = tool_input.get("subagent_type") if isinstance(tool_input, dict) else None
@@ -575,6 +622,39 @@ class ClaudeCodeSession:
                 return None
             return f"the Agent tool with subagent type {kind!r}"
         return f"the tool {name!r}"
+
+    def _absent(self, name: str) -> bool:
+        """A tool name Claude Code does not have and cannot run (P11 F3): not one of its own
+        tools, not another MCP server's, not in the init's tool list — a Mises tool's bare
+        name (`mirror_part_create`) or an invented one (`loads_impact_placeholder`, or
+        `mcp__mises__` + an invented name)."""
+        if name in ALLOWED_BUILTINS or name in CLAUDE_CODE_TOOLS:
+            return False
+        if name.startswith("mcp__") and not name.startswith(MISES_TOOL_PREFIX):
+            return False
+        return name not in ((self.init_info or {}).get("tools") or ())
+
+    def _note_unknown(self, call_id: Any, name: str) -> None:
+        """A call of a tool Claude Code does not have: noted once (a decision step with the
+        closest real tools). Claude Code's own "No such tool" error goes back to the model,
+        and the run's next Mises tool result reminds it of the real names."""
+        key = str(call_id or name)
+        if key in self._unknown:
+            return
+        self._unknown[key] = name
+        from ..tools.names import closest_tools, resolve_tool_name
+        known = [t.name for t in self.runtime.registry.list() if t.name not in INTERNAL_ONLY]
+        real = resolve_tool_name(name, known)
+        full = [MISES_TOOL_PREFIX + t for t in ([real] if real else closest_tools(name, known))]
+        self.runtime.store.append_step(self.run_id, StepKind.DECISION, {
+            "claude_code": "unknown_tool", "name": name, "closest": full, "source": SOURCE})
+        tip = (f"`{full[0]}` (Mises tools are called by their full mcp__mises__ name)" if real
+               else ", ".join(f"`{t}`" for t in full) or "one of the tools in your list")
+        notes = getattr(self.runtime, "tool_notes", None)
+        if isinstance(notes, dict):
+            notes.setdefault(self.run_id, []).append(
+                f"Mises note: your call to {name!r} failed: there is no tool by that name. Call "
+                f"only the tools you were given, by their exact names; you likely meant {tip}.")
 
     def _abort(self, message: str) -> None:
         self._aborted = True
@@ -594,8 +674,10 @@ class ClaudeCodeSession:
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 # its input streams later; only the name can be checked here
                 name = block.get("name")
-                if not (isinstance(name, str) and (name.startswith(MISES_TOOL_PREFIX)
-                                                   or name in ALLOWED_BUILTINS)):
+                if isinstance(name, str) and self._absent(name):
+                    self._note_unknown(block.get("id"), name)
+                elif not (isinstance(name, str) and (name.startswith(MISES_TOOL_PREFIX)
+                                                     or name in ALLOWED_BUILTINS)):
                     self._abort(f"Claude Code tried to use {self._tool_allowed(name, None)}, "
                                 "outside the Mises tools")
             return
@@ -627,6 +709,9 @@ class ClaudeCodeSession:
                 if why is not None:
                     self._abort(f"Claude Code tried to use {why}, outside the Mises tools")
                     return
+                if self._absent(block["name"]):
+                    self._note_unknown(block.get("id"), block["name"])
+                    continue
                 # the Gate records mises tool calls as Steps; this is only for the live UI
                 self._publish("tool_call", call_id=block.get("id"), name=block.get("name"),
                               source=SOURCE)
@@ -646,6 +731,14 @@ class ClaudeCodeSession:
         content = (msg.get("message") or {}).get("content")
         for block in content if isinstance(content, list) else []:
             if isinstance(block, dict) and block.get("type") == "tool_result":
+                gone = self._unknown.get(str(block.get("tool_use_id")))
+                if gone is not None and not block.get("is_error", False):
+                    # Claude Code ran a tool it said it did not have: confinement unverified
+                    self._abort(f"{UNVERIFIED}: the tool {gone!r} ran although Claude Code "
+                                "did not list it")
+                    return
+                if gone is not None:
+                    continue
                 self._publish("tool_result", call_id=block.get("tool_use_id"),
                               ok=not block.get("is_error", False), source=SOURCE)
 

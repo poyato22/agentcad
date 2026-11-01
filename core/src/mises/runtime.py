@@ -309,6 +309,9 @@ class Runtime:
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
         self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
+        # P11 F3: run id -> notes for the model, sent with its next Mises tool result (a call
+        # of a tool Claude Code does not have: the real names it likely meant)
+        self.tool_notes: dict[str, list[str]] = {}
         # FWC M5: the last turn-end engineering warning each run got, so an unchanged pipeline
         # (a Q&A turn that changed nothing) does not repeat it every turn
         self._warned: dict[str, str] = {}
@@ -1446,7 +1449,8 @@ class Runtime:
             context = self._claude_context(rid) if first else None
             if first and st.first_context is not None:
                 context = {**(context or {}), **st.first_context}
-            final = await st.session.prompt(text, context=context, images=images, log=log)
+            final = await self._prompt_claude(rid, st, text, context=context, images=images,
+                                              log=log)
             result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
@@ -1460,6 +1464,28 @@ class Runtime:
             # a Claude Code turn ended but the session stays open for the next message
             self.activity_tracker(rid).set("idle", "waiting for your next message")
         return result
+
+    async def _prompt_claude(self, rid: str, st: _ClaudeRun, text: str, **kw) -> str:
+        """One turn of a Claude Code run. When its `--resume` finds no conversation any more
+        (P11 F3: "No conversation found with session ID"), the run goes on in a fresh session
+        seeded with a recap of the thread instead of failing."""
+        s = st.session
+        assert s is not None
+        try:
+            return await s.prompt(text, **kw)
+        except MisesError:
+            if not await s.lost_resume():
+                raise
+        from .claude_code.recap import thread_recap
+        recorded = s.prompt_recorded
+        await s.close()
+        url, token = await self._mcp()
+        info, auth = await self._claude_ready()
+        await self._spawn_claude(rid, st, self.store.get_run(rid).model, info, auth, url, token,
+                                 resume=None)
+        assert st.session is not None
+        seed = thread_recap(self.store, rid, drop_last_user=text if recorded else None)
+        return await st.session.prompt(text, **kw, seed=seed, record=not recorded)
 
     def _finish_checks(self, run_id: str, result: RunResult | None = None) -> None:
         """A turn ended (end_turn): the finish checks, as ONE warning step. When the turn
