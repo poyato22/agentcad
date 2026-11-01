@@ -7,7 +7,7 @@
 // and, only when the agents' check found something, a small status chip (interference, a joint that
 // can't apply). The modes are the part viewer's (ui/viewer/modes) on the instances' poses.
 import type { JSX } from "preact";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import * as THREE from "three";
 import type { ModeHost } from "../viewer/scene";
 import { restBox, type ModesController } from "../viewer/modes/controller";
@@ -56,9 +56,21 @@ export interface ViewerPillProps {
   /** The click tool on (Select when absent). */
   tool?: "select" | "measure" | "comment";
   onTool?(t: "select" | "measure" | "comment"): void;
+  /** Plan 10 E5: the build's saved animations (oldest first); more than one: a menu beside Play. */
+  animations?: readonly string[];
+  onPlayAnimation?(i: number): void;
 }
 
-export function ViewerPill({ host, modesCtl: ctl, modes, onModes, animate, issues, onPlay, canPlay, tool = "select", onTool }: ViewerPillProps): JSX.Element {
+export function ViewerPill({ host, modesCtl: ctl, modes, onModes, animate, issues, onPlay, canPlay, tool = "select", onTool, animations = [], onPlayAnimation }: ViewerPillProps): JSX.Element {
+  const [animMenu, setAnimMenu] = useState(false);
+  const menuRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!animMenu) return;
+    menuRef.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    const away = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setAnimMenu(false); };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [animMenu]);
   const set = (patch: Partial<ModesState>, glide = false) => { animate.current = glide; onModes({ ...modes, ...patch }); };
   const sec = modes.section;
   const xrayOn = modes.xray.opacity < 0.999;
@@ -81,6 +93,30 @@ export function ViewerPill({ host, modesCtl: ctl, modes, onModes, animate, issue
           title="Watch the assembly full-window: the agent's latest animation, else an exploded tour" onClick={onPlay}>
           <span aria-hidden="true">▶</span> Play
         </button>
+        {animations.length > 1 && onPlayAnimation && (
+          <span class="pill-anim" ref={menuRef} onKeyDown={(e) => {
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setAnimMenu(false); }
+            const items = [...(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
+            const i = items.indexOf(document.activeElement as HTMLElement);
+            if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+            if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+          }}>
+            <button type="button" class="pill-btn pill-more" data-testid="pill-animations" aria-haspopup="menu" aria-expanded={animMenu}
+              aria-label="The build's saved animations" title="Pick a saved animation" onClick={() => setAnimMenu(!animMenu)}>▾</button>
+            {animMenu && (
+              <span class="pill-menu" role="menu" aria-label="Saved animations" data-testid="animation-menu">
+                {[...animations].reverse().map((name, k) => {
+                  const i = animations.length - 1 - k;
+                  return (
+                    <button key={i} type="button" role="menuitem" class="pill-menu-item" onClick={() => { setAnimMenu(false); onPlayAnimation(i); }}>
+                      {name}{k === 0 ? <span class="dim"> · newest</span> : null}
+                    </button>
+                  );
+                })}
+              </span>
+            )}
+          </span>
+        )}
         <span class="pill-sep" aria-hidden="true" />
         <button type="button" class="pill-btn" aria-pressed={sec.on} data-testid="pill-section" disabled={!box}
           title="Cut the assembly with a plane" onClick={() => set({ section: sec.on ? { ...sec, on: false } : { on: true, normal: towardCamera(host, sec.normal), at: null } })}>

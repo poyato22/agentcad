@@ -69,6 +69,30 @@ test("the robot explodes coherently and the camera keeps it framed (E4)", async 
   await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-explode", "off");
 });
 
+test("Play plays the build's newest saved animation after a reload; a menu lists them all (E5)", async ({ page, fake }) => {
+  // saved like the real route answers (core/tests/fixtures/ui/motion/motion_animations.json)
+  const anim = (id: string, name: string, joint: string, to: number) => ({ id, name, steps: [{ joint_id: joint, from: 0, to, duration_s: 1.0 }, { joint_id: joint, from: to, to: 0, duration_s: 1.0 }], loops: 1, duration_s: 2.0 });
+  const sc = robot();
+  await fake.reset({ ...sc, assembly: { ...(sc["assembly"] as object), animations: { [PROJECT]: [anim("a1", "Wave the arm", "j_elbow", 60), anim("a2", "Open the gripper", "j_finger_l", 9)] } } } as never);
+  await openRobot(page);
+  await expect(page.getByTestId("pill-animations")).toBeVisible();
+  await page.getByTestId("pill-play").click();
+  const imm = page.getByTestId("assembly-immersive");
+  await expect(imm).toHaveAttribute("data-mode", "animation");
+  await expect(imm).toContainText("Open the gripper");                 // the newest
+  await page.keyboard.press("Escape");
+  await expect(imm).toHaveCount(0);
+  await page.getByTestId("pill-animations").click();
+  const menu = page.getByTestId("animation-menu");
+  await expect(menu.getByRole("menuitem")).toHaveText(["Open the gripper · newest", "Wave the arm"]);
+  // the same button closes it again (E7)
+  await page.getByTestId("pill-animations").click();
+  await expect(menu).toHaveCount(0);
+  await page.getByTestId("pill-animations").click();
+  await menu.getByRole("menuitem", { name: "Wave the arm" }).click();
+  await expect(page.getByTestId("assembly-immersive")).toContainText("Wave the arm");
+});
+
 async function at(page: Page, p: [number, number, number]): Promise<{ x: number; y: number }> {
   return page.evaluate((q) => (window as unknown as { __misesAssembly: { project(p: number[]): { x: number; y: number } } }).__misesAssembly.project(q), p);
 }

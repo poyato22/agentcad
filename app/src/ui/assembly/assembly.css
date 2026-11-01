@@ -135,3 +135,18 @@
   border: 1px solid var(--line2); border-radius: var(--r-surface); box-shadow: var(--shadow);
 }
 .asm .vx-panel.asm-measure { top: 58px; }
+
+/* Plan 10 E5: the saved animations beside Play (more than one); the menu opens upward */
+.pill-anim { position: relative; display: inline-flex; }
+.pill-more { padding: 0 6px; margin-left: -4px; }
+.pill-menu {
+  position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 8; min-width: 200px; max-width: 320px; padding: 4px;
+  display: flex; flex-direction: column; gap: 1px;
+  background: var(--surface); -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line2); border-radius: var(--r-surface); box-shadow: var(--shadow);
+}
+.pill-menu-item {
+  display: block; width: 100%; padding: 6px 10px; text-align: left; font: inherit; color: var(--ink); background: transparent;
+  border: 0; border-radius: var(--r-btn); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pill-menu-item:hover, .pill-menu-item:focus-visible { background: var(--raised, var(--paper2)); outline: none; }

@@ -45,16 +45,20 @@ import "./assembly.css";
 /** The full window frames its model at about 70% of the limiting side. */
 const IMMERSIVE_MARGIN = 1.4;
 
-/** The build's newest saved animation (core G-D route), parsed as untrusted data. */
-async function savedAnimation(pid: string): Promise<{ name: string; steps: AnimateStep[]; loops: number } | null> {
+export interface SavedAnimation { name: string; steps: AnimateStep[]; loops: number }
+
+/** The build's saved animations (core G-D route), oldest first, parsed as untrusted data. */
+async function savedAnimations(pid: string): Promise<SavedAnimation[]> {
   try {
     const all = await actions.client().assemblyAnimations(pid);
-    for (const a of [...all].reverse()) {
-      const steps = parseAnimateSteps(a.steps);
-      if (steps.length) return { name: a.name.slice(0, 60) || "Animation", steps, loops: Math.min(10, Math.max(1, Math.floor(a.loops))) };
-    }
-  } catch { /* an older core: no saved animations */ }
-  return null;
+    return all.map((a) => ({ name: a.name.replace(/\s+/g, " ").trim().slice(0, 60) || "Animation", steps: parseAnimateSteps(a.steps), loops: Math.min(10, Math.max(1, Math.floor(a.loops))) }))
+      .filter((a) => a.steps.length > 0);
+  } catch { return []; /* an older core: no saved animations */ }
+}
+
+/** The build's newest saved animation. */
+async function savedAnimation(pid: string): Promise<SavedAnimation | null> {
+  return (await savedAnimations(pid)).at(-1) ?? null;
 }
 
 /** One per app: opening a part and coming back keeps the build loaded. */
@@ -275,14 +279,34 @@ export function AssemblyView(): JSX.Element {
   const orbiter = useRef<Orbiter | null>(null);
   /** The modes before the full window opened (they come back on close). */
   const beforeImm = useRef<ModesState | null>(null);
+  // E5: the build's saved animations, read when it opens and again when an agent makes one
+  const [saved, setSaved] = useState<SavedAnimation[]>([]);
+  const pidNow = ctl.projectId.value;
+  const [animTick, setAnimTick] = useState(0);
+  useEffect(() => onCoreEvent((ev) => { if (ev.type === "assembly_animate" || ev.type === "assembly_animation_saved") setAnimTick((n) => n + 1); }), []);
+  useEffect(() => {
+    setSaved([]);
+    if (!pidNow) return;
+    let on = true;
+    try { actions.client(); } catch { return; }
+    void savedAnimations(pidNow).then((list) => { if (on) setSaved(list); });
+    return () => { on = false; };
+  }, [pidNow, animTick, data !== null]);
+  const usable = (steps: readonly { joint_id: string }[]) => steps.some((s) => ctl.joint(s.joint_id) !== null);
+  const playable = saved.filter((a) => usable(a.steps));
+  function playSaved(a: SavedAnimation): void {
+    immersive.value = { mode: "animation", steps: a.steps, loop: a.loops > 1, title: a.name, caption: "" };
+  }
   function play(): void {
     const pid = ctl.projectId.peek();
     const spec = latestAnimation(pid);
-    const usable = (steps: readonly { joint_id: string }[]) => steps.some((s) => ctl.joint(s.joint_id) !== null);
     if (spec && usable(spec.steps)) {
       immersive.value = { mode: "animation", steps: spec.steps, loop: spec.loops > 1, title: "The agent's animation", caption: "" };
       return;
     }
+    // the newest saved one (it survives a reload); the orbit tour only when there is none
+    const newest = playable.at(-1);
+    if (newest) { playSaved(newest); return; }
     // after a reload no live animation is known: the build's newest saved one, else the tour
     immersive.value = { mode: "tour" };
     if (!pid) return;
@@ -438,14 +462,8 @@ export function AssemblyView(): JSX.Element {
   useEffect(() => { if (!note) return; const t = setTimeout(() => setNote(null), 6000); return () => clearTimeout(t); }, [note]);
 
   // Plan 10 tools (Measure, Comment) and the overlay marks: laid-out names, the offset, picks, pins
-  const [room, setRoom] = useState({ w: 1, h: 1, x0: 0 });
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => { const r = host.getBoundingClientRect(); setRoom({ w: r.width, h: r.height, x0: insets.left }); });
-    ro.observe(host);
-    return () => ro.disconnect();
-  }, [insets.left]);
+  // the sheet's room for the comment box (read as it renders; the box re-renders on each click)
+  const room = { w: hostRef.current?.clientWidth || 1, h: hostRef.current?.clientHeight || 1, x0: insets.left };
   const tools = useAssemblyTools(sceneRef.current, ctl, room);
   toolsRef.current = tools;
   marksRef.current = () => {
@@ -523,7 +541,8 @@ export function AssemblyView(): JSX.Element {
           <ImmersiveBar imm={imm} ctl={ctl} host={modeHost} onClose={closeImmersive} />
         ) : (
           <ViewerPill host={modeHost} modesCtl={modesCtl} modes={assemblyModes.value} onModes={(m) => { assemblyModes.value = m; }} animate={animate}
-            issues={issues} onPlay={play} canPlay={count > 0} tool={tools.tool} onTool={(t) => { asmTool.value = t; }} />
+            issues={issues} onPlay={play} canPlay={count > 0} tool={tools.tool} onTool={(t) => { asmTool.value = t; }}
+            animations={playable.map((a) => a.name)} onPlayAnimation={(i) => { const a = playable[i]; if (a) playSaved(a); }} />
         )}
       </div>
     </div>
