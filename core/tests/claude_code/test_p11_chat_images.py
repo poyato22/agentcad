@@ -36,8 +36,8 @@ def _b64(raw: bytes) -> str:
 
 
 def test_images_are_shrunk_under_the_limits_and_kept_under_the_build(tmp_path):
-    big = _img("PNG", (3000, 1500), noise=True)                  # several MB of noise
-    blocks, refs = chat_images.store(tmp_path, "b1", [("image/png", _b64(big)),
+    big = _img("JPEG", (3000, 1500), noise=True)                 # 3000 px of noise, MBs
+    blocks, refs = chat_images.store(tmp_path, "b1", [("image/jpeg", _b64(big)),
                                                       ("image/webp", _b64(_img("WEBP")))])
     assert [r["media_type"] for r in refs] == ["image/jpeg", "image/jpeg"]   # WebP is lossy
     assert refs[0]["width"] <= 2048 and refs[0]["bytes"] < 1_000_000
@@ -48,6 +48,17 @@ def test_images_are_shrunk_under_the_limits_and_kept_under_the_build(tmp_path):
     assert base64.b64decode(blocks[0][1]) == p.read_bytes()
     assert chat_images.path_of(tmp_path, "other", refs[0]["id"]) is None
     assert chat_images.path_of(tmp_path, "b1", "../../etc/passwd") is None
+
+
+def test_a_purged_builds_chat_images_go_with_it(tmp_path):
+    """Fix round 1: emptying the trash removes the build's chat images (only those)."""
+    _b, refs = chat_images.store(tmp_path, "b1", [("image/png", _b64(_img()))])
+    chat_images.store(tmp_path, "b2", [("image/png", _b64(_img(size=(30, 20))))])
+    assert chat_images.forget_build(tmp_path, "b1") == 1
+    assert chat_images.path_of(tmp_path, "b1", refs[0]["id"]) is None
+    assert not (tmp_path / "chat_images" / "b1").exists()
+    assert (tmp_path / "chat_images" / "b2").is_dir()
+    assert chat_images.forget_build(tmp_path, "nope") == 0
 
 
 @pytest.mark.parametrize("images, why", [
@@ -94,4 +105,4 @@ async def test_a_message_with_an_image_reaches_claude_code_as_an_image_block(
             assert (await c.get(f"/projects/{pid}/chat-images/{'0' * 24}")).status_code == 404
             too_many = await c.post(f"/runs/{rid}/message", json={
                 "text": "x", "images": [{"media_type": "image/png", "data_b64": _b64(png)}] * 6})
-            assert too_many.status_code == 400 and "at most 5" in too_many.text
+            assert too_many.status_code == 422          # fix round 1: capped at the schema

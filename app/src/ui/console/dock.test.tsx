@@ -14,6 +14,7 @@ import { liveJobs, onJobEvent, resetJobs } from "../../state/jobs";
 import { bindClient, resetStore, runs, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
+import { HOVER_INTENT_MS } from "./Dock";
 import { resetOffListRuns } from "./derived";
 import { DEFAULT_LAYOUT, dockLayout, LAYOUT_KEY, resetDockLayout, setDockLayout } from "./dockLayout";
 import { message, resetIds, run, step, toolCall } from "./testSteps";
@@ -138,25 +139,41 @@ describe("agent dock: the Conversation over View | Simulations", () => {
   it("hovering View or Simulations widens it to ~90%, leaving the row restores 50/50 (P11 F2)", async () => {
     mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid")]);
     await frame();
+    const rest = async () => act(async () => { await new Promise((r) => setTimeout(r, HOVER_INTENT_MS + 30)); });
     const row = document.querySelector("[data-dock-row]") as HTMLElement;
     fireEvent.pointerEnter(section("view"));
     await frame();
+    // fix round 1: a passing pointer does not widen it; resting on it does
+    expect(row.hasAttribute("data-expand")).toBe(false);
+    await rest();
     expect(row.getAttribute("data-expand")).toBe("view");
     expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["9", "1"]);
     expect(section("sim").hasAttribute("data-shrunk")).toBe(true);
     fireEvent.pointerEnter(section("sim"));
-    await frame();
+    await rest();
     expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["1", "9"]);
     expect(section("view").hasAttribute("data-shrunk")).toBe(true);
     fireEvent.pointerLeave(row);
     await frame();
     expect(row.hasAttribute("data-expand")).toBe(false);
     expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["1", "1"]);
+    // a sweep across the row (enter, then leave before the intent) widens nothing
+    fireEvent.pointerEnter(section("view"));
+    fireEvent.pointerLeave(row);
+    await rest();
+    expect(row.hasAttribute("data-expand")).toBe(false);
+    // keyboard focus inside a half widens it at once (fix round 1)
+    (section("sim").querySelector(".dock-t") as HTMLElement).focus();
+    await frame();
+    expect(row.getAttribute("data-expand")).toBe("sim");
+    (section("text").querySelector("textarea") as HTMLElement).focus();
+    await frame();
+    expect(row.hasAttribute("data-expand")).toBe(false);
     // one half closed: the other fills the row and hover does nothing
     fireEvent.click(within(section("sim")).getByRole("button", { name: /^Simulations/ }));
     await frame();
     fireEvent.pointerEnter(section("view"));
-    await frame();
+    await rest();
     expect(row.hasAttribute("data-expand")).toBe(false);
     expect(section("sim").tagName).toBe("BUTTON");
   });

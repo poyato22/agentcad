@@ -37,6 +37,8 @@ import { ViewStream } from "./ViewStream";
 import "./dock.css";
 
 const TITLE: Record<StreamKind, string> = { view: "View", sim: "Simulations", text: "Conversation" };
+/** How long the pointer rests on a half before it widens (fix round 1). */
+export const HOVER_INTENT_MS = 120;
 
 export function Dock(): JSX.Element {
   useEffect(() => retainThreadFrames(), []);
@@ -69,11 +71,21 @@ export function Dock(): JSX.Element {
   const both = row.length === 2;          // hover widens a half only while both are open
   const grow = rowGrow(layout, hover);
   useEffect(() => { if (!both) setHover(null); }, [both]);
+  // fix round 1: a short hover intent (a pointer sweeping across the row does not flash), and
+  // keyboard focus inside a half widens it too
+  const intent = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearIntent = () => { if (intent.current !== null) { clearTimeout(intent.current); intent.current = null; } };
+  useEffect(() => clearIntent, []);
+  const hoverSoon = (s: StreamKind) => {
+    clearIntent();
+    intent.current = setTimeout(() => { intent.current = null; setHover(s); }, HOVER_INTENT_MS);
+  };
   const simCount = tree.sim.length + extras.length;
   const rowFolded = row.length === 0;
   const split = !layout.collapsed.text && !rowFolded;
   const half = (s: "view" | "sim") => ({
-    grow: grow[s], shrunk: both && hover !== null && hover !== s, onEnter: both ? () => setHover(s) : undefined,
+    grow: grow[s], shrunk: both && hover !== null && hover !== s,
+    onEnter: both ? () => hoverSoon(s) : undefined, onFocusIn: both ? () => { clearIntent(); setHover(s); } : undefined,
   });
   return (
     <div class="dock" data-dock data-layout="stack" data-cols={open.length} data-text-collapsed={layout.collapsed.text ? "" : undefined}>
@@ -86,7 +98,16 @@ export function Dock(): JSX.Element {
         {split && <SplitBar stack={stack} />}
         <div class="dock-row" data-dock-row data-expand={both && hover ? hover : undefined} data-folded={rowFolded ? "" : undefined}
           style={split ? { flex: `${Math.round((1 - layout.split) * 1000) / 1000} 1 0px` } : undefined}
-          onPointerLeave={() => setHover(null)}>
+          onPointerLeave={(e) => {
+            clearIntent();
+            // keyboard focus still inside the row keeps its half wide
+            const row = e.currentTarget as HTMLElement;
+            if (!row.contains(document.activeElement)) setHover(null);
+          }}
+          onFocusOut={(e) => {
+            const row = e.currentTarget as HTMLElement;
+            if (!row.contains(e.relatedTarget as Node | null) && !row.matches(":hover")) setHover(null);
+          }}>
           <Column stream="view" runId={buildKey} keys={viewKeys} count={tree.view.length} {...half("view")}>
             <ViewStream entries={tree.view} />
           </Column>
@@ -102,10 +123,10 @@ export function Dock(): JSX.Element {
 
 /** One stream, or its slim tab while closed: the Conversation's is a bar at the top, View's and
  *  Simulations' a vertical tab in the row (laid flat when both are closed). */
-function Column({ stream, runId, keys, count, running = 0, head, foot, grow, shrunk = false, flex, onEnter, children }: {
+function Column({ stream, runId, keys, count, running = 0, head, foot, grow, shrunk = false, flex, onEnter, onFocusIn, children }: {
   stream: StreamKind; runId: string | null; keys: readonly string[]; count: number | null; running?: number;
   head?: ComponentChildren; foot?: ComponentChildren; grow?: number; shrunk?: boolean; flex?: number;
-  onEnter?: () => void; children: ComponentChildren;
+  onEnter?: () => void; onFocusIn?: () => void; children: ComponentChildren;
 }): JSX.Element {
   const layout = dockLayout.value;
   const collapsed = layout.collapsed[stream];
@@ -128,7 +149,7 @@ function Column({ stream, runId, keys, count, running = 0, head, foot, grow, shr
   const style = stream === "text" ? (flex !== undefined ? { flex: `${flex} 1 0px` } : undefined) : { flexGrow: String(grow ?? 1) };
   return (
     <section class="dock-s" data-stream={stream} aria-label={title} style={style} data-grow={grow}
-      data-shrunk={shrunk ? "" : undefined} onPointerEnter={onEnter}>
+      data-shrunk={shrunk ? "" : undefined} onPointerEnter={onEnter} onFocusIn={onFocusIn}>
       <header class="dock-h">
         <button type="button" class="dock-t" aria-expanded={true} aria-controls={`dock-b-${stream}`} aria-disabled={last ? "true" : undefined}
           onClick={toggle} title={last ? `${title} (the last open stream stays open)` : `Close ${title.toLowerCase()}`}>

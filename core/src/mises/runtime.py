@@ -481,6 +481,7 @@ class Runtime:
             self._runs.pop(run_id, None)
             self._external.discard(run_id)
             self.lead_queues.pop(run_id, None)
+            self.tool_notes.pop(run_id, None)       # P11 fix round 1: undelivered notes go too
             browser_images.forget(self.home, self.snapshots.ids_for_run(run_id))
             projects_mod.delete_run_renders(self.home, run_id)
             self.store.delete_run(run_id)
@@ -513,6 +514,8 @@ class Runtime:
                                        busy=self._busy_for_trash, only=only,
                                        concepts=self.concepts)
         for pid in out["purged"]:
+            from . import chat_images
+            chat_images.forget_build(self.home, pid)   # P11 fix round 1: its chat images
             rid = self._ui_runs.pop(pid, None)
             if rid is not None and rid in self._external:
                 self.finish_external_run(rid, "done")
@@ -1494,6 +1497,7 @@ class Runtime:
             result = RunResult(final_text="", messages=[], stop_reason=stop, error=e.message)
         finally:
             self.parallel.release(rid)
+            self.tool_notes.pop(rid, None)      # fix round 1: a note is for its own turn
         st.result = result
         if result.stop_reason == "end_turn" and not st.cancel_requested:
             # Plan 10 C3 engineering gate + C1 E33 assembly review: one warning step
@@ -1524,6 +1528,8 @@ class Runtime:
         # level then goes over the control protocol); that is not a recovery. Every attempt,
         # a restarted session too, re-applies the turn's effort (prompt `effort`).
         effort_retry = bool(kw.pop("first", False))
+        # the turn's first step: what it already did is told to a restarted session (I2)
+        turn_from = self._last_step_id(rid)
         while True:
             s = st.session
             assert s is not None
@@ -1553,21 +1559,84 @@ class Runtime:
             keep = None if lost or not s._init_ok else s.session_id
             s.handed_on = True
             await s.close()
+            # I2 (fix round 1): nothing of the dead session may still act: its pending
+            # approval cards are cancelled (an approval now could only run a stale call) and
+            # its budget reservations released, before anything new starts
+            self.approvals.cancel_run(rid)
+            with contextlib.suppress(Exception):
+                self.store.release_run_reservations(rid)
             if not lost:            # a lost conversation needs no wait, a hiccup does
-                await asyncio.sleep(self.CLAUDE_RECOVERY_BACKOFF_S * 2 ** len(tried))
+                await self._recovery_wait(st, self.CLAUDE_RECOVERY_BACKOFF_S * 2 ** len(tried))
+            self._stop_if_cancelled(st)          # I1: Stop during the backoff ends the turn
             url, token = await self._mcp()
             info, auth = await self._claude_ready()
             await self._spawn_claude(rid, st, self.store.get_run(rid).model, info, auth, url,
                                      token, resume=keep)
+            if st.cancel_requested:              # I1: Stop while the session restarted
+                st.session.handed_on = True
+                await st.session.close()
+                self._stop_if_cancelled(st)
             action = ("resumed the session" if keep else
                       "started a fresh session with a recap of the thread")
             tried.append({"cause": cause, "action": action})
             self._recovery_note(rid, cause, action, len(tried))
+            done = self._turn_actions(rid, turn_from)
             note = (f"Mises note: your previous session stopped ({cause}) and Mises {action}. "
                     "Carry on with the user's request from where you left off; check what "
-                    "is already built before you redo anything.")
+                    "is already built before you redo anything."
+                    + (" Already done in this turn (do not repeat them): " + "; ".join(done)
+                       + "." if done else "")
+                    + " Any approval it was waiting for was cancelled: ask again only if "
+                      "the action is still needed.")
             recap = None if keep else thread_recap(self.store, rid, drop_last_user=text)
             seed = "\n".join(x for x in (recap, note) if x)
+
+    @staticmethod
+    def _stop_if_cancelled(st: _ClaudeRun) -> None:
+        if st.cancel_requested:
+            raise MisesError(ErrorCode.CANCELLED, "run cancelled")
+
+    async def _recovery_wait(self, st: _ClaudeRun, seconds: float) -> None:
+        """The backoff before a restart, cut short by Stop (fix round 1, I1)."""
+        end = asyncio.get_running_loop().time() + seconds
+        while not st.cancel_requested:
+            left = end - asyncio.get_running_loop().time()
+            if left <= 0:
+                return
+            await asyncio.sleep(min(0.05, left))
+
+    def _last_step_id(self, rid: str) -> int:
+        with contextlib.suppress(Exception):
+            got = self.store.steps(rid)
+            return got[-1].id if got else 0
+        return 0
+
+    def _turn_actions(self, rid: str, after: int, limit: int = 12) -> list[str]:
+        """The changing tool calls this turn made that succeeded (fix round 1, I2): told to
+        a restarted session so it does not do them twice."""
+        calls: dict[str, dict] = {}
+        out: list[str] = []
+        try:
+            steps = self.store.steps(rid, after_id=after)
+        except Exception:  # noqa: BLE001
+            return out
+        for s in steps:
+            p = s.payload
+            cid = p.get("call_id")
+            if s.kind == StepKind.TOOL_CALL and cid:
+                calls[cid] = p
+                continue
+            if s.kind in (StepKind.ERROR,) or not cid or cid not in calls:
+                continue
+            name = calls[cid].get("name")
+            t = self.registry._tools.get(name or "")
+            if t is None or t.safety == SafetyClass.READ:
+                continue
+            if not ((p.get("output") or {}).get("ok", True)):
+                continue
+            arg = json.dumps(calls.pop(cid).get("input") or {}, sort_keys=True)
+            out.append(f"{name}({arg[:120]})")
+        return out[-limit:]
 
     def _recovery_note(self, rid: str, cause: str, action: str, attempt: int) -> None:
         """A visible note in the thread (P11 F9): "Recovered: <action> after <cause>"."""

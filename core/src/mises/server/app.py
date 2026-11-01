@@ -206,7 +206,8 @@ class Text(BaseModel):
 
 class ImageIn(BaseModel):
     media_type: str = Field(pattern=r"^image/(png|jpeg|webp|gif|heic|heif)$")
-    data_b64: str = Field(min_length=1, max_length=20_000_000)
+    # fix round 1: <= chat_images.MAX_UPLOAD_BYTES (6 MB) once decoded (the app sends <1 MB)
+    data_b64: str = Field(min_length=1, max_length=8_000_000)
 
 
 class ChatBody(BaseModel):
@@ -214,13 +215,13 @@ class ChatBody(BaseModel):
     up to 5 attached images (mises.chat_images: checked, shrunk, kept under the build)."""
     effort: _effort.Think | None = None        # Plan 11 F8: the Think control
     text: str
-    images: list[ImageIn] = Field(default_factory=list, max_length=8)
+    images: list[ImageIn] = Field(default_factory=list, max_length=5)
     edits: EditsRef | None = None
 
 
 class MessageBody(Text):
     """A message to one run (a sub-agent's thread), with images like the build's chat."""
-    images: list[ImageIn] = Field(default_factory=list, max_length=8)
+    images: list[ImageIn] = Field(default_factory=list, max_length=5)
 
 
 def _chat_images(runtime, project_id: str | None, images: list[ImageIn], text: str,

@@ -31,8 +31,9 @@ def world_poses(assembly, parts_root: Path) -> tuple[dict[str, Mat], str | None]
     solved). A failed solve keeps the stored transforms."""
     try:
         res = solve_assembly(assembly, parts_root)
-    except MisesError as e:
-        return {i.id: [r[:] for r in i.transform] for i in assembly.instances}, e.message
+    except Exception as e:  # noqa: BLE001 - a broken joint never stops a view or a placement
+        msg = e.message if isinstance(e, MisesError) else f"{type(e).__name__}: {e}"
+        return {i.id: [r[:] for r in i.transform] for i in assembly.instances}, msg
     return {i.id: res.transforms.get(i.id) or [r[:] for r in i.transform]
             for i in assembly.instances}, None
 

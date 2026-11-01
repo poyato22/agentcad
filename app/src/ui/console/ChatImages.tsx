@@ -1,20 +1,25 @@
 // P11 F7: the images a user message carried, in the thread: thumbnails loaded from the build's
 // store (GET /projects/{id}/chat-images/{image_id}, the admin token rides on the fetch); a click
-// shows one larger.
+// shows one larger. The bytes are cached (a bounded map, oldest out first); each thumbnail owns
+// its object URL and revokes it when it goes (fix round 1).
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { actions } from "../../state/store";
 import type { ChatImageRef } from "./threadModel";
 
-const urls = new Map<string, Promise<string | null>>();
+const MAX_CACHED = 48;
+const blobs = new Map<string, Promise<Blob | null>>();
 
-function urlOf(buildId: string, ref: ChatImageRef): Promise<string | null> {
+function blobOf(buildId: string, ref: ChatImageRef): Promise<Blob | null> {
   const key = `${buildId}/${ref.id}`;
-  let p = urls.get(key);
-  if (!p) {
-    p = actions.client().chatImage(buildId, ref.id, ref.media_type).then((b) => URL.createObjectURL(b), () => null);
-    urls.set(key, p);
+  let p = blobs.get(key);
+  if (p) {
+    blobs.delete(key);          // most recently used last
+  } else {
+    p = actions.client().chatImage(buildId, ref.id, ref.media_type).then((b) => b, () => null);
   }
+  blobs.set(key, p);
+  while (blobs.size > MAX_CACHED) blobs.delete(blobs.keys().next().value as string);
   return p;
 }
 
@@ -23,8 +28,13 @@ function Thumb({ buildId, img }: { buildId: string; img: ChatImageRef }): JSX.El
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let live = true;
-    void urlOf(buildId, img).then((u) => { if (live) setUrl(u); });
-    return () => { live = false; };
+    let made: string | null = null;
+    void blobOf(buildId, img).then((b) => {
+      if (!live) return;
+      made = b ? URL.createObjectURL(b) : null;
+      setUrl(made);
+    });
+    return () => { live = false; if (made) URL.revokeObjectURL(made); };
   }, [buildId, img.id]);
   const label = `Attached image ${img.width}×${img.height}`;
   if (url === null) return <span class="cv-img cv-img-missing" data-chat-image={img.id}>image unavailable</span>;
@@ -46,4 +56,4 @@ export function ChatImages({ images, buildId }: { images: readonly ChatImageRef[
 }
 
 /** Tests. */
-export function resetChatImages(): void { urls.clear(); }
+export function resetChatImages(): void { blobs.clear(); }

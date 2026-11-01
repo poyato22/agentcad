@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextlib
 import hashlib
 import io
 from pathlib import Path
@@ -23,7 +24,7 @@ from .types import ErrorCode, MisesError
 MAX_IMAGES = 5
 MAX_EDGE = 2048
 MAX_BYTES = 1_000_000              # each, after re-encoding
-MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+MAX_UPLOAD_BYTES = 6 * 1000 * 1000      # = server ImageIn.data_b64 max (8 M chars)
 MIN_EDGE = 512
 DIR = "chat_images"
 _EXT = {"png": "png", "jpeg": "jpg"}
@@ -75,7 +76,7 @@ def normalize(raw: bytes) -> tuple[bytes, str, tuple[int, int]]:
     """(bytes, "png" | "jpeg", (w, h)) of one attached image, ready for the model."""
     from PIL import Image, ImageOps, UnidentifiedImageError
     if len(raw) > MAX_UPLOAD_BYTES:
-        raise MisesError(ErrorCode.INVALID_INPUT, "an attached image is larger than 15 MB",
+        raise MisesError(ErrorCode.INVALID_INPUT, "an attached image is larger than 6 MB",
                          hint="attach a smaller image")
     kind = _kind(raw)
     if kind is None:
@@ -140,6 +141,22 @@ def store(home: Path, project_id: str, images: list[tuple[str, str]]
         blocks.append((mt, base64.b64encode(data).decode()))
         refs.append({"id": iid, "media_type": mt, "width": w, "height": h, "bytes": len(data)})
     return blocks, refs
+
+
+def forget_build(home: Path, project_id: str) -> int:
+    """Remove a purged build's chat images (fix round 1). Only files this module writes, in
+    the build's own directory; returns how many went."""
+    d = build_dir(home, project_id)
+    if d.is_symlink() or not d.is_dir() or d.parent.resolve() != (Path(home) / DIR).resolve():
+        return 0
+    n = 0
+    for p in d.iterdir():
+        if p.is_file() and not p.is_symlink() and p.suffix in (".png", ".jpg", ".tmp"):
+            p.unlink(missing_ok=True)
+            n += 1
+    with contextlib.suppress(OSError):
+        d.rmdir()
+    return n
 
 
 def path_of(home: Path, project_id: str, image_id: str) -> Path | None:

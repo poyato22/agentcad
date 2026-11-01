@@ -30,7 +30,8 @@ Run through a `claude` shim on PATH. Never touches the network or any real Claud
                   processes), then answers "recovered after <n>" with the text it was sent.
                   <mode>: exit (exits 3 mid-turn), during (an error_during_execution result),
                   net (an is_error result "API Error: Connection error (ECONNRESET)"), mcp (the
-                  init reports the mises server failed)
+                  init reports the mises server failed), approve=<tool> (calls the Mises
+                  tool <tool>, which waits on an approval card, then exits 3 while it waits)
   `--resume <id>` with <cwd>/fake_gone_sessions listing <id>: prints Claude Code's
   "No conversation found with session ID: <id>" to stderr and exits 1 at once
   stream-json control requests (Plan 11 F8): apply_flag_settings {effortLevel} sets the
@@ -105,14 +106,14 @@ def auth_login(argv: list[str]) -> int:
     return 0
 
 
-async def call_mises(mcp_config: str) -> tuple[bool, str]:
+async def call_mises(mcp_config: str, tool: str = "mirror_part_list") -> tuple[bool, str]:
     from mcp import Client, StdioServerParameters
 
     cfg = json.loads(Path(mcp_config).read_text())["mcpServers"]["mises"]
     params = StdioServerParameters(command=cfg["command"], args=cfg["args"],
                                    env={**os.environ, **cfg.get("env", {})})
     async with Client(params) as client:
-        res = await client.call_tool("mirror_part_list", {})
+        res = await client.call_tool(tool, {})
     return (not res.is_error), res.content[0].text if res.content else ""
 
 
@@ -187,6 +188,13 @@ class Session:
                 custom.unlink()
                 await asyncio.sleep(3600)          # Mises kills it
             self.init()
+            if mode.startswith("approve="):
+                tool = mode.split("=", 1)[1]
+                self.assistant([{"type": "tool_use", "id": "toolu_ap",
+                                 "name": f"mcp__mises__{tool}", "input": {}}])
+                asyncio.ensure_future(call_mises(flag(self.argv, "--mcp-config"), tool))
+                await asyncio.sleep(1.5)            # the card is up; then the process dies
+                os._exit(3)
             if mode == "exit":
                 self.partial("working ")
                 os._exit(3)

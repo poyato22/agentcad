@@ -70,13 +70,16 @@ describe("F7: a message's images", () => {
     const bytes = readFileSync(resolve(P11, "chat_image.png"));
     const chatImage = vi.fn().mockResolvedValue(new Blob([bytes], { type: "image/png" }));
     const created = vi.fn(() => "blob:img");
-    Object.assign(URL, { createObjectURL: created });
-    mount([step], fx.project_id, { chatImage });
+    const revoked = vi.fn();
+    Object.assign(URL, { createObjectURL: created, revokeObjectURL: revoked });
+    const { unmount } = mount([step], fx.project_id, { chatImage });
     await frame();
     const ref = (step.payload as { images: { id: string; media_type: string }[] }).images[0];
     await waitFor(() => expect(document.querySelector(`[data-chat-image="${ref.id}"] img`)?.getAttribute("src")).toBe("blob:img"));
     expect(chatImage).toHaveBeenCalledWith(fx.project_id, ref.id, "image/png");
     expect(screen.getByRole("log", { name: "Conversation" }).textContent).toContain("why does the lid look offset here?");
+    unmount();                                        // fix round 1: its object URL is released
+    expect(revoked).toHaveBeenCalledWith("blob:img");
   });
 });
 
