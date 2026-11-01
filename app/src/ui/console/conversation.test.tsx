@@ -9,6 +9,8 @@ import { addCatalogChip, agentChips, clearAgentChips } from "../../state/agentCh
 import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, resetStore, runs, selectedPartId, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
+import { retryTextFor } from "./Conversation";
+import type { ThreadItem } from "./threadModel";
 import { expandedFolds, resetOffListRuns } from "./derived";
 import { approval, message, resetIds, run, step, toolCall, toolFailure } from "./testSteps";
 import { consoleView, resetConsoleView, VIEW_KEY } from "./view";
@@ -124,7 +126,8 @@ describe("conversation view (default)", () => {
     const err = thread.querySelector("[data-error]") as HTMLElement;
     expect(err.querySelector("[data-error-message]")?.textContent).toBe("provider timed out");
     expect(err.querySelector(".cv-err-code")?.textContent).toBe("transient");
-    expect(within(err).getByRole("button", { name: "Retry" })).toBeTruthy();
+    // the run went on (an approval card followed): no Retry on an error it got past
+    expect(within(err).queryByRole("button", { name: "Retry" })).toBeNull();
     expect(err.textContent).toContain("try again later");
     expect(thread.querySelector('[data-approval="ap1"]')).toBeTruthy();
     expect(thread.querySelector('[data-question="q1"]')).toBeTruthy();
@@ -467,5 +470,75 @@ describe("one chat per build (P10 E24)", () => {
     fireEvent.click(document.querySelector('[data-cancel-queued="m2"]') as HTMLElement);
     await waitFor(() => expect(document.querySelector("[data-cancel-queued]")).toBeNull());
     expect(document.querySelector('[data-queued-message="m2"]')?.getAttribute("data-queued-status")).toBe("queued");
+  });
+});
+
+describe("Retry only where the run did not get past the error (review fix 1)", () => {
+  const u = (key: string, text: string): ThreadItem => ({ kind: "user", key, text, ts: 1, stepIds: [] });
+  const e = (key: string): ThreadItem => ({ kind: "error", key, code: "tool_failed", message: "boom", hint: null, ts: 2, stepIds: [] });
+  const a = (key: string): ThreadItem => ({ kind: "agent", key, text: "recovered, done", ts: 3, live: false, stepIds: [] });
+  const n = (key: string): ThreadItem => ({ kind: "note", key, text: "note", stepIds: [] });
+
+  it("the last item (notes aside) offers the words before it", () => {
+    expect(retryTextFor([u("u1", "make it"), e("e1"), n("n1")], "e1", null, "running")).toBe("make it");
+  });
+  it("an error the agent recovered from never offers Retry (no resend of a finished turn)", () => {
+    expect(retryTextFor([u("u1", "make it"), e("e1"), a("a1")], "e1", null, "done")).toBeNull();
+    expect(retryTextFor([u("u1", "make it"), e("e1"), a("a1")], "e1", null, "running")).toBeNull();
+  });
+  it("a failed / cancelled run offers it on its last error only", () => {
+    const items = [u("u1", "make it"), e("e1"), a("a1"), e("e2"), a("a2")];
+    expect(retryTextFor(items, "e2", null, "failed")).toBe("make it");
+    expect(retryTextFor(items, "e1", null, "failed")).toBeNull();
+    expect(retryTextFor(items, "e2", null, "cancelled")).toBe("make it");
+    expect(retryTextFor(items, "e2", null, "done")).toBeNull();
+  });
+  it("nothing after a message of yours", () => {
+    expect(retryTextFor([u("u1", "a"), e("e1"), u("u2", "b")], "e1", null, "failed")).toBeNull();
+  });
+
+  it("the dock shows no Retry on a recovered error", async () => {
+    client();
+    setRuns([run("r1", { status: "done" })]);
+    setSteps([
+      message("r1", "user", "thin the wall", 1),
+      step("r1", "error", { error: "tool_failed", message: "build failed", hint: null }, 2),
+      message("r1", "assistant", "Fixed it on the second try.", 3),
+    ]);
+    render(<ConsolePane />);
+    await frame();
+    const err = screen.getByRole("log", { name: "Conversation" }).querySelector("[data-error]") as HTMLElement;
+    expect(err).toBeTruthy();
+    expect(within(err).queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+});
+
+describe("Edit never loses a draft (review minor 4)", () => {
+  beforeEach(() => { activeBuildId.value = "b1"; });
+  afterEach(() => { activeBuildId.value = null; resetChat(); resetMessageActions(); });
+  const box = () => screen.getByLabelText("Command line") as HTMLTextAreaElement;
+
+  it("keeps what you were typing: back on Cancel edit, and back after the edit is sent", async () => {
+    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, notes: [] }) });
+    setRuns([run("lead1", { role: "lead", project_id: "b1", status: "done" })]);
+    setSteps([message("lead1", "user", "make it 5 mm", 1), message("lead1", "assistant", "done", 2)]);
+    selectedRunId.value = "lead1";
+    render(<ConsolePane />);
+    await frame();
+    fireEvent.input(box(), { target: { value: "half a thought" } });
+    fireEvent.click(screen.getByRole("button", { name: "Edit and resend" }));
+    await frame();
+    expect(box().value).toBe("make it 5 mm");
+    expect(screen.getByTestId("editing-chip").textContent).toContain("your draft comes back after");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel edit" }));
+    await frame();
+    expect(box().value).toBe("half a thought");
+    // again, and this time send the edit: the draft returns once it is sent
+    fireEvent.click(screen.getByRole("button", { name: "Edit and resend" }));
+    await frame();
+    fireEvent.input(box(), { target: { value: "make it 6 mm" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "make it 6 mm"));
+    await waitFor(() => expect(box().value).toBe("half a thought"));
   });
 });

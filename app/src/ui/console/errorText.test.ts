@@ -35,5 +35,9 @@ describe("explainError", () => {
   it("an API error reply is plain text", () => {
     expect(isApiErrorText(`API Error: ${SSL}`)).toBe(true);
     expect(isApiErrorText("The bracket is 3 mm thick; snake_case is fine.")).toBe(false);
+    // narrow: an ordinary reply that mentions an error or the network keeps its markup
+    expect(isApiErrorText("Error: the wall was too thin, so I **thickened** it.")).toBe(false);
+    expect(isApiErrorText("The ECONNREFUSED retry worked; **done**.")).toBe(false);
+    expect(isApiErrorText(SSL)).toBe(true);
   });
 });

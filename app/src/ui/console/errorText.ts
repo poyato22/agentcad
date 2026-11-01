@@ -58,8 +58,9 @@ export function explainError(e: { code: string; message: string; hint?: string |
 }
 
 /** A failed agent reply that is really Claude Code's API error ("API Error: … UNABLE_TO_…"):
- *  shown as plain text, never markup. */
+ *  shown as plain text, never markup. Narrow on purpose (review minor 6): only a reply that starts
+ *  as an API error, or a short one carrying a TLS failure code, loses its markup. */
 export function isApiErrorText(text: string): boolean {
   const t = text.trimStart();
-  return /^(API Error|Claude Code:|Error:)/i.test(t) || TLS.test(t) || (NETWORK.test(t) && t.length < 600);
+  return /^(API Error\b|Claude Code: API Error\b)/.test(t) || (TLS.test(t) && t.length < 600);
 }

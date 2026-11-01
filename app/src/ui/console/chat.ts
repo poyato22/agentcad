@@ -1,7 +1,7 @@
 // P10 E24 / E9: one chat per build. The composer always talks to the build's lead: no run picker,
 // no "New run". The first message of a build with no lead creates it on the default model —
 // through the core's POST /projects/{id}/chat (C1), or on an older core POST /runs with the
-// default model the app picks (Claude Code when signed in, else the profile's). Viewing a
+// default model the app picks (the profile's when set, else Claude Code when signed in). Viewing a
 // sub-agent's thread (from its card) is read-only until the user asks to "Message this agent".
 // Also here: Edit (your words back in the composer; the old message is marked edited once the new
 // one is sent), Retry (the same words again) and the stall rule (90 s with no sign of life).
@@ -51,17 +51,21 @@ export function markEdited(key: string): void {
   try { globalThis.localStorage?.setItem(EDITED_KEY, JSON.stringify([...next].slice(-500))); } catch { /* not remembered */ }
 }
 
-/** The model a build's first lead starts on when the core can't choose (an older core): Claude
- *  Code when it is signed in, else the profile default, else the best usable model. */
+/** The model a build's first lead starts on when the core can't choose (an older core): the
+ *  profile's default when the user set one (an explicit choice wins), else Claude Code when it is
+ *  signed in (sonnet, else its "best", else any usable alias), else the best usable model. */
 export function defaultChatModel(cat: typeof catalog.value): string | null {
   if (!cat.models) return null;
+  if (cat.profileDefault) return cat.profileDefault;
   const groups = buildModelGroups(cat.models, { local: cat.local, profile: { default_model: cat.profileDefault } });
-  const claude = groups.find((g) => g.id === "claude")?.choices.find((c) => c.usable);
-  return claude?.ref ?? newRunModel(cat);
+  const claude = (groups.find((g) => g.id === "claude")?.choices ?? []).filter((c) => c.usable);
+  const pick = claude.find((c) => c.ref === "claude-code/sonnet") ?? claude.find((c) => c.recommended === "best") ?? claude[0];
+  return pick?.ref ?? newRunModel(cat);
 }
 
 async function firstLeadModel(): Promise<string | null> {
-  if (!catalog.peek().models) await refreshCatalog();
+  // fresh: the profile default or the sign-in may have changed since the catalog loaded
+  await refreshCatalog();
   return defaultChatModel(catalog.peek());
 }
 

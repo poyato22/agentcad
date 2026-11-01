@@ -118,7 +118,7 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
           : (
             <div key={r.item.key} class="cv-item" data-key={r.item.key}>
               <Item item={r.item} agent={run?.agent ?? "agent"} runId={run?.id ?? null} run={run ?? null}
-                retryText={r.item.kind === "error" ? retryTextFor(items, r.item.key, run?.task ?? null) : null} />
+                retryText={r.item.kind === "error" ? retryTextFor(items, r.item.key, run?.task ?? null, run?.status ?? null) : null} />
             </div>
           )))}
         {run && items.length === 0 && run.task && (
@@ -164,12 +164,19 @@ export function promptBefore(items: readonly ThreadItem[], key: string | null): 
   return null;
 }
 
-/** Retry is offered on an error you haven't moved past: no message of yours after it. It sends
- *  your words before it (else the run's task). */
-export function retryTextFor(items: readonly ThreadItem[], key: string, task: string | null): string | null {
+/** Retry is offered only on an error the run did not get past (review fix 1): the error is the
+ *  thread's last item (notes aside), or the run ended failed / cancelled and this is its last
+ *  error with nothing of yours after it. An error the agent recovered from (a reply followed)
+ *  never offers it, so a finished turn is never sent twice. It sends your words before the error
+ *  (else the run's task). */
+export function retryTextFor(items: readonly ThreadItem[], key: string, task: string | null, status: string | null = null): string | null {
   const at = items.findIndex((i) => i.key === key);
   if (at < 0) return null;
-  if (items.slice(at + 1).some((i) => i.kind === "user" || i.kind === "queued")) return null;
+  const after = items.slice(at + 1);
+  if (after.some((i) => i.kind === "user" || i.kind === "queued")) return null;
+  const last = after.every((i) => i.kind === "note");
+  const ended = (status === "failed" || status === "cancelled") && !after.some((i) => i.kind === "error");
+  if (!last && !ended) return null;
   return promptBefore(items, key) ?? (task?.trim() ? task : null);
 }
 
@@ -258,14 +265,17 @@ function QueuedLine({ item, runId }: { item: Extract<ThreadItem, { kind: "queued
   const chip = status === "delivered" ? "delivered"
     : status === "dropped" ? (reason === "cancelled" ? "cancelled" : `not delivered · ${reason ?? "dropped"}`)
     : `queued${item.position && item.position > 1 ? ` · ${item.position} in line` : ""} · delivered when the agent finishes this step`;
+  const rowKey = `${runId ?? ""}/${item.key}`;
+  const edited = editedKeys.value.has(rowKey);
   return (
-    <div class={`cv-msg cv-user cv-queued is-${status}`} data-msg="user" data-row data-kind="queued" data-queued-message={item.messageId}
-      data-queued-status={status}>
+    <div class={`cv-msg cv-user cv-queued is-${status}${edited ? " is-edited" : ""}`} data-msg="user" data-row data-kind="queued" data-queued-message={item.messageId}
+      data-queued-status={status} data-edited={edited ? "" : undefined}>
       <div class="cv-msg-head">
         <span class="label">you</span>
         <span class={`cv-queued-chip is-${status}`} data-queued-chip role="status">{chip}</span>
         {status === "queued" && runId && <CancelQueuedButton runId={runId} messageId={item.messageId} />}
-        {status !== "queued" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={`${runId ?? ""}/${item.key}`} />}
+        {edited && <span class="cv-edited faint">edited · sent again below</span>}
+        {status !== "queued" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={rowKey} />}
       </div>
       <div class="cv-text text">{item.text}</div>
     </div>

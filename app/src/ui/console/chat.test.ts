@@ -80,8 +80,13 @@ describe("one chat per build", () => {
     await expect(sendChat("hi")).rejects.toThrow("Open a build first");
   });
 
-  it("default model: Claude Code when signed in, else the profile's", () => {
+  it("default model: the profile's when set, else Claude Code (sonnet) when signed in", () => {
     expect(defaultChatModel({ ...catalog.value, models: MODELS })).toBe("claude-code/sonnet");
+    // an explicit profile default wins even with Claude Code signed in
+    expect(defaultChatModel({ ...catalog.value, models: MODELS, profileDefault: "ollama/qwen3" })).toBe("ollama/qwen3");
+    // sonnet is preferred whatever order the core lists the aliases in
+    const opusFirst: ModelsInfo = { ...MODELS, vendors: MODELS.vendors.map((v) => (v.vendor === "claude-code" ? { ...v, models: ["opus", "sonnet"] } : v)) };
+    expect(defaultChatModel({ ...catalog.value, models: opusFirst })).toBe("claude-code/sonnet");
     const out: ModelsInfo = { ...MODELS, vendors: MODELS.vendors.map((v) => (v.vendor === "claude-code" ? { ...v, key: "signed_out" } : v)) };
     expect(defaultChatModel({ ...catalog.value, models: out, profileDefault: "ollama/qwen3" })).toBe("ollama/qwen3");
   });

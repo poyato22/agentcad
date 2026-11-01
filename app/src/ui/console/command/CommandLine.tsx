@@ -47,6 +47,9 @@ export function CommandLine(): JSX.Element {
   const [busy, setBusy] = useState(false);
   /** The thread row being edited (Edit on one of your messages), or null. */
   const [editOf, setEditOf] = useState<string | null>(null);
+  /** What you were typing when you chose Edit: kept, and back once the edit is sent or cancelled. */
+  const stash = useRef<string | null>(null);
+  const restore = useRef<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const history = useRef<string[]>([]);
   const cursor = useRef<number>(-1); // -1 = not browsing history
@@ -78,6 +81,8 @@ export function CommandLine(): JSX.Element {
   useEffect(() => {
     if (!want) return;
     composerDraft.value = null;
+    // a draft of your own is never lost to Edit: it waits (the first one, across repeated Edits)
+    if (editOf === null && value.trim() && value !== want.text) stash.current = value;
     setValue(want.text);
     setEditOf(want.editOf);
     setError(null);
@@ -125,7 +130,7 @@ export function CommandLine(): JSX.Element {
     try {
       const sent = await sendChat(cmd.text, to);
       if (sent.note) setInfo(sent.note);
-      if (editOf) { markEdited(editOf); setEditOf(null); }
+      if (editOf) { markEdited(editOf); setEditOf(null); restore.current = stash.current; stash.current = null; }
       return true;
     } catch (e) {
       setError(describeError(e));
@@ -180,7 +185,8 @@ export function CommandLine(): JSX.Element {
     if (ok) {
       if (cmd.kind !== "slash" || cmd.name !== "clear") history.current.push(line);
       cursor.current = -1;
-      setValue("");
+      setValue(restore.current ?? "");
+      restore.current = null;
     }
   }
 
@@ -199,13 +205,19 @@ export function CommandLine(): JSX.Element {
     return true;
   }
 
+  function cancelEdit(): void {
+    setEditOf(null);
+    setValue(stash.current ?? "");
+    stash.current = null;
+  }
+
   function onKeyDown(e: KeyboardEvent): void {
     if (e.isComposing) return;
     const el = e.currentTarget as HTMLTextAreaElement;
     if (e.key === "Escape" && editOf !== null && !e.defaultPrevented) {
-      // Esc first leaves the edit (the words stay, as a plain new message)
+      // Esc first leaves the edit: your earlier draft comes back
       e.preventDefault();
-      setEditOf(null);
+      cancelEdit();
     } else if (e.key === "Escape" && stoppable && !e.defaultPrevented) {
       // Esc stops the busy agents like the Stop button (Plan 9 D2) — not one that waits on your
       // approval or answer, and not when another handler (Animate) already took this Esc
@@ -242,8 +254,8 @@ export function CommandLine(): JSX.Element {
         )}
         {editOf !== null && (
           <span class="cmd-chip cmd-editing" data-testid="editing-chip">
-            Editing your message · sends as a new turn
-            <button type="button" class="cmd-link" onClick={() => { setEditOf(null); setValue(""); input.current?.focus(); }}>Cancel edit</button>
+            {stash.current ? "Editing your message · your draft comes back after" : "Editing your message · sends as a new turn"}
+            <button type="button" class="cmd-link" onClick={() => { cancelEdit(); input.current?.focus(); }}>Cancel edit</button>
           </span>
         )}
       </div>

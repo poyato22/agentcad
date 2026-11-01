@@ -859,15 +859,15 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       },
     },
     // P10 E24 (the app's contract for core C1): one chat per build. The text goes to the build's
-    // lead (queued while it works); with no lead, one starts on the default model: Claude Code
-    // when signed in, else the profile's. Answers like POST /runs.
+    // lead (queued while it works); with no lead, one starts on the default model: the profile's
+    // when set, else Claude Code when signed in. Answers like POST /runs.
     {
       method: "POST", re: /^\/projects\/([^/]+)\/chat$/, h: (m, q, raw, r, res) => {
         const text = req(asBody(raw), "text", "string");
         const projectId = decodeURIComponent(m[1]);
         const signedIn = models().vendors.some((v) => v.vendor === CLAUDE_CODE && v.key === "signed_in");
         const profileDefault = (state.setup.profile as { default_model?: string | null }).default_model ?? null;
-        const modelRef = findLead(projectId) ? null : signedIn ? `${CLAUDE_CODE}/sonnet` : profileDefault;
+        const modelRef = findLead(projectId) ? null : profileDefault ?? (signedIn ? `${CLAUDE_CODE}/sonnet` : null);
         const start = routes.find((x) => x.method === "POST" && x.re.source === "^\\/runs$") as Route;
         return start.h(m, q, { prompt: text, project_id: projectId, ...(modelRef ? { model_ref: modelRef } : {}) }, r, res);
       },
