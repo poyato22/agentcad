@@ -1,0 +1,12 @@
+/* Plan 10 E11: the undo / redo toast, a floating surface at the bottom middle. */
+.undo-toast {
+  position: fixed; left: 50%; bottom: 72px; z-index: 60; transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 32px)); padding: 7px 14px; color: var(--ink); font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+  background: var(--surface); -webkit-backdrop-filter: blur(var(--surface-blur)); backdrop-filter: blur(var(--surface-blur));
+  border: 1px solid var(--line2); border-radius: var(--r-surface); box-shadow: var(--shadow);
+  animation: undo-in 140ms ease-out;
+}
+.undo-toast[data-error] { color: var(--red); }
+@keyframes undo-in { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .undo-toast { animation: none; } }

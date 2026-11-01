@@ -9,6 +9,7 @@ import { fromPreset, withColor, type Appearance, type PresetId } from "../../lib
 import { partName } from "../../lib/names";
 import { activeBuildId, builds, isActiveBuild, loadParts } from "../../state/builds";
 import { actions, parts } from "../../state/store";
+import { pushUndo, topUndo, undo, type UndoCommand } from "../../state/undo";
 import { applyMove, type Move } from "./tree";
 
 /** The last refused tree change, in plain words (cleared by the next one). */
@@ -57,22 +58,29 @@ function takeLook(row: PartSummary): void {
 }
 
 /** Recolor parts; each keeps its finish (the core recolors the appearance with the color). */
-export async function setColor(id: string | readonly string[], color: string | null): Promise<boolean> {
+export async function setColor(id: string | readonly string[], color: string | null, record = true): Promise<boolean> {
   const ids = typeof id === "string" ? [id] : id;
-  return patchLooks(ids, () => ({ color }), (p) => ({ color, appearance: withColor(p.appearance, color) }), "set the color");
+  return patchLooks(ids, () => ({ color }), (p) => ({ color, appearance: withColor(p.appearance, color) }), "set the color",
+    record ? { label: `Color ${ids.length === 1 ? nameOf(ids[0]) : `${ids.length} parts`}`, redo: () => setColor(ids, color, false) } : null);
 }
 
 /** Give parts a material: a preset (an untinted one keeps each part's color), or null for the
  *  plain drafting look. */
-export async function setFinish(ids: readonly string[], preset: PresetId | null): Promise<boolean> {
+export async function setFinish(ids: readonly string[], preset: PresetId | null, record = true): Promise<boolean> {
   const next = (p: PartSummary): Appearance | null => (preset === null ? null : fromPreset(preset, p.color ?? null));
-  return patchLooks(ids, (p) => ({ appearance: next(p) }), (p) => ({ appearance: next(p), color: next(p)?.color ?? p.color ?? null }), "set the appearance");
+  return patchLooks(ids, (p) => ({ appearance: next(p) }), (p) => ({ appearance: next(p), color: next(p)?.color ?? p.color ?? null }), "set the appearance",
+    record ? { label: `Finish ${ids.length === 1 ? nameOf(ids[0]) : `${ids.length} parts`}`, redo: () => setFinish(ids, preset, false) } : null);
+}
+
+/** E11: puts parts' looks back as they were (an undo of a color or finish). */
+async function restoreLooks(before: readonly PartSummary[]): Promise<void> {
+  for (const p of before) takeLook(await actions.client().patchPart(p.part_id, { color: p.color ?? null, appearance: p.appearance ?? null }));
 }
 
 /** One PATCH per part, shown at once. Each part keeps its own outcome: one the core refused goes
  *  back to how it was (named in the error), the ones it accepted keep the core's answer. */
 async function patchLooks(ids: readonly string[], body: (p: PartSummary) => { color?: string | null; appearance?: Appearance | null },
-  local: (p: PartSummary) => Partial<PartSummary>, what: string): Promise<boolean> {
+  local: (p: PartSummary) => Partial<PartSummary>, what: string, record: { label: string; redo(): Promise<boolean> } | null = null): Promise<boolean> {
   treeError.value = null;
   const before = new Map(parts.peek().filter((p) => ids.includes(p.part_id)).map((p) => [p.part_id, p]));
   parts.value = parts.peek().map((p) => (before.has(p.part_id) ? { ...p, ...local(p) } : p));
@@ -87,7 +95,11 @@ async function patchLooks(ids: readonly string[], body: (p: PartSummary) => { co
     const old = before.get(id) as PartSummary;
     parts.value = parts.peek().map((p) => (p.part_id === id ? { ...p, color: old.color ?? null, appearance: old.appearance ?? null } : p));
   });
-  if (!failed.length) return true;
+  if (!failed.length) {
+    const was = [...before.values()];
+    if (record) pushUndo({ label: record.label, undo: () => restoreLooks(was), redo: async () => { if (!(await record.redo())) throw new Error(treeError.peek() ?? "refused"); } });
+    return true;
+  }
   const who = failed.length === ids.length ? "" : ` for ${failed.map(nameOf).join(", ")}`;
   treeError.value = `Couldn't ${what}${who}: ${reason(firstError)}`;
   return false;
@@ -120,6 +132,8 @@ export interface DeletedParts {
   text: string; build: string | null; items: { id: string; undo: string }[];
   /** "Remove from assembly": the instances and joints to put back (no part was deleted). */
   assembly?: { build: string; undo: AssemblyUndo; count: number };
+  /** E11: the same action on the undo stack (the toast's Undo runs it when it is the latest). */
+  cmd?: UndoCommand;
 }
 export const lastDeleted: Signal<DeletedParts | null> = signal<DeletedParts | null>(null);
 
@@ -146,7 +160,9 @@ export async function deleteParts(ids: readonly string[]): Promise<boolean> {
     await loadParts(build);
     const what = done === 1 ? `Deleted ${names[0]}` : `Deleted ${done} parts`;
     const text = instances ? `${what} and ${instances === 1 ? "its instance" : `${instances} instances`}` : what;
-    lastDeleted.value = items.length ? { text, build, items } : null;
+    const cmd = items.length ? deleteCommand(done === 1 ? `Delete ${names[0]}` : `Delete ${done} parts`, build, ids.slice(0, done), items) : undefined;
+    if (cmd) pushUndo(cmd);
+    lastDeleted.value = items.length ? { text, build, items, cmd } : null;
     if (!items.length) note(text);
   }
   return done === ids.length;
@@ -173,10 +189,41 @@ export function onAgentDeleted(ev: MisesEvent): void {
 }
 onCoreEvent(onAgentDeleted);
 
+/** E11: a delete on the undo stack: undo restores the parts (newest first), redo deletes them again
+ *  (with fresh restore tokens). */
+function deleteCommand(label: string, build: string | null, ids: readonly string[], first: { id: string; undo: string }[]): UndoCommand {
+  let items = first;
+  return {
+    label,
+    async undo() {
+      for (const it of [...items].reverse()) await actions.client().restorePart(it.id, it.undo);
+      if (isActiveBuild(build)) await loadParts(build);
+    },
+    async redo() {
+      const again: { id: string; undo: string }[] = [];
+      for (const id of ids) { const r = await actions.client().deletePart(id, { cascade: true }); if (r.undo) again.push({ id, undo: r.undo }); }
+      items = again;
+      if (isActiveBuild(build)) await loadParts(build);
+    },
+  };
+}
+
+/** E11: "Remove from assembly" on the undo stack. */
+function removalCommand(label: string, build: string, ids: readonly string[], first: AssemblyUndo): UndoCommand {
+  let token = first;
+  return {
+    label,
+    async undo() { await actions.client().restoreAssembly(build, token); },
+    async redo() { token = (await actions.client().removePartsFromAssembly(build, [...ids])).undo; },
+  };
+}
+
 /** Undo the last delete: each part comes back (files, tree row, assembly instances). */
 export async function undoDelete(): Promise<boolean> {
   const d = lastDeleted.peek();
   if (!d) return false;
+  // the same action is the latest on the undo stack: undo it there (so ⌘Z / ⇧⌘Z stay in step)
+  if (d.cmd && topUndo() === d.cmd) { lastDeleted.value = null; treeError.value = null; return undo(); }
   lastDeleted.value = null;
   treeError.value = null;
   let ok = true;
@@ -239,8 +286,10 @@ export async function removeFromAssembly(ids: readonly string[]): Promise<boolea
     const n = r.removed_instances.length;
     const j = r.removed_joints.length;
     const what = n === 1 ? `Removed ${nameOf(ids[0])} from the assembly` : `Removed ${n} instances from the assembly`;
+    const cmd = n ? removalCommand(n === 1 ? `Remove ${nameOf(ids[0])} from the assembly` : `Remove ${n} instances from the assembly`, build, ids, r.undo) : undefined;
+    if (cmd) pushUndo(cmd);
     lastDeleted.value = n ? { text: j ? `${what} (${j} joint${j === 1 ? "" : "s"} came loose)` : what, build, items: [],
-      assembly: { build, undo: r.undo, count: n } } : null;
+      assembly: { build, undo: r.undo, count: n }, cmd } : null;
     return true;
   } catch (e) {
     treeError.value = `Couldn't remove it from the assembly: ${reason(e)}`;
@@ -298,14 +347,18 @@ function folderOf(path: string): string {
   return bits.length > 1 ? bits[bits.length - 2] : path;
 }
 
-export async function renamePart(id: string, label: string): Promise<boolean> {
+export async function renamePart(id: string, label: string, record = true): Promise<boolean> {
   const name = label.trim();
   if (!name) return false;
   treeError.value = null;
+  const old = parts.peek().find((p) => p.part_id === id);
+  const oldLabel = old?.label ?? id;
   const before = patchLocal(id, { label: name });
   try {
     const row = await actions.client().patchPart(id, { label: name });
     parts.value = parts.peek().map((p) => (p.part_id === id ? { ...p, label: row.label ?? name } : p));
+    const again = (to: string) => async () => { if (!(await renamePart(id, to, false))) throw new Error(treeError.peek() ?? "refused"); };
+    if (record && oldLabel !== name) pushUndo({ label: `Rename ${oldLabel}`, undo: again(oldLabel), redo: again(name) });
     return true;
   } catch (e) {
     parts.value = before;

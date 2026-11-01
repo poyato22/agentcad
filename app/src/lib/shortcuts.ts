@@ -25,12 +25,17 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { combo: "Meta+N", keys: "⌘N", action: "New agent run", scope: "global" },
   { combo: "Meta+Shift+A", keys: "⇧⌘A", action: "Agent manager", scope: "global" },
   { combo: "Meta+Shift+.", keys: "⇧⌘.", action: "Stop all runs", scope: "global" },
+  // Plan 10 E11: the user's own build edits (state/undo); a text field keeps its native undo
+  { combo: "Meta+Z", keys: "⌘Z", action: "Undo your last change to the build (not in a text field)", scope: "global" },
+  { combo: "Meta+Shift+Z", keys: "⇧⌘Z", action: "Redo it", scope: "global" },
   // FW-layout (D20): the floating surfaces fold to slim tabs (not under a modal: the immersive
   // views step with ⌘[ / ⌘])
   { combo: "Meta+]", keys: "⌘]", action: "Show / hide the agent dock", scope: "global" },
   { combo: "Meta+[", keys: "⌘[", action: "Show / hide the parts surface", scope: "design" },
   { combo: "F", keys: "F", action: "Fit the assembly in the view (or double-click empty space)", scope: "design" },
   { combo: "Escape", keys: "Esc", action: "Back to the assembly from an open part / close Play", scope: "design" },
+  // Plan 10 E19: not for a part a joint places (the caption says why)
+  { combo: "R", keys: "R", action: "Reset the selected instance to the origin (undo with ⌘Z)", scope: "design" },
   { combo: "M", keys: "M", action: "Measure (viewer focused; again for Select)", scope: "viewer" },
   { combo: "Escape", keys: "Esc", action: "Back to Select / close a menu or an immersive view", scope: "viewer" },
   { combo: "F2", keys: "F2", action: "Rename the part", scope: "parts" },

@@ -43,6 +43,7 @@ import { viewInsets, watchInsets } from "./ui/shell/insets";
 import { installStopAllShortcut } from "./ui/topbar/stopAll";
 import { TopBar } from "./ui/topbar/TopBar";
 import { Viewer } from "./ui/viewer/Viewer";
+import { UndoToast } from "./ui/undo/UndoToast";
 
 /** A sidebar glyph: the panel on the left or the right of a window. */
 export function SidebarIcon({ side }: { side: "left" | "right" }): JSX.Element {
@@ -152,6 +153,7 @@ export function App(): JSX.Element {
       <AgentManager />
       <ProfilePane open={profileOpen.value} section={profileSection.value} onClose={closeProfile} />
       <SetupGate />
+      <UndoToast />
       <BootOverlay />
     </div>
   );

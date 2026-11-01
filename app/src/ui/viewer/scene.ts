@@ -29,6 +29,8 @@ export interface ShownPart {
   id: string; scene: PartScene; color: string | null; focus: boolean;
   /** Plan 7 U8: the part's look (lib/appearance materialOf); absent = the plain drafting material. */
   material?: MaterialParams;
+  /** Plan 10 E36: the name shown under it when laid out (default: its id). */
+  label?: string;
 }
 
 /** A click on a shown part: where (world = the part's CAD frame, mm) and the surface normal. */
