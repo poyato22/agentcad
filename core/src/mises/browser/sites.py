@@ -5,6 +5,12 @@ replaced by the URL-encoded query) that web_search reads.
 The defaults are marked `suggested: true` (the user's own additions are not). Some of them
 block automated access (Amazon, AliExpress and McMaster-Carr often do): web_search then says
 "site blocked automated access" for that site and the others still answer.
+
+P11 F5: web_search may name ANY site by its domain (e.g. `thrustcurve.org`), and a suggested
+site without a search page of its own: those are searched through a site-restricted web search
+(`site_search`, DuckDuckGo's HTML page; only links on that site are kept). A site that is not
+suggested goes through the Plan 10 exfil guard like web_open (an odd-looking domain or a fetch
+past the per-turn caps asks the user first; the query must be plain words).
 """
 from __future__ import annotations
 
@@ -12,7 +18,7 @@ import re
 from urllib.parse import quote, quote_plus
 
 CATEGORIES = ("fasteners", "bearings", "mechanical", "materials", "electronics", "motors",
-              "servos", "robotics", "fpv", "maker", "general", "datasheets")
+              "servos", "robotics", "fpv", "maker", "general", "datasheets", "rocketry")
 
 # query word -> categories it points at (web_search picks sites by these when none are named)
 KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -31,7 +37,15 @@ KEYWORDS: dict[str, tuple[str, ...]] = {
     "robotics": ("robot", "robotic", "arm", "gripper", "wheel", "wheels", "chassis", "track"),
     "fpv": ("fpv", "drone", "quad", "quadcopter", "prop", "props", "propeller", "lipo",
             "flight", "vtx", "frame"),
+    "rocketry": ("rocket", "rocketry", "apogee", "estes", "aerotech", "thrustcurve", "thrust",
+                 "nosecone", "parachute", "recovery", "tarc", "arc", "altimeter", "fins",
+                 "eng", "rasp"),
 }
+
+# the web search a site without its own search page is searched through (`site:` restricted)
+SITE_SEARCH = "https://html.duckduckgo.com/html/?q=site%3A{domain}+{q}"
+SITE_SEARCH_HOST = "html.duckduckgo.com"
+_DOMAIN_RE = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 
 
 def _site(name: str, domain: str, search_url: str | None, categories: list[str]) -> dict:
@@ -69,7 +83,39 @@ DEFAULT_SITES: list[dict] = [
     _site("Microchip", "microchip.com", None, ["datasheets", "electronics"]),
     _site("Raspberry Pi", "raspberrypi.com", None, ["datasheets", "electronics"]),
     _site("Arduino", "arduino.cc", None, ["datasheets", "electronics"]),
+    # P11 F5: model rocketry (motor data and thrust curves, contest rules, parts, reviews);
+    # no search page Mises reads, so web_search goes through `site_search`
+    _site("ThrustCurve", "thrustcurve.org", None, ["rocketry"]),
+    _site("American Rocketry Challenge", "rocketrychallenge.org", None, ["rocketry"]),
+    _site("Apogee Components", "apogeerockets.com", None, ["rocketry"]),
+    _site("RocketReviews", "rocketreviews.com", None, ["rocketry"]),
+    _site("National Association of Rocketry", "nar.org", None, ["rocketry"]),
 ]
+
+
+def as_domain(text: str) -> str | None:
+    """`text` as a bare domain (`https://www.thrustcurve.org/x` -> `thrustcurve.org`), or None
+    when it is not one (a site's name)."""
+    t = text.strip().lower()
+    for p in ("https://", "http://"):
+        if t.startswith(p):
+            t = t[len(p):]
+    t = t.split("/", 1)[0].rstrip(".")
+    if t.startswith("www."):
+        t = t[4:]
+    return t if "." in t and _DOMAIN_RE.fullmatch(t) else None
+
+
+def site_search(site: dict) -> dict:
+    """`site` searched through SITE_SEARCH: its pages found by a `site:` web search."""
+    tpl = SITE_SEARCH.replace("{domain}", site["domain"])
+    return {**site, "search_url": tpl, "via": SITE_SEARCH_HOST}
+
+
+def any_site(domain: str) -> dict:
+    """A site that is not on the list, named by its domain (P11 F5)."""
+    return site_search({"name": domain, "domain": domain, "search_url": None,
+                        "categories": [], "suggested": False, "listed": False})
 
 
 def on_domain(host: str, domain: str) -> bool:
@@ -93,26 +139,33 @@ def search_url(site: dict, query: str) -> str:
 
 def pick_sites(sites: list[dict], query: str, wanted: list[str] | None = None,
                limit: int = 3) -> list[dict]:
-    """The sites web_search reads. Named ones (`wanted`: names or domains; KeyError for one not
-    on the list, LookupError for one without a search page) when given; else the
-    searchable sites whose categories the query's words point at, best match first, then the
-    list's own order; with no match, the first searchable sites in the list."""
+    """The sites web_search reads. Named ones (`wanted`: names or domains) when given: a listed
+    site, through `site_search` when it has no search page of its own; any other domain as
+    `any_site` (P11 F5); KeyError for a name that is neither. Else the sites whose categories
+    the query's words point at, best match first, then the list's own order (a matching site
+    without a search page through `site_search`); with no match, the first searchable sites."""
     searchable = [s for s in sites if s.get("search_url")]
     if wanted:
         out = []
         for w in wanted:
             w = w.strip().lower()
+            dom = as_domain(w)
             hit = next((s for s in sites if s["name"].lower() == w
-                        or on_domain(w, s["domain"])), None)
+                        or on_domain(dom or w, s["domain"])), None)
             if hit is None:
-                raise KeyError(w)
-            if not hit.get("search_url"):
-                raise LookupError(hit["name"])
-            if hit not in out:
+                if dom is None:
+                    raise KeyError(w)
+                hit = any_site(dom)
+            elif not hit.get("search_url"):
+                hit = site_search(hit)
+            if all(h["domain"] != hit["domain"] for h in out):
                 out.append(hit)
         return out
     words = set(re.findall(r"[a-z0-9]+", query.lower()))
     cats = {c for c, kws in KEYWORDS.items() if words & set(kws)}
+    if "rocketry" in cats:      # P11 F5: rocketry sites have no search page of their own
+        searchable += [site_search(s) for s in sites
+                       if not s.get("search_url") and "rocketry" in (s.get("categories") or [])]
     scored = [(len(cats & set(s.get("categories") or [])), i, s)
               for i, s in enumerate(searchable)]
     hits = [t for t in scored if t[0] > 0]

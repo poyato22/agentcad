@@ -91,11 +91,11 @@ def skeleton_view(home: Path, store, project_id: str) -> dict:
 
 
 class SkeletonGetArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
 
 
 class SkeletonSetArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     params: dict[str, float] | None = Field(
         default=None, description="Named key dimensions, merged in: {\"wing_span\": 520}. Read "
                                   "in a part script as skeleton(\"wing_span\").")

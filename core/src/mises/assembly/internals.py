@@ -122,7 +122,7 @@ def _metrics(parts_root: Path, pid: str) -> dict:
 # ---- inner_volume
 
 class InnerVolumeArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     part_id: str
 
     @field_validator("part_id")
@@ -183,7 +183,7 @@ class Component(BaseModel):
 
 
 class PackArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     components: list[Component] = Field(min_length=1, max_length=MAX_COMPONENTS)
     case_part_id: str | None = Field(default=None, description="The case whose cavity "
                                                                "(inner_volume) is packed.")
@@ -297,7 +297,7 @@ class SectionPlane(BaseModel):
 
 
 class SectionArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     planes: list[SectionPlane] = Field(default_factory=list, max_length=MAX_PLANES,
                                        description="Section planes; default: the three "
                                                    "mid-planes of the assembly.")

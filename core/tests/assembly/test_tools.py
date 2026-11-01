@@ -127,6 +127,13 @@ async def test_agent_run_cannot_touch_another_builds_assembly(tmp_path):
     assert r.ok
     # its own build still reads fine
     assert (await assembly_get.handler(rctx, ProjectArgs(project_id=a.id))).ok
+    # P11 F5: leaving project_id out (as the out-of-scope hint says) is its own build, for
+    # every assembly tool (the schema no longer requires it)
+    got = await assembly_get.handler(rctx, ProjectArgs())
+    assert got.ok and [i["name"] for i in got.data["instances"]] == ["base"]
+    assert (await assembly_add_instance.handler(
+        rctx, AddInstanceArgs(part_id="plate", name="second"))).ok
+    assert "project_id" not in ProjectArgs.model_json_schema().get("required", [])
     # another build is refused
     with pytest.raises(MisesError) as e:
         await assembly_add_instance.handler(

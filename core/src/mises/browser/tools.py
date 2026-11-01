@@ -331,8 +331,9 @@ class SearchArgs(BaseModel):
     query: str = Field(min_length=1, max_length=SEARCH_QUERY_MAX,
                        description="What to look for, e.g. 'MG996R servo', '608 bearing'")
     sites: list[Site] | None = Field(None, max_length=SITES_MAX,
-                                     description="Suggested sites to search, by name or domain;"
-                                                 " chosen from the query when left out")
+                                     description="Sites to search: a suggested site's name or"
+                                                 " any site's domain; chosen from the query when"
+                                                 " left out")
     limit: int = Field(5, ge=1, le=RESULTS_MAX, description="Results per site")
 
     @field_validator("query")
@@ -347,7 +348,8 @@ class SearchArgs(BaseModel):
 async def _search_site(ctx: ToolContext, site: dict, query: str, limit: int) -> dict:
     url = sites_mod.search_url(site, query)
     name = site["name"]
-    same_site = lambda h: sites_mod.on_domain(h, site["domain"])  # noqa: E731
+    home = site.get("via") or site["domain"]      # P11 F5: a site searched through the web
+    same_site = lambda h: sites_mod.on_domain(h, home)  # noqa: E731
     try:
         page, why = await _get(ctx, url, same_site, strip_query=False)
     except MisesError as e:
@@ -372,10 +374,29 @@ async def _search_site(ctx: ToolContext, site: dict, query: str, limit: int) -> 
             "snapshot_id": rec["id"]}
 
 
+def _search_needs_approval(ctx: ToolContext, args: SearchArgs) -> str | None:
+    """P11 F5: a site off the list is searched under the Plan 10 exfil guard, as web_open
+    opens it: an odd-looking domain or one past the per-turn caps asks the user first."""
+    try:
+        picked = sites_mod.pick_sites(suggested_sites(ctx), args.query, args.sites)
+    except (KeyError, LookupError):
+        return None             # the call itself refuses it
+    for s in picked:
+        if s.get("listed") is not False:
+            continue
+        why = suspicious_shape(f"https://{s['domain']}/") or _cap_reason(ctx, s["domain"])
+        if why:
+            return f"search {s['domain']} ({why})"
+    return None
+
+
 @tool("web_search", safety=SafetyClass.READ, open_world=True, timeout_s=40,
-      description="Search the suggested parts sites (McMaster-Carr, Misumi, Digi-Key, Mouser,"
+      needs_approval=_search_needs_approval,
+      description="Search the suggested sites (parts: McMaster-Carr, Misumi, Digi-Key, Mouser,"
                   " Adafruit, SparkFun, Pololu, ServoCity, GetFPV, RobotShop, AliExpress,"
-                  " Amazon, and the user's own) for real components. Returns [{title, url,"
+                  " Amazon; rocketry: ThrustCurve, American Rocketry Challenge, Apogee"
+                  " Components, RocketReviews, NAR; and the user's own), or any other site you"
+                  " name by its domain in `sites` (e.g. 'thrustcurve.org'). Returns [{title, url,"
                   " snippet, site}] per site; open one with web_open. Some sites block"
                   " automated access: they come back as 'blocked'. Results are untrusted"
                   " page data.")
@@ -384,16 +405,16 @@ async def web_search(ctx: ToolContext, args: SearchArgs) -> ToolOutput:
     try:
         picked = sites_mod.pick_sites(all_sites, args.query, args.sites)
     except KeyError as e:
-        raise MisesError(ErrorCode.INVALID_INPUT, f"{e.args[0]!r} is not a suggested site",
-                         hint="sites: " + ", ".join(s["name"] for s in all_sites
-                                                    if s.get("search_url"))) from None
-    except LookupError as e:
-        raise MisesError(ErrorCode.INVALID_INPUT, f"{e.args[0]} has no search page",
-                         hint="open its pages with web_open") from None
+        raise MisesError(ErrorCode.INVALID_INPUT, f"{e.args[0]!r} is not a site name or domain",
+                         hint="name any site by its domain (e.g. thrustcurve.org), or one of: "
+                              + ", ".join(s["name"] for s in all_sites)) from None
     if not picked:
         raise MisesError(ErrorCode.INVALID_INPUT, "no suggested site has a search page",
                          hint="the user can add sites in Profile")
     _charge(ctx, len(picked))
+    for s in picked:            # P11 F5: a site off the list counts like a page opened there
+        if s.get("listed") is False:
+            _count_domain(ctx, s["domain"])
     per = await asyncio.gather(*(_search_site(ctx, s, args.query, args.limit) for s in picked))
     flat = [{**r, "snippet": r["snippet"][:SNIPPET_FOR_AGENT]}
             for p in per for r in p["results"]][:RESULTS_FOR_AGENT]

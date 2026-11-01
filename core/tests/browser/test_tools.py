@@ -19,7 +19,7 @@ def test_classes_and_flags():
         "web_search": C.READ, "web_open": C.READ, "part_show": C.LOCAL_MUTATE}
     assert reg.get("web_open").needs_approval is not None
     assert reg.get("web_open").open_world and reg.get("web_search").open_world
-    assert reg.get("web_search").needs_approval is None
+    assert reg.get("web_search").needs_approval is not None    # P11 F5: a site off the list
 
 
 # ---- web_search
@@ -78,10 +78,53 @@ async def test_search_redirect_off_site_refused(env, web):
     assert web.hosts() == ["www.adafruit.com"]
 
 
-async def test_search_unknown_site_refused(env, web):
+DDG = "https://html.duckduckgo.com/html/"
+DDG_PAGE = """<html><body>
+<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.thrustcurve.org%2Fmotors%2FAeroTech%2FF67W%2F&rut=x">AeroTech F67W - ThrustCurve</a>
+<a class="result__snippet">F67W thrust curve, total impulse 76 Ns</a>
+<a href="https://ads.example.net/click?x=1">Buy motors</a>
+<a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fevil.example.com%2Fx">Off-site result</a>
+</body></html>"""
+
+
+# P11 F5: any site can be searched, a suggested site without a search page too (thrustcurve.org
+# was refused as "not a suggested site"): through a site-restricted web search, keeping only
+# that site's pages
+@pytest.mark.parametrize("named", ["thrustcurve.org", "ThrustCurve",
+                                   "https://www.thrustcurve.org/"])
+async def test_search_any_site_through_the_site_search(env, web, named):
+    web.page(DDG, DDG_PAGE)
+    out = await env.call("web_search", {"query": "F67W thrust curve", "sites": [named]})
+    assert out.ok and out.data["result_count"] == 1
+    req = web.requests[0]
+    assert req.headers["host"] == "html.duckduckgo.com"
+    assert req.url.query == b"q=site%3Athrustcurve.org+F67W+thrust+curve"
+    snap = env.snaps.get(out.data["sites"][0]["snapshot_id"])
+    assert [r["url"] for r in snap["results"]] == [
+        "https://www.thrustcurve.org/motors/AeroTech/F67W/"]
+    assert env.store.pending_approvals(env.run.id) == []
+
+
+async def test_search_a_site_off_the_list_counts_and_an_odd_one_asks_first(env, web):
+    web.page(DDG, DDG_PAGE.replace("thrustcurve.org", "rocketryforum.com"))
+    out = await env.call("web_search", {"query": "estes rocket", "sites": ["rocketryforum.com"]})
+    assert out.ok and out.data["result_count"] == 1
+    root, _ = env.store.run_family(env.run.id)
+    assert env.snaps.domain_counts(root, "rocketryforum.com")[0] == 1
+    odd = "a" * 56 + ".evil.com"
+    task = asyncio.create_task(env.call("web_search", {"query": "x", "sites": [odd]}))
+    card = await env.next_card()
+    assert card.action == "web_search" and "evil.com" in card.deltas["approval_reason"]
+    assert len(web.requests) == 1                     # nothing fetched before the card
+    env.decide(card, approve=False)
+    with pytest.raises(MisesError):
+        await task
+
+
+async def test_search_a_name_that_is_no_site_refused(env, web):
     with pytest.raises(MisesError) as e:
-        await env.call("web_search", {"query": "x", "sites": ["evil.example.com"]})
-    assert e.value.code == ErrorCode.INVALID_INPUT and "not a suggested site" in e.value.message
+        await env.call("web_search", {"query": "x", "sites": ["Not A Site"]})
+    assert e.value.code == ErrorCode.INVALID_INPUT and "domain" in e.value.hint
     assert web.requests == []
 
 

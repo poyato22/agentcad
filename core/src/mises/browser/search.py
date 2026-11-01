@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
 from ..catalog.importer import _squash
 from .sites import on_domain
@@ -107,9 +107,19 @@ def _jsonld_items(p: PageParser) -> list[tuple[str, str]]:
     return out
 
 
+def _unwrap(url: str) -> str:
+    """A web search's redirect link (`//duckduckgo.com/l/?uddg=<the page>`) -> the page."""
+    u = urlsplit(url)
+    if on_domain(u.hostname or "", "duckduckgo.com") and u.path.startswith("/l/"):
+        got = parse_qs(u.query).get("uddg")
+        if got:
+            return got[0]
+    return url
+
+
 def _ok_url(href: str, base: str, domain: str) -> str | None:
     try:
-        url = urljoin(base, href.strip())
+        url = _unwrap(urljoin(base, href.strip()))
         u = urlsplit(url)
     except ValueError:
         return None
@@ -133,6 +143,11 @@ def results_from(p: PageParser, base_url: str, site: dict, limit: int = RESULTS_
                  query: str = "") -> list[dict]:
     domain, name = site["domain"], site["name"]
     adapter = adapter_for(domain)
+    # P11 F5: a site found through a web search: any of its pages is a result, not only
+    # product pages (motor data, rules, articles)
+    via = site.get("via")
+    is_hit = (lambda path: path not in ("", "/")) if via else \
+        (lambda path: _is_product(path, adapter))
     found: dict[str, dict] = {}
     order: list[str] = []
 
@@ -151,7 +166,7 @@ def results_from(p: PageParser, base_url: str, site: dict, limit: int = RESULTS_
 
     for url, title in _jsonld_items(p):
         ok = _ok_url(url, base_url, domain)
-        if ok and _is_product(urlsplit(ok).path, adapter):
+        if ok and is_hit(urlsplit(ok).path):
             add(ok, title)
     candidates = p.links
     if adapter is not None and adapter.link_class is not None:
@@ -161,7 +176,7 @@ def results_from(p: PageParser, base_url: str, site: dict, limit: int = RESULTS_
     links = []
     for link in candidates:
         ok = _ok_url(link["href"], base_url, domain)
-        if ok and _is_product(urlsplit(ok).path, adapter):
+        if ok and is_hit(urlsplit(ok).path):
             links.append((ok, link))
     for i, (ok, link) in enumerate(links):
         nxt = links[i + 1][1]["start"] if i + 1 < len(links) else link["end"] + 2000

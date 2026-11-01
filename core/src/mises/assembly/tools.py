@@ -29,16 +29,22 @@ def _parts_root(ctx: ToolContext) -> Path:
     return Path(ctx.workdir) / "parts"
 
 
-def _resolve_build(ctx: ToolContext, requested: str) -> str:
+def _resolve_build(ctx: ToolContext, requested: str | None) -> str:
     """The build this call may touch. Like catalog/engineering, an agent run can only reach its
-    own build (requesting another is OUT_OF_SCOPE); the UI (admin) may name any build. The build
-    must exist and not be trashed. A bare context (a unit test with no store) resolves to the
+    own build (requesting another is OUT_OF_SCOPE); the UI (admin) may name any build. None
+    (P11 F5: project_id left out) is the run's own build, else the active one. The build must
+    exist and not be trashed. A bare context (a unit test with no store) resolves to the
     requested id unchanged."""
     store = getattr(ctx, "store", None)
     if store is None or getattr(ctx, "run_id", None) is None:
+        if requested is None:
+            raise MisesError(ErrorCode.INVALID_INPUT, "no build to work on",
+                             hint="pass project_id")
         return requested
-    from ..catalog.tools import resolve_project
-    pid = resolve_project(ctx, requested) or requested
+    from ..catalog.tools import _default_project, resolve_project
+    pid = resolve_project(ctx, requested) or requested or _default_project(ctx)
+    if not pid:
+        raise MisesError(ErrorCode.INVALID_INPUT, "no build to work on", hint="pass project_id")
     if hasattr(store, "get_project"):
         try:
             proj = store.get_project(pid)
@@ -122,11 +128,11 @@ def store_solved(ctx: ToolContext, project_id: str, res: SolveResult) -> None:
 
 
 class ProjectArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
 
 
 class AddInstanceArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     part_id: str
     name: str
     transform: list[list[float]] | None = None
@@ -139,7 +145,7 @@ class AddInstanceArgs(BaseModel):
 
 
 class AddJointArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     kind: JointKind
     a: JointRef
     b: JointRef
@@ -154,13 +160,13 @@ class AddJointArgs(BaseModel):
 
 
 class DriveArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     joint_id: str
     value: float | list[float]
 
 
 class RemoveArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     instance_id: str | None = None
     joint_id: str | None = Field(default=None, description="A joint id, or a loop id.")
 
@@ -281,7 +287,7 @@ async def assembly_remove(ctx: ToolContext, args: RemoveArgs) -> ToolOutput:
 
 
 class AddLoopArgs(BaseModel):
-    project_id: str
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
     a: JointRef = Field(description="One body of the loop-closing joint and its frame on it.")
     b: JointRef = Field(description="The other body and its frame; the two frames must meet.")
     type: LoopType = Field(default="revolute", description="revolute: the frames' origins meet "

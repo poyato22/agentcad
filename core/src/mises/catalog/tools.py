@@ -74,8 +74,8 @@ def resolve_project(ctx: ToolContext, requested: str | None) -> str | None:
     if own is None:
         return requested
     if requested not in (None, own):
-        raise MisesError(ErrorCode.OUT_OF_SCOPE, "this run can only add parts to its own build",
-                         hint=f"leave project_id out (this run's build is {own})")
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, "this run can only work in its own build",
+                         hint=f"leave project_id out, or pass {own!r} (this run's build)")
     return own
 
 

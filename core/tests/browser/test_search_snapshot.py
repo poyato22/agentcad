@@ -80,10 +80,19 @@ def test_pick_sites_by_query_words_and_by_name():
                                                                  "Digi-Key"]
     named = sites.pick_sites(ds, "x", ["pololu", "www.adafruit.com"])
     assert [s["name"] for s in named] == ["Pololu", "Adafruit"]
+    # P11 F5: any domain is searchable (off the list: marked so the exfil guard sees it), and a
+    # listed site without a search page goes through the site-restricted web search
+    [off] = sites.pick_sites(ds, "x", ["https://www.thrustcurve.org/motors"])
+    assert off["domain"] == "thrustcurve.org" and off["via"] == sites.SITE_SEARCH_HOST
+    assert off.get("listed") is None and off["name"] == "ThrustCurve"   # now a suggested site
+    [evil] = sites.pick_sites(ds, "x", ["evil.example.com"])
+    assert evil["listed"] is False and "site%3Aevil.example.com" in evil["search_url"]
+    [ti] = sites.pick_sites(ds, "x", ["ti.com"])                # no search page of its own
+    assert ti["name"] == "Texas Instruments" and ti["via"] == sites.SITE_SEARCH_HOST
     with pytest.raises(KeyError):
-        sites.pick_sites(ds, "x", ["evil.example.com"])
-    with pytest.raises(LookupError):
-        sites.pick_sites(ds, "x", ["ti.com"])               # no search page
+        sites.pick_sites(ds, "x", ["Not A Site"])
+    rocket = [s["domain"] for s in sites.pick_sites(ds, "estes rocket parachute")]
+    assert "thrustcurve.org" in rocket and "apogeerockets.com" in rocket
 
 
 # ---- search adapters on fixture pages
