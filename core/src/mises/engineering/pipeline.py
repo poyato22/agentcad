@@ -49,7 +49,7 @@ def signature(asm, home: Path | None = None, *, store=None, project_id: str | No
         d = j.model_dump(mode="json") if hasattr(j, "model_dump") else vars(j)
         h.update(json.dumps(d, sort_keys=True, default=str).encode())
         # C2's joint metadata, read the way the exporter reads it (field or attribute)
-        meta = {k: getattr(j, k, None) for k in ("coupling", "actuator")}
+        meta = {k: getattr(j, k, None) for k in ("coupling", "actuator", "design")}
         h.update(json.dumps(meta, sort_keys=True, default=str).encode())
     for name in ("loops", "loop_closures", "constraints"):
         v = getattr(asm, name, None)

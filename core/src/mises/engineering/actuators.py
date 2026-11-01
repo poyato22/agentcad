@@ -161,7 +161,7 @@ def resolve(ref) -> Perf | None:
     if isinstance(ref, dict) or hasattr(ref, "model_dump"):
         d = ref.model_dump() if hasattr(ref, "model_dump") else dict(ref)
         ratio = d.get("ratio")
-        ref = d.get("catalog_id") or d.get("id") or d.get("actuator")
+        ref = d.get("catalog_id") or d.get("item_id") or d.get("id") or d.get("actuator")
         if ref is None:
             return None
     s = str(ref)

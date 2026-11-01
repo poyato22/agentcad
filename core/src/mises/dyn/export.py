@@ -171,11 +171,59 @@ def _joint_value(j) -> float:
 
 
 def _coupling(j):
+    """C2 contract: value = offset + ratio x partner value, in joint units (deg per deg for
+    gear / belt, mm per deg for rack / screw driven by a revolute, deg per mm for a revolute
+    following a slider)."""
     c = _get(j, "coupling")
     if c is None:
         return None
     return {"kind": _get(c, "kind"), "ratio": float(_get(c, "ratio") or 1.0),
-            "partner_joint": _get(c, "partner_joint")}
+            "partner_joint": _get(c, "partner_joint"),
+            "offset": float(_get(c, "offset") or 0.0)}
+
+
+def joint_actuator(j):
+    """A joint's actuator metadata: C2's `design.actuator` ({item_id, ratio}), or a plain
+    `actuator` attribute."""
+    return _get(j, "actuator") or _get(_get(j, "design"), "actuator")
+
+
+UNIT = {"hinge": math.pi / 180.0, "slide": 1e-3}     # Mises unit -> MuJoCo unit (rad, m)
+
+
+def coupling_polycoef(cp: dict, follower: str, partner: str, follower_value: float,
+                      partner_value: float) -> tuple[list[float], float]:
+    """MuJoCo `equality joint` polycoef for value_f = offset + ratio x value_p (Mises units).
+    MuJoCo constrains deviations from qpos0: y - y0 = a0 + a1 (x - x0); qpos0 is each joint's
+    current value (its `ref`), so a1 = ratio x cf / cp and a0 is the coupling's residual at the
+    exported pose (0 when the stored values already satisfy it, the offset included).
+    Returns (polycoef, residual in the follower's Mises units)."""
+    cf, cpu = UNIT[follower], UNIT[partner]
+    residual = cp["offset"] + cp["ratio"] * partner_value - follower_value
+    return [cf * residual, cp["ratio"] * cf / cpu, 0.0, 0.0, 0.0], residual
+
+
+def _tree_path(tree: list, a: str, b: str) -> list:
+    """The joints of the spanning tree on the path from instance a to instance b."""
+    adj: dict[str, list] = {}
+    for j in tree:
+        adj.setdefault(j.a.instance_id, []).append((j.b.instance_id, j))
+        adj.setdefault(j.b.instance_id, []).append((j.a.instance_id, j))
+    prev: dict[str, tuple] = {a: (None, None)}
+    q = [a]
+    while q:
+        x = q.pop(0)
+        for y, j in adj.get(x, []):
+            if y not in prev:
+                prev[y] = (x, j)
+                q.append(y)
+    if b not in prev:
+        return []
+    out, x = [], b
+    while prev[x][0] is not None:
+        x, j = prev[x]
+        out.append(j)
+    return out[::-1]
 
 
 def _loops(asm) -> list:
@@ -203,8 +251,11 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
     for j in joints:
         (tree if uf.union(j.a.instance_id, j.b.instance_id) else closing).append(j)
     resolver = face_resolver(home / "parts")
-    sub = type(asm)(instances=list(asm.instances), joints=tree) if hasattr(asm, "model_copy") \
-        else type("A", (), {"instances": list(asm.instances), "joints": tree})()
+    # C2's loop records ride along so its solve closes them (a base Assembly ignores them)
+    sub = type(asm)(instances=list(asm.instances), joints=tree,
+                    **({"loops": list(_get(asm, "loops"))} if _get(asm, "loops") else {})) \
+        if hasattr(asm, "model_copy") else \
+        type("A", (), {"instances": list(asm.instances), "joints": tree})()
     res = solve(sub, resolve_face=resolver)
     T = {i: np.array(res.transforms[i], dtype=float) for i in inst}
 
@@ -299,6 +350,27 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
         cp = _coupling(j)
         if cp and cp["partner_joint"]:
             coupled[j.id] = cp
+    depth_c = {c: 0 for c in order}
+    for c in order[1:]:
+        depth_c[c] = depth_c[parent_of[c]] + 1
+
+    def _depth(j) -> int:
+        return min(depth_c.get(cu.find(j.a.instance_id), 99),
+                   depth_c.get(cu.find(j.b.instance_id), 99))
+
+    # a closed loop is driven only at its drivers (C2 `drivers`, default: the loop path's
+    # joint nearest the root); the other joints on the loop's path are passive
+    passive: set[str] = set()
+    for lp in _loops(asm):
+        ia, ib = _get(lp, "joint_a"), _get(lp, "joint_b")
+        ia = ia if isinstance(ia, str) else _get(ia, "instance_id")
+        ib = ib if isinstance(ib, str) else _get(ib, "instance_id")
+        path = [j for j in _tree_path(tree, ia, ib) if j.kind != "fixed"]
+        if not path:
+            continue
+        drivers = _get(lp, "drivers") or [min(path, key=lambda j: _depth(j))]
+        drivers = [d if isinstance(d, str) else d.id for d in drivers]
+        passive |= {j.id for j in path if j.id not in drivers}
 
     bodies, acts, eqs = [], [], []
     jmap: dict[str, dict] = {}
@@ -340,7 +412,7 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
                         jd["range"] = [conv(float(j.limits[0])), conv(float(j.limits[1]))]
                     elif j.limits is not None and k == 0:
                         jd["range"] = [conv(float(j.limits[0])), conv(float(j.limits[1]))]
-                perf = act.resolve(overrides.get(j.id) or _get(j, "actuator"))
+                perf = act.resolve(overrides.get(j.id) or joint_actuator(j))
                 if perf is not None and mjt == "slide":
                     # a torque rating says nothing about a slider's force (it depends on the
                     # pinion radius or the screw lead): drive it through a coupling, or give
@@ -354,7 +426,7 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
                 body["joints"].append(jd)
                 jmap[name] = {"joint_id": j.id, "kind": j.kind, "dof": k, "mj_type": mjt,
                               "unit": "deg" if mjt == "hinge" else ("mm" if mjt == "slide" else "quat")}
-                if mjt == "ball" or j.id in coupled:
+                if mjt == "ball" or j.id in coupled or j.id in passive:
                     continue
                 aname = f"a_{j.id}{suffix}"
                 force = (slider_force_n or {}).get(j.id) if mjt == "slide" else None
@@ -413,13 +485,14 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
                          "the model; not applied")
             continue
         a_t, b_t = jmap[mine[0]]["mj_type"], jmap[theirs[0]]["mj_type"]
-        k = cp["ratio"]
-        if a_t == "slide" and b_t == "hinge":       # rack / screw: mm per rad
-            k = k / 1000.0
-        elif a_t == "hinge" and b_t == "slide":
-            k = 1000.0 / k if k else 0.0
+        jf = next(x for x in joints if x.id == jid)
+        jp = next(x for x in joints if x.id == cp["partner_joint"])
+        poly, resid = coupling_polycoef(cp, a_t, b_t, _joint_value(jf), _joint_value(jp))
+        if abs(resid) > 1e-6:
+            notes.append(f"joint {jid}: its stored value is {resid:+.3g} off its coupling "
+                         f"(offset + ratio x {cp['partner_joint']}); the model starts there")
         eqs.append({"type": "joint", "joint1": mine[0], "joint2": theirs[0],
-                    "polycoef": [0.0, k, 0.0, 0.0, 0.0]})
+                    "polycoef": poly})
         jmap[mine[0]]["coupled_to"] = cp["partner_joint"]
     cl_of = {iid: c for c in order for iid in clusters[c]}
     for j in closing:
@@ -445,9 +518,14 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
         if ca is None or cb is None or fa is None:
             notes.append("a loop-closure record names no instances in the model; skipped")
             continue
+        if _get(lp, "type") == "fixed":
+            eqs.append({"type": "weld", "body1": bname[ca], "body2": bname[cb]})
+            continue
         w = T[ia] @ np.array(_resolve_frame(inst[ia].part_id, fa, resolver))
         eqs.append({"type": "connect", "body1": bname[ca], "body2": bname[cb],
                     "anchor": (w[:3, 3] / 1000.0 - origin[ca]).tolist()})
+        if _get(lp, "type") == "ball":
+            pass                              # a connect is a ball joint already
     model = {"timestep": 0.001, "gravity": [0.0, 0.0, -G],
              "floor": {"z": zmin, "friction": friction} if free else None,
              "bodies": bodies, "actuators": acts, "equalities": eqs}
@@ -495,7 +573,8 @@ def kinematics(home: Path, store, asm, *, base: str = "auto") -> dict:
     def pose(values: dict | None = None):
         js = [j.model_copy(update={"value": values[j.id]}) if values and j.id in values else j
               for j in tree]
-        sub = type(asm)(instances=list(asm.instances), joints=js)
+        sub = type(asm)(instances=list(asm.instances), joints=js,
+                        **({"loops": list(_get(asm, "loops"))} if _get(asm, "loops") else {}))
         res = solve(sub, resolve_face=resolver)
         T = {i: np.array(res.transforms[i], dtype=float) for i in inst}
         rows = []
@@ -513,7 +592,7 @@ def kinematics(home: Path, store, asm, *, base: str = "auto") -> dict:
                           "b": j.b.instance_id, "anchor": (w[:3, 3] / 1000.0).tolist(),
                           "axis": (w[:3, 2] / max(np.linalg.norm(w[:3, 2]), 1e-12)).tolist(),
                           "value": j.value, "limits": j.limits,
-                          "actuator": _get(j, "actuator")})
+                          "actuator": joint_actuator(j)})
         return rows, jrows
 
     rows, jrows = pose()
