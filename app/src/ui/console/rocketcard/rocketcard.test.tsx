@@ -81,7 +81,7 @@ describe("rocket cards in the dock", () => {
   beforeEach(() => {
     resetIds(80_000); resetConsoleView(); try { localStorage.removeItem(LAYOUT_KEY); } catch { /* none */ }
     resetDockLayout(); resetUnread();
-    setDockLayout({ ...DEFAULT_LAYOUT, collapsed: { view: false, sim: false, text: false } }, false);
+    setDockLayout({ ...DEFAULT_LAYOUT, active: "sim" }, false);         // G1: the Simulations tab shown
   });
   afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); resetActivity(); dockLayout.value = DEFAULT_LAYOUT; });
 

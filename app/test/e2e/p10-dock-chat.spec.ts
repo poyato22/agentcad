@@ -1,5 +1,5 @@
-// P10 A2 against the fake core (P11 F2 layout): the Conversation on top, View | Simulations under it
-// (hover widens one), never selecting text while dragged (E10), the
+// P10 A2 against the fake core (G1 layout): View · Simulations on top (one at a time), the Conversation
+// under it, never selecting text while dragged (E10), the
 // critique card at view-card scale (E18), one chat per build with Edit / Retry / Cancel (E9,
 // E24), and error cards as plain wrapped text with the cause and what to do (E3). Steps and cards
 // are the real core's (core/tests/fixtures/ui); the chat and queued-cancel routes are the app's
@@ -37,73 +37,58 @@ async function rect(page: Page, sel: string) {
 }
 
 for (const theme of ["dark", "light"] as const) {
-  // P11 F2: the Conversation on top, full width; View | Simulations under it, 50/50; hovering one
-  // widens it to ~90% (the other keeps ~10%), leaving restores 50/50
-  test(`dock_conversation_on_top_view_and_sims_below_hover_widens_${theme}`, async ({ page, fake }) => {
+  // G1: View · Simulations on top, one at a time behind a segmented control (a pill slides to the
+  // shown one), the Conversation under it; no hover-expand: the pointer moves nothing
+  test(`dock_view_or_sims_on_top_conversation_below_${theme}`, async ({ page, fake }) => {
     await fake.reset(scenario() as never);
     await page.setViewportSize({ width: 1440, height: 900 });
     await useDefaultDock(page);
     await open(page, theme);
     await fake.emit({ type: "agent_announce", run_id: LEAD, data: G1.view_presented });
-    await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "3");
+    await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "2");
     const dock = await rect(page, "[data-region=console]");
     expect(Math.round(dock.width)).toBe(560);
     await expect(page.locator(".app")).toHaveAttribute("data-left", "open");      // one width: the Parts surface stays
-    const t = await rect(page, "[data-dock] [data-stream=text]");
     const v = await rect(page, "[data-dock] [data-stream=view]");
-    const s = await rect(page, "[data-dock] [data-stream=sim]");
-    expect(t.width).toBeGreaterThan(dock.width - 4);                              // full width, on top
-    expect(t.y + t.height).toBeLessThanOrEqual(v.y + 4);
-    expect(Math.abs(v.y - s.y)).toBeLessThan(1);                                  // side by side
-    expect(v.x + v.width).toBeLessThanOrEqual(s.x + 1);
-    expect(Math.abs(v.width - s.width)).toBeLessThan(3);                          // 50/50
+    const t = await rect(page, "[data-dock] [data-stream=text]");
+    expect(v.y + v.height).toBeLessThanOrEqual(t.y + 4);                           // View on top
+    expect(t.width).toBeGreaterThan(dock.width - 4);
     await expect(col(page, "view").locator("[data-testid=view-card]")).toBeVisible();
-    if (SHOTS) await page.locator("[data-region=console]").screenshot({ path: `${SHOTS}/dock-stack-${theme}.png` });
-
-    // hover View: ~90%, Simulations a sliver (never 0)
+    await expect(col(page, "sim")).toBeHidden();
+    const pill = con(page).locator("[data-seg-pill]");
+    const p0 = await rect(page, "[data-seg-pill]");
+    // the pointer over the stream or the other tab moves nothing
     await page.mouse.move(v.x + v.width / 2, v.y + v.height / 2);
-    await expect(con(page).locator("[data-dock-row]")).toHaveAttribute("data-expand", "view");
-    await expect.poll(async () => (await rect(page, "[data-dock] [data-stream=view]")).width / (v.width + s.width)).toBeGreaterThan(0.86);
-    const sliver = (await rect(page, "[data-dock] [data-stream=sim]")).width;
-    expect(sliver).toBeGreaterThan(40);
-    if (SHOTS) await page.locator("[data-region=console]").screenshot({ path: `${SHOTS}/dock-hover-view-${theme}.png` });
-
-    // over to Simulations: it takes the room
-    const s2 = await rect(page, "[data-dock] [data-stream=sim]");
-    await page.mouse.move(s2.x + s2.width / 2, s2.y + s2.height / 2);
-    await expect(con(page).locator("[data-dock-row]")).toHaveAttribute("data-expand", "sim");
-    await expect.poll(async () => (await rect(page, "[data-dock] [data-stream=sim]")).width / (v.width + s.width)).toBeGreaterThan(0.86);
-    if (SHOTS) await page.locator("[data-region=console]").screenshot({ path: `${SHOTS}/dock-hover-sims-${theme}.png` });
-
-    // leaving the row: 50/50 again
-    await page.mouse.move(t.x + t.width / 2, t.y + 60);
-    await expect(con(page).locator("[data-dock-row]")).not.toHaveAttribute("data-expand", /./);
-    await expect.poll(async () => Math.abs((await rect(page, "[data-dock] [data-stream=view]")).width
-      - (await rect(page, "[data-dock] [data-stream=sim]")).width)).toBeLessThan(3);
-
-    // collapsing still works, and is remembered
-    await col(page, "sim").locator(".dock-t").click();
-    await expect(col(page, "sim")).toHaveAttribute("data-collapsed", "");
-    expect((await rect(page, "[data-dock] [data-stream=view]")).width).toBeGreaterThan(dock.width - 40);
+    await page.locator("[data-stream-tab=sim]").hover();
+    await page.waitForTimeout(300);
+    expect((await rect(page, "[data-dock] [data-stream=view]")).width).toBeCloseTo(v.width, 0);
+    await expect(pill).toHaveAttribute("data-seg-pill", "view");
+    // a click switches: the pill slides under Simulations
+    await page.locator("[data-stream-tab=sim]").click();
+    await expect(pill).toHaveAttribute("data-seg-pill", "sim");
+    await expect.poll(async () => (await rect(page, "[data-seg-pill]")).x).toBeGreaterThan(p0.x + 20);
+    await expect(col(page, "view")).toBeHidden();
+    await expect(col(page, "sim")).toBeVisible();
+    // remembered
     await page.reload();
-    await expect(col(page, "sim")).toHaveAttribute("data-collapsed", "");
+    await expect(page.locator("[data-stream-tab=sim]")).toHaveAttribute("aria-selected", "true");
   });
 }
 
-test("reduced_motion_lands_the_hover_width_without_a_transition", async ({ page, fake }) => {
+test("reduced_motion_switches_without_the_pill_sliding", async ({ page, fake }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await fake.reset(scenario() as never);
   await page.setViewportSize({ width: 1440, height: 900 });
   await useDefaultDock(page);
   await open(page, "dark");
-  const dur = await col(page, "view").evaluate((el) => getComputedStyle(el).transitionDuration);
+  const dur = await con(page).locator("[data-seg-pill]").evaluate((el) => getComputedStyle(el).transitionDuration);
   expect(dur.split(",").every((d) => parseFloat(d) === 0)).toBe(true);
 });
 
 test("dragging_the_dock_edge_or_the_bar_never_selects_text", async ({ page, fake }) => {
   await fake.reset(scenario() as never);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "dark", { collapsed: { view: false, sim: false, text: false } });
+  await open(page, "dark", { collapsed: { top: false, text: false } });
   const edge = await rect(page, "[data-dock] .dock-edge");
   const x = edge.x + edge.width / 2;
   const y = edge.y + 300;
@@ -117,20 +102,20 @@ test("dragging_the_dock_edge_or_the_bar_never_selects_text", async ({ page, fake
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
   expect(await page.evaluate(() => document.body.classList.contains("dock-resizing"))).toBe(false);
   const bar = await rect(page, "[data-dock] [data-split]");
-  const before = await page.evaluate(() => JSON.parse(localStorage.getItem("mises.dock.stack") ?? "{}").split ?? 0.56);
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem("mises.dock.stack") ?? "{}").split ?? 0.5);
   await page.mouse.move(bar.x + 200, bar.y + 3);
   await page.mouse.down();
   await page.mouse.move(bar.x + 260, bar.y - 120, { steps: 8 });
   await page.mouse.up();
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
   const split = await page.evaluate(() => JSON.parse(localStorage.getItem("mises.dock.stack") ?? "{}").split);
-  expect(split).toBeLessThan(before);                                           // a shorter conversation
+  expect(split).toBeLessThan(before);                                           // a shorter top area (G1)
 });
 
 test("the_critique_card_fills_the_view_column_like_a_view_card", async ({ page, fake }) => {
   await fake.reset(scenario() as never);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, "dark", { collapsed: { view: false, sim: true, text: false } });
+  await open(page, "dark", { active: "view", collapsed: { top: false, text: false } });
   await fake.emit({ type: "agent_announce", run_id: LEAD, data: G1.view_presented });
   await expect(col(page, "view").locator("[data-testid=view-card]")).toBeVisible();
   const viewH = (await col(page, "view").locator("[data-testid=view-card]").boundingBox())?.height ?? 0;

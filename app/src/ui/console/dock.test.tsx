@@ -1,4 +1,4 @@
-// The agent dock (Plan 9 D2 / D4, P11 F2 layout): three streams visible at once over the real core's steps, each
+// The agent dock (Plan 9 D2 / D4, G1 layout): View · Simulations on top (one at a time), the Conversation under
 // collapsible (with an unread count) and resizable; the composer's send button turns into Stop.
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/preact";
 import { readFileSync } from "node:fs";
@@ -14,7 +14,6 @@ import { liveJobs, onJobEvent, resetJobs } from "../../state/jobs";
 import { bindClient, resetStore, runs, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
 import { ConsolePane } from "./ConsolePane";
-import { HOVER_INTENT_MS } from "./Dock";
 import { resetOffListRuns } from "./derived";
 import { DEFAULT_LAYOUT, dockLayout, LAYOUT_KEY, resetDockLayout, setDockLayout } from "./dockLayout";
 import { message, resetIds, run, step, toolCall } from "./testSteps";
@@ -54,23 +53,20 @@ function mount(list: Step[], over: Partial<AgentRun> = {}) {
 }
 
 const section = (s: string) => document.querySelector(`[data-dock] [data-stream=${s}]`) as HTMLElement;
+const tab = (s: "view" | "sim") => document.querySelector(`[data-dock] [data-stream-tab=${s}]`) as HTMLElement;
 
 beforeEach(() => { resetIds(70_000); resetConsoleView(); try { localStorage.removeItem(LAYOUT_KEY); } catch { /* none */ } resetDockLayout(); resetUnread();
-  // P10 E6: these tests see all three columns (the default opens the Conversation alone)
-  setDockLayout({ ...DEFAULT_LAYOUT, collapsed: { view: false, sim: false, text: false } }, false); });
+  setDockLayout(DEFAULT_LAYOUT, false); });
 afterEach(() => { cleanup(); resetStore(); resetCatalog(); resetConsoleView(); resetOffListRuns(); resetActivity(); dockLayout.value = DEFAULT_LAYOUT; });
 
-describe("agent dock: the Conversation over View | Simulations", () => {
-  it("shows views, studies and the conversation together, each in its own scroller", async () => {
+describe("agent dock: View · Simulations on top, the Conversation under it (G1)", () => {
+  it("shows views, studies and the conversation, each in its own scroller; the switcher picks View or Simulations", async () => {
     mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid"), view(90_002, 2e9 + 1, "the lid, closer")]);
     await frame();
-    for (const [s, title] of [["view", "View"], ["sim", "Simulations"], ["text", "Conversation"]]) {
-      const el = section(s);
-      const t = el.querySelector(".dock-t") as HTMLElement;
-      expect(t.textContent).toContain(title);
-      expect(t.getAttribute("aria-expanded")).toBe("true");
-      expect(el.querySelector(`[data-stream-body=${s}]`)).toBeTruthy();
-    }
+    expect(tab("view").getAttribute("aria-selected")).toBe("true");
+    expect(tab("sim").getAttribute("aria-selected")).toBe("false");
+    expect(section("view").hidden).toBe(false);
+    expect(section("sim").hidden).toBe(true);                       // one stream at a time
     // View: the newest large, the earlier one in the filmstrip
     const v = section("view");
     expect(v.querySelectorAll("[data-testid=view-card]").length).toBe(1);
@@ -80,14 +76,19 @@ describe("agent dock: the Conversation over View | Simulations", () => {
     fireEvent.click(tiles[0]);
     expect(v.querySelector("[data-testid=view-card]")?.textContent).toContain("the lid");
     expect(v.querySelector("[data-testid=view-card]")?.textContent).not.toContain("closer");
-    // Simulations: one card per study
+    // Simulations: one card per study, once its tab is clicked
+    fireEvent.click(tab("sim"));
+    await frame();
+    expect(section("sim").hidden).toBe(false);
+    expect(section("view").hidden).toBe(true);
+    expect(document.querySelector("[data-dock] .dock-seg")?.getAttribute("data-seg")).toBe("sim");
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).active).toBe("sim");
     const sims = section("sim");
     expect(sims.querySelectorAll("[data-study-slot]").length).toBe(STUDY.filter((x) => x.kind === "tool_call").length);
     // Conversation: the words, no study or view card in it
     const conv = within(section("text")).getByRole("log", { name: "Conversation" });
     expect(conv.querySelector("[data-msg=user]")).toBeTruthy();
     expect(conv.querySelector("[data-study-slot], [data-testid=view-card]")).toBeNull();
-    // one agent made all of it, and its conversation is the one shown: no run tag on every card (FW-app M6)
     expect(section("sim").querySelector("[data-run-tag]")).toBeNull();
     expect(section("view").querySelector("[data-run-tag]")).toBeNull();
   });
@@ -109,151 +110,83 @@ describe("agent dock: the Conversation over View | Simulations", () => {
     expect(section("sim").querySelector(`[data-run="${SUB}"] [data-run-tag]`)?.textContent).toContain("simulation");
     expect(section("view").querySelector("[data-testid=view-card]")?.textContent).toContain("the lid from the sub-agent");
     expect(section("view").querySelector(`[data-view-main] [data-run-tag="${SUB}"]`)).toBeTruthy();
-    // the lead's own conversation stays its own
     expect(within(section("text")).getByRole("log", { name: "Conversation" }).querySelector("[data-study-slot]")).toBeNull();
   });
 
-  it("an empty column says so in one quiet line instead of a blank box", async () => {
+  it("an empty stream says so in one quiet line instead of a blank box", async () => {
     mount(TEXT);
     await frame();
     expect(section("view").querySelector("[data-stream-empty]")?.textContent).toContain("Views and renders");
   });
 
-  it("the Conversation on top, full width; View | Simulations in a row under it (P11 F2)", async () => {
+  it("View · Simulations on top, the divider, the Conversation under them with the composer (no hover-expand)", async () => {
     mount([...TEXT, ...STUDY]);
     await frame();
     const stack = document.querySelector("[data-dock] .dock-stack") as HTMLElement;
-    expect([...stack.children].map((e) => e.getAttribute("data-stream") ?? e.getAttribute("data-split") ?? (e.hasAttribute("data-dock-row") ? "row" : "?")))
-      .toEqual(["text", "", "row"]);
-    const row = stack.querySelector("[data-dock-row]") as HTMLElement;
-    expect([...row.querySelectorAll("[data-stream]")].map((e) => e.getAttribute("data-stream"))).toEqual(["view", "sim"]);
-    expect(document.querySelector("[data-divider]")).toBeNull();
-    // 50/50, and the Conversation keeps its share of the height
-    expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["1", "1"]);
-    expect(section("text").style.flex).toContain(String(dockLayout.value.split));
-    // the composer is the Conversation's foot; no design focus control in its header (F1)
+    expect([...stack.children].map((e) => e.getAttribute("data-stream-area") ?? e.getAttribute("data-stream") ?? (e.hasAttribute("data-split") ? "split" : "?")))
+      .toEqual(["top", "split", "text"]);
+    expect(document.querySelector("[data-dock-row], [data-expand], [data-shrunk]")).toBeNull();
+    const top = stack.firstElementChild as HTMLElement;
+    expect(top.style.flex).toContain(String(dockLayout.value.split));
+    // hovering a tab or the stream changes nothing
+    fireEvent.pointerEnter(tab("sim"));
+    fireEvent.pointerEnter(section("view"));
+    await frame();
+    expect(tab("view").getAttribute("aria-selected")).toBe("true");
+    expect(top.style.flex).toContain(String(dockLayout.value.split));
     expect(section("text").querySelector("[data-command-line]")).toBeTruthy();
     expect(document.querySelector("[data-design-focus], [aria-label='Design focus']")).toBeNull();
   });
 
-  it("hovering View or Simulations widens it to ~90%, leaving the row restores 50/50 (P11 F2)", async () => {
-    mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid")]);
-    await frame();
-    const rest = async () => act(async () => { await new Promise((r) => setTimeout(r, HOVER_INTENT_MS + 30)); });
-    const row = document.querySelector("[data-dock-row]") as HTMLElement;
-    fireEvent.pointerEnter(section("view"));
-    await frame();
-    // fix round 1: a passing pointer does not widen it; resting on it does
-    expect(row.hasAttribute("data-expand")).toBe(false);
-    await rest();
-    expect(row.getAttribute("data-expand")).toBe("view");
-    expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["9", "1"]);
-    expect(section("sim").hasAttribute("data-shrunk")).toBe(true);
-    fireEvent.pointerEnter(section("sim"));
-    await rest();
-    expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["1", "9"]);
-    expect(section("view").hasAttribute("data-shrunk")).toBe(true);
-    fireEvent.pointerLeave(row);
-    await frame();
-    expect(row.hasAttribute("data-expand")).toBe(false);
-    expect([section("view").style.flexGrow, section("sim").style.flexGrow]).toEqual(["1", "1"]);
-    // a sweep across the row (enter, then leave before the intent) widens nothing
-    fireEvent.pointerEnter(section("view"));
-    fireEvent.pointerLeave(row);
-    await rest();
-    expect(row.hasAttribute("data-expand")).toBe(false);
-    // keyboard focus inside a half widens it at once (fix round 1)
-    (section("sim").querySelector(".dock-t") as HTMLElement).focus();
-    await frame();
-    expect(row.getAttribute("data-expand")).toBe("sim");
-    (section("text").querySelector("textarea") as HTMLElement).focus();
-    await frame();
-    expect(row.hasAttribute("data-expand")).toBe(false);
-    // one half closed: the other fills the row and hover does nothing
-    fireEvent.click(within(section("sim")).getByRole("button", { name: /^Simulations/ }));
-    await frame();
-    fireEvent.pointerEnter(section("view"));
-    await rest();
-    expect(row.hasAttribute("data-expand")).toBe(false);
-    expect(section("sim").tagName).toBe("BUTTON");
-  });
-
-  it("a press never moves the row before it ends: the click lands where it went down (reduced motion)", async () => {
-    // With reduced motion a widening is instant: the focus a mouse press gives a filmstrip tile
-    // must not widen the half between pointerdown and pointerup (the tile would move away and
-    // the click be lost). It widens once the press is over.
-    const reduce = window.matchMedia;
-    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
-    onTestFinished(() => { window.matchMedia = reduce; });
-    mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid"), view(90_002, 2e9 + 1, "the lid, closer")]);
-    await frame();
-    const row = document.querySelector("[data-dock-row]") as HTMLElement;
-    const tileBtn = within(section("view").querySelector("[data-filmstrip]") as HTMLElement).getAllByRole("button")[0];
-    fireEvent.pointerEnter(section("view"));
-    fireEvent.pointerDown(tileBtn);
-    tileBtn.focus();                                   // the focus a mouse press brings
-    await act(async () => { await new Promise((r) => setTimeout(r, HOVER_INTENT_MS + 30)); });
-    expect(row.hasAttribute("data-expand")).toBe(false);          // nothing moved mid-press
-    fireEvent.pointerUp(tileBtn);
-    fireEvent.click(tileBtn);
-    expect(section("view").querySelector("[data-testid=view-card]")?.textContent).toContain("the lid");
-    await frame();
-    expect(row.getAttribute("data-expand")).toBe("view");          // then it widens
-  });
-
-  it("a closed stream is a slim tab that counts what arrives while it is closed; the choice is remembered", async () => {
+  it("the other tab counts what arrives for it; showing it clears the count; a running count shows", async () => {
     mount([...TEXT, ...STUDY]);
     await frame();
-    fireEvent.click(within(section("sim")).getByRole("button", { name: /^Simulations/ }));
-    await frame();
-    const tab = section("sim");
-    expect(tab.tagName).toBe("BUTTON");
-    expect(tab.getAttribute("aria-expanded")).toBe("false");
-    expect(tab.querySelector("[data-stream-body]")).toBeNull();
-    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).collapsed.sim).toBe(true);
-    // two more studies land
     act(() => {
       steps.value = new Map([[RID, [...(steps.value.get(RID) ?? []), toolCall(RID, "n1", "sim_run", { type: "static" }, 3e9), toolCall(RID, "n2", "sim_run", { type: "modal" }, 3e9 + 1)]]]);
     });
     await frame();
-    expect(section("sim").querySelector("[data-unread]")?.textContent).toBe("2");
-    expect(section("sim").getAttribute("aria-label")).toBe("Show simulations · 2 new · 2 running");
-    fireEvent.click(section("sim"));
+    expect(tab("sim").querySelector("[data-unread]")?.textContent).toBe("2");
+    expect(tab("sim").getAttribute("aria-label")).toBe("Simulations · 2 new · 2 running");
+    expect(tab("view").querySelector("[data-unread]")).toBeNull();
+    fireEvent.click(tab("sim"));
     await frame();
-    expect(section("sim").querySelector("[data-unread]")).toBeNull();
-    // the running count in the header (an agent working: blue, data-changing)
-    expect(section("sim").querySelector("[data-running]")?.getAttribute("data-running")).toBe("2");
-    // both halves closed: the row is a slim bar; the Conversation closed: a bar on top
-    fireEvent.click(within(section("sim")).getByRole("button", { name: /^Simulations/ }));
-    fireEvent.click(within(section("view")).getByRole("button", { name: /^View/ }));
-    await frame();
-    expect(document.querySelector("[data-dock-row]")?.hasAttribute("data-folded")).toBe(true);
-    expect(document.querySelector("[data-split]")).toBeNull();
+    expect(tab("sim").querySelector("[data-unread]")).toBeNull();
+    expect(tab("sim").querySelector("[data-running]")?.getAttribute("data-running")).toBe("2");
   });
 
-  it("the last open stream stays open", async () => {
-    setDockLayout({ ...DEFAULT_LAYOUT, collapsed: { view: true, sim: true, text: false } }, false);
-    mount(TEXT);
+  it("either part closes to a slim bar (the top's keeps its tabs); the last open part stays open", async () => {
+    mount([...TEXT, ...STUDY]);
     await frame();
-    expect(section("view").tagName).toBe("BUTTON");
+    fireEvent.click(screen.getByRole("button", { name: "Close View and Simulations" }));
+    await frame();
+    expect(document.querySelector("[data-dock] [data-stream=top]")?.hasAttribute("data-collapsed")).toBe(true);
+    expect(document.querySelector("[data-split]")).toBeNull();
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).collapsed.top).toBe(true);
     const t = section("text").querySelector(".dock-t") as HTMLElement;
     expect(t.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(t);
     await frame();
-    expect(section("text").tagName).toBe("SECTION");
+    expect(section("text").tagName).toBe("SECTION");                // the last open part
+    fireEvent.click(tab("sim"));                                    // a tab on the bar opens that stream
+    await frame();
+    expect(dockLayout.value).toMatchObject({ active: "sim", collapsed: { top: false } });
+    fireEvent.click(section("text").querySelector(".dock-t") as HTMLElement);
+    await frame();
+    expect(section("text").tagName).toBe("BUTTON");
+    expect(document.querySelector("[data-dock] .cmd, [data-dock] [data-command-line]")).toBeTruthy();   // the composer stays
   });
 
-  it("the bar between the Conversation and the row trades their heights and saves at the end", async () => {
+  it("the divider trades the heights and saves at the end", async () => {
     mount([...TEXT, ...STUDY]);
     await frame();
-    const bar = screen.getByRole("separator", { name: /Resize the conversation/ });
+    const bar = screen.getByRole("separator", { name: /Resize View and Simulations/ });
     const before = dockLayout.value.split;
     fireEvent.keyDown(bar, { key: "ArrowDown" });
     expect(dockLayout.value.split).toBeGreaterThan(before);
     expect(JSON.parse(localStorage.getItem(LAYOUT_KEY) as string).split).toBe(dockLayout.value.split);
   });
 
-  it("dragging the edge or the bar never selects text (P10 E10)", async () => {
+  it("dragging the edge or the divider never selects text (P10 E10)", async () => {
     const w = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { value: 2400, configurable: true });
     onTestFinished(() => { Object.defineProperty(window, "innerWidth", { value: w, configurable: true }); });

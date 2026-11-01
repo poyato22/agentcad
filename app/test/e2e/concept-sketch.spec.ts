@@ -89,10 +89,6 @@ test.describe("concept sketch", () => {
     await expect(page.locator(".cv-thread")).toContainText("Sketch feedback v1: 3 marks and a comment…");
     await expect(card).toHaveAttribute("data-version", "2", { timeout: 10_000 });
     await expect(card.getByTestId("sketch-version")).toHaveText(["v1", "v2"]);
-    // compare with v1, side by side (P11 F2: the pointer goes into the View half first, as a
-    // user's does — it widens; the half under a pointer left elsewhere is a sliver)
-    await page.locator("[data-dock] [data-stream=view] .dock-h").hover();
-    await expect(page.locator("[data-dock-row]")).toHaveAttribute("data-expand", "view");
     await card.getByTestId("sketch-compare").click();
     await expect(card.locator(".sk-stage.is-compare .sk-fig")).toHaveCount(2);
     await shot(page, "card-v2-compare-dark");

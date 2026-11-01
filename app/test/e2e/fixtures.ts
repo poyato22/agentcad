@@ -122,12 +122,14 @@ export async function openHome(page: import("@playwright/test").Page): Promise<v
  *  viewport clicks. `useDefaultDock` (before page.goto) undoes the seed. */
 const ALL_COLUMNS = new Set(["agent-browser.spec.ts", "concept-sketch.spec.ts", "dock.spec.ts", "jobs.spec.ts", "generative.spec.ts", "geometry.spec.ts",
   "motion.spec.ts", "studies-agent.spec.ts", "studies.spec.ts"]);
-export async function openAllDockColumns(page: import("@playwright/test").Page): Promise<void> {
-  await page.addInitScript(() => {
+/** G1: the top area shows one of View / Simulations: the specs about studies open on Simulations. */
+const SIM_FIRST = new Set(["jobs.spec.ts", "generative.spec.ts", "studies-agent.spec.ts", "studies.spec.ts"]);
+export async function openAllDockColumns(page: import("@playwright/test").Page, active: "view" | "sim" = "view"): Promise<void> {
+  await page.addInitScript((a) => {
     try {
-      if (!localStorage.getItem("mises.dock.stack")) localStorage.setItem("mises.dock.stack", JSON.stringify({ collapsed: { view: false, sim: false, text: false } }));
+      if (!localStorage.getItem("mises.dock.stack")) localStorage.setItem("mises.dock.stack", JSON.stringify({ active: a, collapsed: { top: false, text: false } }));
     } catch { /* none */ }
-  });
+  }, active);
 }
 /** P10 FWA: with three dock columns open the Parts surface folds to its tab by itself so the
  *  model keeps 520 px (ui/shell/room); a spec that works the part tree opens it, as a user would. */
@@ -149,7 +151,8 @@ export const test = base.extend<{ fake: FakeControl }>({
   // hide the panes they assert. A Home spec opts back in with openHome().
   page: async ({ page }, use, info) => {
     await openBuildShell(page);
-    if (ALL_COLUMNS.has(info.file.split("/").pop() ?? "")) await openAllDockColumns(page);
+    const spec = info.file.split("/").pop() ?? "";
+    if (ALL_COLUMNS.has(spec)) await openAllDockColumns(page, SIM_FIRST.has(spec) ? "sim" : "view");
     await use(page);
   },
   // eslint-disable-next-line no-empty-pattern

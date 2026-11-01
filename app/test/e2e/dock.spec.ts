@@ -1,4 +1,5 @@
-// Plan 9 U-B against the fake core: the agent dock's three streams are visible at once and never
+// Plan 9 U-B / G1 against the fake core: View or Simulations on top (one at a time, the other's tab
+// counting what arrives), the Conversation under it; the streams never
 // wait on each other — a study runs for 5 s in Simulations while text streams into the
 // Conversation and a view lands in View — and the composer's send button is Stop while the lead
 // works. Steps and cards are the real core's (core/tests/fixtures/ui: the base run from
@@ -43,18 +44,20 @@ async function open(page: Page, theme: "dark" | "light") {
 const activity = (fake: FakeControl, state: string, detail = "") =>
   fake.emit({ type: "agent_activity", run_id: LEAD, data: { state, detail, since: Date.now() / 1000 } });
 
+const tab = (page: Page, s: "view" | "sim") => con(page).locator(`[data-dock] [data-stream-tab=${s}]`);
+
 for (const theme of ["dark", "light"] as const) {
-  test(`three_streams_at_once_a_5s_study_never_holds_up_text_or_views_${theme}`, async ({ page, fake }) => {
+  test(`g1_view_or_simulations_on_top_a_5s_study_never_holds_up_text_or_views_${theme}`, async ({ page, fake }) => {
     await fake.reset(scenario() as never);
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, theme);
     await activity(fake, "tool", "running a study");
-    // the lead starts a study (in flight: no result yet)
+    await expect(tab(page, "view")).toHaveAttribute("aria-selected", "true");
+    // the lead starts a study (in flight: no result yet) while View is shown: Simulations counts it
     const t0 = Date.now();
     await fake.emit({ type: "tool_call", run_id: LEAD, data: { call_id: CALL.payload.call_id, name: "sim_run", input: CALL.payload.input } }, { steps: [stepOf(CALL)] });
-    const sim = stream(page, "sim");
-    await expect(sim.locator("[data-study-slot]")).toHaveCount(1);
-    await expect(sim.locator("[data-running]")).toHaveAttribute("data-running", "1");
+    await expect(tab(page, "sim").locator("[data-unread]")).toHaveText("1");
+    await expect(tab(page, "sim").locator("[data-running]")).toHaveAttribute("data-running", "1");
     // while it runs: progress in Simulations, words in the Conversation, a view in View
     const words = ["The beam ", "study is running; ", "meanwhile here is ", "the lid from above."];
     for (const [i, w] of words.entries()) {
@@ -68,31 +71,34 @@ for (const theme of ["dark", "light"] as const) {
     await expect(view.getByTestId("view-card")).toBeVisible();
     await expect(view.getByTestId("view-card")).toContainText("the mount plate, from above");
     await expect(view.getByTestId("live-view")).toHaveAttribute("data-state", "ready", { timeout: 10_000 });
-    await expect(sim.getByTestId("phase-bar")).toHaveAttribute("data-phase", "solve");
-    // all three visible at once, side by side in one dock, and the study is still running
-    for (const s of ["view", "sim", "text"] as const) {
-      const box = await stream(page, s).boundingBox();
-      expect(box && box.height > 60, s).toBe(true);
-      await expect(stream(page, s).locator(".dock-t")).toHaveAttribute("aria-expanded", "true");
-    }
-    expect(Date.now() - t0).toBeLessThan(5000);
-    await expect(sim.locator("[data-running]")).toHaveAttribute("data-running", "1");
-    // D13: the view uses the dock's full width
+    // View on top, the Conversation under it; the view uses the area's full width (D13)
+    const vb = (await view.boundingBox())!; const tb = (await stream(page, "text").boundingBox())!;
+    expect(vb.y + vb.height).toBeLessThanOrEqual(tb.y + 2);
     const card = await view.getByTestId("view-card").boundingBox();
-    // (P10 E6: the full width of its column)
-    expect(card!.width).toBeGreaterThanOrEqual((await view.boundingBox())!.width - 30);
-    // the composer: Stop while the lead works
+    expect(card!.width).toBeGreaterThanOrEqual(vb.width - 30);
     await expect(con(page).getByRole("button", { name: "Stop" })).toBeVisible();
-    await page.screenshot({ path: `test-results/ub-dock-${theme}.png` });
-    // 5 s in, the study finishes: its card lands, the running count clears
+    await page.screenshot({ path: `test-results/g1-dock-view-${theme}.png` });
+    // the pill slides to Simulations; its count clears; the study's progress is there
+    await tab(page, "sim").click();
+    await expect(tab(page, "sim")).toHaveAttribute("aria-selected", "true");
+    await expect(con(page).locator("[data-seg-pill]")).toHaveAttribute("data-seg-pill", "sim");
+    await expect(view).toBeHidden();
+    const sim = stream(page, "sim");
+    await expect(sim.locator("[data-study-slot]")).toHaveCount(1);
+    await expect(sim.getByTestId("phase-bar")).toHaveAttribute("data-phase", "solve");
+    await expect(tab(page, "sim").locator("[data-unread]")).toHaveCount(0);
+    // a new view lands meanwhile: View's tab counts it
+    await fake.emit({ type: "agent_announce", run_id: LEAD, data: { ...VIEW, ref: { ...(VIEW.ref as object), view_spec: { ...((VIEW.ref as { view_spec: object }).view_spec), caption: "the lid, closer" } } } });
+    await expect(tab(page, "view").locator("[data-unread]")).toHaveText("1");
+    expect(Date.now() - t0).toBeLessThan(6000);
+    await page.screenshot({ path: `test-results/g1-dock-sim-${theme}.png` });
+    // 5 s in, the study finishes: the running count clears
     await page.waitForTimeout(Math.max(0, 5000 - (Date.now() - t0)));
     await fake.emit({ type: "tool_result", run_id: LEAD, data: { call_id: CALL.payload.call_id, name: "sim_run", ok: true } }, { steps: [stepOf(RESULT)] });
     await fake.emit({ type: "sim_finished", run_id: LEAD, data: { sim_id: SIM_ID, run_id: LEAD, build_id: BUILD, status: "done", summary: "max von Mises 6.0 MPa" } });
     await expect(sim.locator("[data-running]")).toHaveCount(0);
     await expect(sim.locator("[data-study-slot]")).toHaveCount(1);
-    // the words and the view were never waiting on it
     await expect(conv.locator("[data-live-text]")).toContainText("the lid from above.");
-    await expect(view.getByTestId("view-card")).toBeVisible();
   });
 }
 
@@ -123,12 +129,12 @@ test("esc_in_the_composer_stops_a_busy_lead", async ({ page, fake }) => {
   await expect.poll(async () => (await fake.calls()).some((c) => c.method === "POST" && c.path === `/runs/${LEAD}/cancel`)).toBe(true);
 });
 
-test("collapse_a_stream_count_what_arrives_and_resize_with_the_divider_remembered", async ({ page, fake }) => {
+test("g1_the_divider_resizes_the_top_area_is_closed_to_a_bar_with_its_counts_both_remembered", async ({ page, fake }) => {
   await fake.reset(scenario() as never);
   await open(page, "dark");
   await fake.emit({ type: "agent_announce", run_id: LEAD, data: G1.view_presented });
   await expect(stream(page, "view").getByTestId("view-card")).toBeVisible();
-  // P11 F2: drag the bar between the Conversation and the row down 60 px: the Conversation grows
+  // drag the divider down 60 px: the top area grows, the Conversation gives way
   const bar = con(page).locator("[data-split]");
   const before = (await stream(page, "text").boundingBox())!.height;
   const d = (await bar.boundingBox())!;
@@ -136,18 +142,22 @@ test("collapse_a_stream_count_what_arrives_and_resize_with_the_divider_remembere
   await page.mouse.down();
   await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2 + 60, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(async () => (await stream(page, "text").boundingBox())!.height).toBeGreaterThan(before + 50);
-  // close Simulations to its slim tab; a study lands meanwhile: an unread count
-  await stream(page, "sim").locator(".dock-t").click();
-  await expect(stream(page, "sim")).toHaveAttribute("aria-expanded", "false");
-  await fake.emit({ type: "tool_call", run_id: LEAD, data: { call_id: CALL.payload.call_id, name: "sim_run", input: CALL.payload.input } }, { steps: [stepOf(CALL)] });
-  await expect(stream(page, "sim").locator("[data-unread]")).toHaveText("1");
-  // remembered across a reload
+  await expect.poll(async () => (await stream(page, "text").boundingBox())!.height).toBeLessThan(before - 50);
   const h = (await stream(page, "text").boundingBox())!.height;
   await page.reload();
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
-  await expect(stream(page, "sim")).toHaveAttribute("aria-expanded", "false");
   await expect.poll(async () => Math.round((await stream(page, "text").boundingBox())!.height)).toBe(Math.round(h));
+  // close the top area to its slim bar; a study lands meanwhile: Simulations' tab counts it
+  await con(page).getByRole("button", { name: "Close View and Simulations" }).click();
+  await expect(con(page).locator("[data-dock] [data-stream=top]")).toHaveAttribute("data-collapsed", "");
+  await fake.emit({ type: "tool_call", run_id: LEAD, data: { call_id: CALL.payload.call_id, name: "sim_run", input: CALL.payload.input } }, { steps: [stepOf(CALL)] });
+  await expect(con(page).locator("[data-stream-tab=sim] [data-unread]")).toHaveText("1");
+  await page.reload();
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+  await expect(con(page).locator("[data-dock] [data-stream=top]")).toHaveAttribute("data-collapsed", "");
+  // a tab on the bar opens the area on that stream
+  await con(page).locator("[data-stream-tab=sim]").click();
+  await expect(stream(page, "sim").locator("[data-study-slot]")).toHaveCount(1);
 });
 
 test("a_sub_agent_s_study_and_view_appear_in_the_build_s_dock_while_the_lead_s_thread_is_shown", async ({ page, fake }) => {

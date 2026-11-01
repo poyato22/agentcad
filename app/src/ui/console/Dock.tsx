@@ -1,18 +1,15 @@
-// The agent dock (P11 F2, on P10 E6): the Conversation on top, full width; View and Simulations
-// underneath, side by side, 50/50 — View and Simulations over the whole build's agent tree
-// (treeStreams: the lead and every sub-agent), the Conversation the build's one chat (the
-// lead's thread, or a sub-agent's opened from its card). Hovering View or Simulations widens it
-// to ~90% of the dock (the other keeps ~10%, never 0), smoothly unless reduced motion is asked
-// for; leaving the row restores 50/50. Each stream can be closed: the Conversation to a slim bar
-// at the top, View or Simulations to a slim vertical tab in the row (both: a bar of two tabs),
-// each with its unread count. The dock's left edge drags its width, the bar between the
-// Conversation and the row their heights (dockLayout, remembered); dragging never selects page
-// text (E10). The composer sits at the foot of the Conversation (of the dock while the
-// Conversation is closed). The Conversation header holds "← Back to lead" on a sub-agent's
-// thread (E13) and the "needs you" count; the design focus control is gone (P11 F1: the
-// classifier and its PATCH stay). There is no ⋯ menu (E22, E24).
+// The agent dock (G1, replacing P11 F2's 50/50 row and its hover-expand): View / Simulations on
+// top, ONE at a time, switched by the header's segmented control "View · Simulations" (a colored
+// pill slides to the shown one; no slide under reduced motion); the other's tab carries an unread
+// count of what arrived for it. The Conversation (the build's one chat: the lead's thread, or a
+// sub-agent's opened from its card) sits underneath with the composer at its foot; the
+// horizontal divider between them drags (or ↑ / ↓) their heights and is remembered. Either part
+// closes to a slim bar (never both; the top area's bar keeps its tabs). View and Simulations span
+// the whole build's agent tree (treeStreams). The dock's left edge drags its width; dragging never
+// selects page text (E10). The Conversation header holds "← Back to lead" on a sub-agent's thread
+// (E13) and the "needs you" count. There is no ⋯ menu (E22, E24).
 import type { ComponentChildren, JSX } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import type { StreamKind } from "../../api/types";
 import { runLabel } from "../../lib/names";
 import { finishedSims } from "../../state/activity";
@@ -25,7 +22,7 @@ import { CommandLine } from "./command/CommandLine";
 import { Conversation } from "./Conversation";
 import { buildRuns, effectiveRunId, labelOf, offListRuns, retainThreadFrames, retainTreeFrames, runLabels, threadFrame, treeFrame } from "./derived";
 import {
-  dockLayout, openRow, openStreams, resizeSplit, resizeWidth, rowGrow, setDockLayout, toggleStream, WIDTH_MAX, WIDTH_MIN,
+  dockLayout, openStreams, resizeSplit, resizeWidth, setDockLayout, showStream, togglePart, type TopStream, WIDTH_MAX, WIDTH_MIN,
 } from "./dockLayout";
 import { dockMax } from "../shell/room";
 import { shownPending } from "./queued";
@@ -37,8 +34,6 @@ import { ViewStream } from "./ViewStream";
 import "./dock.css";
 
 const TITLE: Record<StreamKind, string> = { view: "View", sim: "Simulations", text: "Conversation" };
-/** How long the pointer rests on a half before it widens (fix round 1). */
-export const HOVER_INTENT_MS = 120;
 
 export function Dock(): JSX.Element {
   useEffect(() => retainThreadFrames(), []);
@@ -61,132 +56,141 @@ export function Dock(): JSX.Element {
   }, [shownId]);
   const layout = dockLayout.value;
   const stack = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<StreamKind | null>(null);
   const running = tree.sim.filter((e) => simRunning(e.item, finishedSims.value)).length + simExtrasRunning.value;
   // unread rows of View / Simulations are counted per build (they span its runs); the
   // Conversation's per shown run
   const buildKey = `build:${tree.buildId ?? ""}`;
-  const open = openStreams(layout);
-  const row = openRow(layout);
-  const both = row.length === 2;          // hover widens a half only while both are open
-  const grow = rowGrow(layout, hover);
-  useEffect(() => { if (!both) setHover(null); }, [both]);
-  // fix round 1: a short hover intent (a pointer sweeping across the row does not flash), and
-  // keyboard focus inside a half widens it too
-  const intent = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearIntent = () => { if (intent.current !== null) { clearTimeout(intent.current); intent.current = null; } };
-  useEffect(() => clearIntent, []);
-  // the layout never moves under a press (pointerdown .. pointerup): a click lands on what
-  // was under the pointer when it went down, whatever the motion setting (with reduced motion
-  // a widening is instant, so a change between down and up moved the target away)
-  const pressing = useRef<StreamKind | null>(null);
-  const hoverSoon = (s: StreamKind) => {
-    clearIntent();
-    if (pressing.current !== null) return;
-    intent.current = setTimeout(() => { intent.current = null; if (pressing.current === null) setHover(s); }, HOVER_INTENT_MS);
-  };
-  const press = (s: StreamKind) => { clearIntent(); pressing.current = s; };
-  const release = () => {
-    const s = pressing.current;
-    pressing.current = null;
-    // widen the pressed half once the click has been delivered
-    if (s !== null && both) setTimeout(() => setHover(s), 0);
-  };
   const simCount = tree.sim.length + extras.length;
-  const rowFolded = row.length === 0;
-  const split = !layout.collapsed.text && !rowFolded;
-  const half = (s: "view" | "sim") => ({
-    grow: grow[s], shrunk: both && hover !== null && hover !== s,
-    onEnter: both ? () => hoverSoon(s) : undefined,
-    onPress: both ? () => press(s) : undefined,
-    // keyboard focus only (focus that comes with a mouse press waits for the press to end)
-    onFocusIn: both ? () => {
-      if (pressing.current !== null) return;
-      clearIntent();
-      setHover(s);
-    } : undefined,
-  });
+  const split = !layout.collapsed.text && !layout.collapsed.top;
+  const streams: Record<TopStream, { keys: readonly string[]; count: number; running: number; body: ComponentChildren }> = {
+    view: { keys: viewKeys, count: tree.view.length, running: 0, body: <ViewStream entries={tree.view} /> },
+    sim: { keys: simKeys, count: simCount, running, body: <SimStream entries={tree.sim} /> },
+  };
   return (
-    <div class="dock" data-dock data-layout="stack" data-cols={open.length} data-text-collapsed={layout.collapsed.text ? "" : undefined}>
+    <div class="dock" data-dock data-layout="stack" data-cols={openStreams(layout).length} data-active={layout.active} data-top-collapsed={layout.collapsed.top ? "" : undefined}
+      data-text-collapsed={layout.collapsed.text ? "" : undefined}>
       <WidthEdge />
       <div class="dock-stack" ref={stack}>
-        <Column stream="text" runId={frame.runId} keys={textKeys} count={null} head={<ConversationHead />} foot={<CommandLine />}
-          flex={split ? layout.split : undefined}>
-          <Conversation items={text} />
-        </Column>
+        <TopArea runId={buildKey} streams={streams} flex={split ? layout.split : undefined} ready={tree.runIds !== undefined} />
         {split && <SplitBar stack={stack} />}
-        <div class="dock-row" data-dock-row data-expand={both && hover ? hover : undefined} data-folded={rowFolded ? "" : undefined}
-          style={split ? { flex: `${Math.round((1 - layout.split) * 1000) / 1000} 1 0px` } : undefined}
-          onPointerUp={release} onPointerCancel={release}
-          onPointerLeave={(e) => {
-            clearIntent();
-            pressing.current = null;
-            // keyboard focus still inside the row keeps its half wide
-            const row = e.currentTarget as HTMLElement;
-            if (!row.contains(document.activeElement)) setHover(null);
-          }}
-          onFocusOut={(e) => {
-            const row = e.currentTarget as HTMLElement;
-            if (!row.contains(e.relatedTarget as Node | null) && !row.matches(":hover")) setHover(null);
-          }}>
-          <Column stream="view" runId={buildKey} keys={viewKeys} count={tree.view.length} {...half("view")}>
-            <ViewStream entries={tree.view} />
-          </Column>
-          <Column stream="sim" runId={buildKey} keys={simKeys} count={simCount} running={running} {...half("sim")}>
-            <SimStream entries={tree.sim} />
-          </Column>
-        </div>
+        <Conversation_ runId={frame.runId} keys={textKeys} flex={split ? 1 - layout.split : undefined}>
+          <Conversation items={text} />
+        </Conversation_>
       </div>
       {layout.collapsed.text && <CommandLine />}
     </div>
   );
 }
 
-/** One stream, or its slim tab while closed: the Conversation's is a bar at the top, View's and
- *  Simulations' a vertical tab in the row (laid flat when both are closed). */
-function Column({ stream, runId, keys, count, running = 0, head, foot, grow, shrunk = false, flex, onEnter, onPress, onFocusIn, children }: {
-  stream: StreamKind; runId: string | null; keys: readonly string[]; count: number | null; running?: number;
-  head?: ComponentChildren; foot?: ComponentChildren; grow?: number; shrunk?: boolean; flex?: number;
-  onEnter?: () => void; onPress?: () => void; onFocusIn?: () => void; children: ComponentChildren;
+/** The header's segmented control: View · Simulations, a pill sliding to the shown one; the
+ *  other tab's unread count (and a dot while a study runs). A click shows that stream. */
+function Switcher({ runId, streams, active, ready }: {
+  runId: string; active: TopStream | null; ready: boolean;
+  streams: Record<TopStream, { keys: readonly string[]; count: number; running: number }>;
+}): JSX.Element {
+  const idx = active === "sim" ? 1 : 0;
+  return (
+    <div class="dock-seg" role="tablist" aria-label="View or Simulations" data-seg={active ?? "none"}
+      style={{ "--seg-i": String(idx) }}>
+      {active !== null && <span class="dock-seg-pill" data-seg-pill={active} aria-hidden="true" />}
+      {(["view", "sim"] as const).map((s) => {
+        const on = s === active;
+        const st = streams[s];
+        // (only once the build's tree has been read: its first, empty frame is no baseline)
+        const unread = on || !ready ? 0 : unreadOf(runId, s, st.keys);
+        return (
+          <button key={s} type="button" role="tab" class="dock-seg-t" data-stream-tab={s} aria-selected={on}
+            aria-controls={`dock-b-${s}`} id={`dock-tab-${s}`}
+            aria-label={`${TITLE[s]}${unread > 0 ? ` · ${unread} new` : ""}${st.running > 0 ? ` · ${st.running} running` : ""}`}
+            onClick={() => setDockLayout(showStream(dockLayout.peek(), s))}>
+            <span class="dock-title">{TITLE[s]}</span>
+            {on && st.count > 0 && st.running === 0 && <span class="dock-n num">{st.count}</span>}
+            {st.running > 0 && <span class="dock-running" data-changing data-running={st.running} title={`${st.running} running`}>
+              {on && <span class="num">{st.running}</span>}<span class="dock-dot" aria-hidden="true" /></span>}
+            {unread > 0 && <span class="dock-unread num" data-unread={unread} aria-hidden="true">{unread}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The top area: the switcher and the shown stream (the other stays mounted, hidden, so its
+ *  state and unread count keep up); closed, a slim bar that keeps the switcher. */
+function TopArea({ runId, streams, flex, ready }: {
+  runId: string; flex?: number; ready: boolean;
+  streams: Record<TopStream, { keys: readonly string[]; count: number; running: number; body: ComponentChildren }>;
 }): JSX.Element {
   const layout = dockLayout.value;
-  const collapsed = layout.collapsed[stream];
-  const unread = collapsed ? unreadOf(runId, stream, keys) : 0;
-  useEffect(() => { if (!collapsed) markSeen(runId, stream, keys); }, [collapsed, runId, keys]);
-  const title = TITLE[stream];
-  const toggle = () => setDockLayout(toggleStream(dockLayout.peek(), stream));
+  const collapsed = layout.collapsed.top;
+  const active = layout.active;
+  // what the user sees is read: the shown stream's rows are marked seen
+  const keys = streams[active].keys;
+  useEffect(() => { if (!collapsed) markSeen(runId, active, keys); }, [collapsed, runId, active, keys]);
+  const last = layout.collapsed.text;
+  const fold = (
+    <button type="button" class="dock-fold" aria-expanded={!collapsed} aria-disabled={!collapsed && last ? "true" : undefined}
+      aria-label={collapsed ? "Show View and Simulations" : "Close View and Simulations"}
+      title={!collapsed && last ? "The last open part stays open" : collapsed ? "Show View and Simulations" : "Close View and Simulations"}
+      onClick={() => setDockLayout(togglePart(dockLayout.peek(), "top"))}>
+      <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" style={{ transform: collapsed ? "rotate(-90deg)" : undefined }}>
+        <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
+  );
   if (collapsed) {
     return (
-      <button type="button" class="dock-tab" data-stream={stream} data-collapsed="" aria-expanded={false}
-        aria-label={`Show ${title.toLowerCase()}${unread > 0 ? ` · ${unread} new` : ""}${running > 0 ? ` · ${running} running` : ""}`}
-        title={`Show ${title.toLowerCase()}`} onClick={toggle}>
-        <span class="dock-tab-t">{title}</span>
-        {running > 0 && <span class="dock-dot" data-running={running} aria-hidden="true" />}
+      <div class="dock-tab dock-topbar" data-stream="top" data-collapsed="">
+        {fold}
+        <Switcher runId={runId} streams={streams} active={null} ready={ready} />
+      </div>
+    );
+  }
+  return (
+    <section class="dock-s dock-top" data-stream-area="top" aria-label={TITLE[active]}
+      style={flex !== undefined ? { flex: `${flex} 1 0px` } : undefined}>
+      <header class="dock-h">
+        {fold}
+        <Switcher runId={runId} streams={streams} active={active} ready={ready} />
+      </header>
+      {(["view", "sim"] as const).map((s) => (
+        <div key={s} class="dock-b" id={`dock-b-${s}`} role="tabpanel" aria-labelledby={`dock-tab-${s}`} data-stream={s} data-stream-body={s}
+          hidden={s !== active} data-inactive={s !== active ? "" : undefined}>{streams[s].body}</div>
+      ))}
+    </section>
+  );
+}
+
+/** The Conversation, under the top area; closed, a slim bar with its unread count. */
+function Conversation_({ runId, keys, flex, children }: {
+  runId: string | null; keys: readonly string[]; flex?: number; children: ComponentChildren;
+}): JSX.Element {
+  const layout = dockLayout.value;
+  const collapsed = layout.collapsed.text;
+  const unread = collapsed ? unreadOf(runId, "text", keys) : 0;
+  useEffect(() => { if (!collapsed) markSeen(runId, "text", keys); }, [collapsed, runId, keys]);
+  const toggle = () => setDockLayout(togglePart(dockLayout.peek(), "text"));
+  if (collapsed) {
+    return (
+      <button type="button" class="dock-tab" data-stream="text" data-collapsed="" aria-expanded={false}
+        aria-label={`Show conversation${unread > 0 ? ` · ${unread} new` : ""}`} title="Show conversation" onClick={toggle}>
+        <span class="dock-tab-t">Conversation</span>
         {unread > 0 && <span class="dock-unread num" data-unread={unread} aria-hidden="true">{unread}</span>}
       </button>
     );
   }
-  const last = openStreams(layout).length === 1;
-  const style = stream === "text" ? (flex !== undefined ? { flex: `${flex} 1 0px` } : undefined) : { flexGrow: String(grow ?? 1) };
+  const last = layout.collapsed.top;
   return (
-    <section class="dock-s" data-stream={stream} aria-label={title} style={style} data-grow={grow}
-      data-shrunk={shrunk ? "" : undefined} onPointerEnter={onEnter} onPointerDown={onPress} onFocusIn={onFocusIn}>
+    <section class="dock-s" data-stream="text" aria-label="Conversation" style={flex !== undefined ? { flex: `${flex} 1 0px` } : undefined}>
       <header class="dock-h">
-        <button type="button" class="dock-t" aria-expanded={true} aria-controls={`dock-b-${stream}`} aria-disabled={last ? "true" : undefined}
-          onClick={toggle} title={last ? `${title} (the last open stream stays open)` : `Close ${title.toLowerCase()}`}>
-          <span class="dock-title">{title}</span>
-          {/* a running count replaces the total: "2 running ●" reads at a glance; idle streams show how many */}
-          {count !== null && count > 0 && running === 0 && <span class="dock-n num">{count}</span>}
-          {running > 0 && (
-            <span class="dock-running" data-changing data-running={running} title={`${running} running`}>
-              <span class="num">{running}</span> running<span class="dock-dot" aria-hidden="true" />
-            </span>
-          )}
+        <button type="button" class="dock-t" aria-expanded={true} aria-controls="dock-b-text" aria-disabled={last ? "true" : undefined}
+          onClick={toggle} title={last ? "Conversation (the last open part stays open)" : "Close conversation"}>
+          <span class="dock-title">Conversation</span>
         </button>
-        {head}
+        <ConversationHead />
       </header>
-      <div class="dock-b" id={`dock-b-${stream}`} data-stream-body={stream}>{children}</div>
-      {foot}
+      <div class="dock-b" id="dock-b-text" data-stream-body="text">{children}</div>
+      <CommandLine />
     </section>
   );
 }
@@ -217,7 +221,8 @@ function useDrag<T>(begin: (e: PointerEvent) => T, move: (s: T, e: PointerEvent)
   };
 }
 
-/** The bar between the Conversation and the row: drag (or ↑ / ↓) to trade their heights. */
+/** G1: the divider between View / Simulations and the Conversation: drag (or ↑ / ↓) to trade
+ *  their heights; remembered when the drag ends. */
 function SplitBar({ stack }: { stack: { current: HTMLDivElement | null } }): JSX.Element {
   const total = () => stack.current?.getBoundingClientRect().height || 600;
   const drag = useDrag(
@@ -227,7 +232,7 @@ function SplitBar({ stack }: { stack: { current: HTMLDivElement | null } }): JSX
   );
   return (
     <div class="dock-split" role="separator" aria-orientation="horizontal" tabIndex={0} data-split=""
-      aria-label="Resize the conversation and the streams under it" {...drag}
+      aria-label="Resize View and Simulations against the conversation" {...drag}
       onKeyDown={(e) => {
         const d = e.key === "ArrowUp" ? -16 : e.key === "ArrowDown" ? 16 : 0;
         if (!d) return;

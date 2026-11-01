@@ -87,7 +87,8 @@ for (const width of [1280, 1440]) {
       await page.addInitScript((c) => { try { localStorage.setItem("mises.dock.stack", JSON.stringify({ collapsed: c })); } catch { /* none */ } }, LAYOUT[n]);
       await page.goto("/");
       await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-instances", "13");
-      await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", String(n));
+      // G1: the top area (View or Simulations) and the Conversation: at most two parts
+      await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", String(Math.min(n, 2)));
       await expect(page.locator(".app")).toHaveAttribute("data-left", FOLDS[width][n] ? "rail" : "open");
       await page.getByTestId("pill-explode").click();
       await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-explode", "on");
@@ -141,7 +142,7 @@ test("a wide dock gives way so the model keeps 520 px and the Parts surface stay
   const left = await box(page, "[data-region=left]");
   expect(dock.x - 12 - (left.x + left.width + 12)).toBeGreaterThanOrEqual(519);
   // closing streams never changes the dock's width
-  await page.locator("[data-dock] [data-stream=sim] .dock-t").click();
-  await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", "2");
+  await page.getByRole("button", { name: "Close View and Simulations" }).click();
+  await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", "1");
   expect(Math.round((await box(page, "[data-region=console]")).width)).toBe(Math.round(dock.width));
 });

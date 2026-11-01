@@ -3,7 +3,8 @@ import { DEFAULT_LAYOUT, type DockLayout, VIEWPORT_MIN } from "../console/dockLa
 import { leftCollapsed, leftFolded, setLeftCollapsed, setPartsAutoFold, toggleLeft } from "../pages/router";
 import { dockCap, dockMin, leftOuter, partsMustFold } from "./room";
 
-const cols = (view: boolean, sim: boolean, text: boolean): DockLayout => ({ ...DEFAULT_LAYOUT, collapsed: { view: !view, sim: !sim, text: !text } });
+// G1: the top area (View or Simulations) and the Conversation
+const cols = (view: boolean, sim: boolean, text: boolean): DockLayout => ({ ...DEFAULT_LAYOUT, active: sim && !view ? "sim" : "view", collapsed: { top: !(view || sim), text: !text } });
 const ONE = cols(false, false, true);
 const TWO = cols(true, false, true);
 const THREE = cols(true, true, true);
