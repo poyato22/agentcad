@@ -903,7 +903,9 @@ class Runtime:
             self.store.update_run(run.id, **meta)
         if role == "lead":
             from .orchestrator.lead import is_rocket_build, lead_definition
-            defn = lead_definition(defn, rocket=is_rocket_build(self.store, project_id, prompt))
+            from .ideation import is_challenge_build
+            defn = lead_definition(defn, rocket=is_rocket_build(self.store, project_id, prompt),
+                                   challenge=is_challenge_build(self.store, project_id, prompt))
         shape = self._note_shape_complexity(run.id, prompt)
         design = self._note_design_class(run.id, words, parent_id)
         if parent_id is None and words.strip():   # a sub-agent inherits; only the user's
@@ -1272,7 +1274,9 @@ class Runtime:
         from .orchestrator.lead import is_rocket_build, lead_definition
         base = self.definitions.get(run.agent)
         if base is not None:
+            from .ideation import is_challenge_build
             base = lead_definition(base, rocket=is_rocket_build(
+                self.store, run.project_id, run.task), challenge=is_challenge_build(
                 self.store, run.project_id, run.task)) if run.role == "lead" else base
             st.loop.defn = self._design_rules_for(base, run.role, dc)
 

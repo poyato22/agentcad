@@ -133,6 +133,15 @@ def build_challenge(store, project_id: str | None) -> dict | None:
     return None if rec is None or rec.get("off") else rec
 
 
+def is_challenge_build(store, project_id: str | None, text: str | None) -> bool:
+    """The lead gets the full ideation rules only on a challenge build (stored flag, or the
+    user's own request reads as one); every other lead gets LEAD_IDEATION_HINT."""
+    try:
+        return build_challenge(store, project_id) is not None or bool(challenge_signal(text or ""))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def note_challenge(store, project_id: str | None, text: str) -> dict | None:
     """Raise (or turn off) the build's challenge flag from the user's own words; returns the
     flag now. A plain follow-up ("make the wall thicker") never clears it. "Just build it" is
@@ -315,6 +324,10 @@ class IdeationStore:
 
 
 #: the lead's rules for open-ended challenges (orchestrator.lead.lead_definition appends it)
+#: Plan 11 F8: the one line a non-challenge lead gets (no examples, so nothing leaks).
+LEAD_IDEATION_HINT = ("If the user turns this into an open-ended challenge, call ideate_concepts "
+                      "before pitching; the tools tell you when the stage applies.\n")
+
 LEAD_IDEATION = """## Open-ended challenges: think wide before you pitch
 An egg drop, a competition entry, or any request to make something interesting, creative or \
 the best possible is an open-ended challenge. There the first idea is almost never the best \

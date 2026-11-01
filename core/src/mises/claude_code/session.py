@@ -231,7 +231,9 @@ class ClaudeCodeSession:
                 # Plan 7: the build's lead is this main session; its sub-agents are Mises
                 # spawns (mcp__mises__agent_spawn only), so the run tree matches native leads
                 from ..orchestrator.lead import is_rocket_build, lead_definition
+                from ..ideation import is_challenge_build
                 defn, lead = lead_definition(defn, rocket=is_rocket_build(
+                    self.runtime.store, run.project_id, run.task), challenge=is_challenge_build(
                     self.runtime.store, run.project_id, run.task)), True
             if defn is not None:     # Plan 9 D27: the design-class block (design / mixed)
                 from ..design_intensity import rules_for

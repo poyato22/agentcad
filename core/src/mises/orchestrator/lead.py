@@ -180,7 +180,8 @@ def is_rocket_build(store, project_id: str | None, *texts: str | None) -> bool:
     return is_rocket_text(*texts, *more)
 
 
-def lead_definition(defn: AgentDefinition, *, rocket: bool = False) -> AgentDefinition:
+def lead_definition(defn: AgentDefinition, *, rocket: bool = False,
+                    challenge: bool = False) -> AgentDefinition:
     """The routed agent, as this build's lead. The "after studies" rule is RESPONSE_RULES'
     (every prompt path carries it); delegation on Claude Code is in its tool-only section.
     `rocket` (is_rocket_build) adds the rocketry rules; any other build gets one line."""
@@ -192,10 +193,11 @@ def lead_definition(defn: AgentDefinition, *, rocket: bool = False) -> AgentDefi
     lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY,
                               engineering="" if has_engineering else LEAD_ENGINEERING,
                               rocketry=rocketry)
-    from ..ideation import LEAD_IDEATION        # Plan 11 F8
+    from ..ideation import LEAD_IDEATION, LEAD_IDEATION_HINT   # Plan 11 F8
+    ideation = LEAD_IDEATION if challenge else LEAD_IDEATION_HINT
     return defn.model_copy(update={"tools": tools,
                                    "body": defn.body.rstrip() + "\n\n" + lead + "\n"
-                                   + LEAD_IDEATION})
+                                   + ideation})
 
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")

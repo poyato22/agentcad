@@ -284,10 +284,12 @@ def test_lead_gets_the_ideation_rules_and_tools():
     from mises.orchestrator.lead import LEAD_TOOLS, lead_definition
     for t in ("ideate_concepts", "concepts_tried", "egg_drop_estimate"):
         assert t in LEAD_TOOLS
-    body = lead_definition(load_definitions()["engineer"]).body
+    body = lead_definition(load_definitions()["engineer"], challenge=True).body
     assert "ideate_concepts" in body and "at least 8 genuinely different concepts" in body
     assert "Never default to a cage" in body and "samara" in body
     assert "fetch its current rules" in body and "egg_drop_estimate" in body
+    plain = lead_definition(load_definitions()["engineer"]).body   # not a challenge build
+    assert "ideate_concepts" in plain and "samara" not in plain and "cage" not in plain
 
 
 def test_the_lead_run_marks_a_challenge_build(home):
