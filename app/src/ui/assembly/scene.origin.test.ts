@@ -49,7 +49,7 @@ describe("Plan 10: the origin, marks and part ↔ world (E19, E35)", () => {
     // the body moved (as the explode moves it): the point moves with it, and maps back
     const body = sc.modeHost().parts()[0].scene.object;
     body.position.x += 10;
-    const w = sc.partToWorld("a", [1, 2, 3]) as number[];
+    const w = sc.partToWorld("a", [1, 2, 3]) as [number, number, number];
     expect(Math.round(w[0])).toBe(41);
     expect(sc.worldToPart("a", w)?.map((v) => Math.round(v * 1000) / 1000)).toEqual([1, 2, 3]);
     sc.setMarks(() => [{ key: "p1", point: [0, 0, 0], text: "1", kind: "pin" }]);
