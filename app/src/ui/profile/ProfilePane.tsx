@@ -1,5 +1,5 @@
-// Profile panel: a right-hand sheet with eight sections (Profile, Models, Onshape, Printers, Agents &
-// budgets, Data, Setup, About). App mounts <ProfilePane/> once; the top-bar Profile button opens it
+// Profile panel: a right-hand sheet with its sections (Profile, Models, Onshape, Printers, Agents &
+// budgets, Browsing, Data, System, Setup, Developer, About). App mounts <ProfilePane/> once; the top-bar Profile button opens it
 // (ui/profile/open.ts), as do the "connect a model" notice and the new-run dialog.
 // Every section reads and writes the core routes directly; secrets only ever go out (password
 // inputs, cleared after a save) and are never rendered. Removing anything asks inside the panel.
@@ -10,6 +10,7 @@ import { Button } from "../common/Button";
 import { useFocusTrap } from "../common/focusTrap";
 import { describeError, type ProfileData, type SectionProps } from "./common";
 import { AgentsSection } from "./sections/AgentsSection";
+import { DeveloperSection } from "./sections/DeveloperSection";
 import { AboutSection, DataSection, SetupSection, SystemSection } from "./sections/MiscSections";
 import { ModelsSection } from "./sections/ModelsSection";
 import { OnshapeSection } from "./sections/OnshapeSection";
@@ -28,6 +29,8 @@ export const SECTIONS = [
   { id: "data", label: "Data" },
   { id: "system", label: "System" },
   { id: "setup", label: "Setup" },
+  // Plan 10 E22: the full agent log and the agent browser (out of the dock's everyday menu)
+  { id: "developer", label: "Developer" },
   { id: "about", label: "About" },
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];
@@ -105,6 +108,7 @@ function ProfilePaneBody({ onClose, initial }: { onClose: () => void; initial: S
           {props && section === "data" && <DataSection {...props} />}
           {props && section === "system" && <SystemSection />}
           {props && section === "setup" && <SetupSection onClose={onClose} />}
+          {props && section === "developer" && <DeveloperSection onClose={onClose} />}
           {props && section === "about" && <AboutSection {...props} />}
         </div>
       </div>

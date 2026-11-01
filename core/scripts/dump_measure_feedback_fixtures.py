@@ -107,6 +107,23 @@ async def dump(out: Path) -> None:
                     break
                 await asyncio.sleep(0.05)
             write("project_feedback_steps.json", await call("GET", f"/runs/{fb['run_id']}/steps"))
+            # Plan 10 E35: a pin dropped in the assembly view names the instance and the world
+            # point (the plate placed 30 mm along +X)
+            inst = await call("POST", f"/projects/{pid}/assembly/instances", {
+                "part_id": "mount_plate", "name": "plate", "fixed": True,
+                "transform": [[1, 0, 0, 30], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]})
+            fa = await call("POST", f"/projects/{pid}/feedback", {
+                "part_id": "mount_plate", "point": [7.0, 0.0, 2.5], "face_id": top["id"],
+                "text": "add a fillet here", "instance_id": inst["id"],
+                "world_point": [37.0, 0.0, 2.5]})
+            write("project_feedback_assembly.json", fa)
+            for _ in range(300):
+                if (await call("GET", f"/runs/{fa['run_id']}"))["status"] not in ("running", "queued"):
+                    break
+                await asyncio.sleep(0.05)
+            steps = await call("GET", f"/runs/{fa['run_id']}/steps")
+            write("project_feedback_assembly_step.json",
+                  next(s for s in steps if s.get("id") == fa["step_id"]))
             await refused("project_feedback_ghost.json", "POST", f"/projects/{pid}/feedback", {
                 "part_id": "ghost", "point": [7.0, 0.0, 2.5], "text": "x"})
             await refused("part_measure_warm.json", "POST", url, {"warm": True})

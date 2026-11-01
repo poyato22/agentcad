@@ -34,7 +34,9 @@
       "source": "auto",
       "estimate": true,
       "estimate_note": "estimate: 12.4 g of PLA solid (100% infill) x $22.00/kg (material only)",
-      "line_total": 0.27
+      "line_total": 0.27,
+      "geometry_part_id": "arm_bracket",
+      "geometry": null
     },
     {
       "id": "bom_e699e99d74ca",
@@ -58,7 +60,9 @@
       "source": "user",
       "estimate": false,
       "estimate_note": null,
-      "line_total": 35.7
+      "line_total": 35.7,
+      "geometry_part_id": null,
+      "geometry": null
     },
     {
       "id": "bom_0702773b9346",
@@ -76,7 +80,9 @@
       "source": "user",
       "estimate": false,
       "estimate_note": null,
-      "line_total": 2.4
+      "line_total": 2.4,
+      "geometry_part_id": null,
+      "geometry": null
     },
     {
       "id": "bom_bcdcf60d73b2",
@@ -94,7 +100,9 @@
       "source": "user",
       "estimate": false,
       "estimate_note": null,
-      "line_total": 3.0
+      "line_total": 3.0,
+      "geometry_part_id": null,
+      "geometry": null
     },
     {
       "id": "bom_68dba657d09d",
@@ -112,7 +120,9 @@
       "source": "user",
       "estimate": false,
       "estimate_note": null,
-      "line_total": null
+      "line_total": null,
+      "geometry_part_id": null,
+      "geometry": null
     }
   ],
   "totals": {

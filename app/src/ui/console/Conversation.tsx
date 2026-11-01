@@ -9,7 +9,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { AgentRun } from "../../api/types";
 import { effectiveRun } from "../../state/selection";
 import { coreStatus } from "../../state/store";
-import { Button } from "../common/Button";
 import { ApprovalCard } from "./approvals/ApprovalCard";
 import { QuestionCard } from "./approvals/QuestionCard";
 import { labelOf, retainThreadFrames, threadFrame, toggleFold } from "./derived";
@@ -17,7 +16,9 @@ import { DiffView } from "./DiffView";
 import { shownPending } from "./queued";
 import { CallDetails } from "./ToolCallRow";
 import type { ThreadItem } from "./threadModel";
-import { composerOpen } from "./view";
+import { editedKeys } from "./chat";
+import { isApiErrorText } from "./errorText";
+import { CancelQueuedButton, cancelledQueued, EditButton, ErrorCard, StallNote } from "./MessageActions";
 import { Markup } from "../markup/render";
 import { CopyButton } from "./CopyButton";
 import { RunStatus } from "./RunStatus";
@@ -114,12 +115,18 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
         {!run && items.length === 0 && <Empty />}
         {weave(shown, editsForRun(buildUserEdits.value, run ?? null)).map((r) => (r.kind === "you"
           ? <div key={r.line.key} class="cv-item" data-key={r.line.key}><YouLine text={r.line.text} /></div>
-          : <div key={r.item.key} class="cv-item" data-key={r.item.key}><Item item={r.item} agent={run?.agent ?? "agent"} runId={run?.id ?? null} /></div>))}
+          : (
+            <div key={r.item.key} class="cv-item" data-key={r.item.key}>
+              <Item item={r.item} agent={run?.agent ?? "agent"} runId={run?.id ?? null} run={run ?? null}
+                retryText={r.item.kind === "error" ? retryTextFor(items, r.item.key, run?.task ?? null, run?.status ?? null) : null} />
+            </div>
+          )))}
         {run && items.length === 0 && run.task && (
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}
         {run && run.status === "queued" && <Queued />}
         {run && run.status !== "queued" && <RunStatus runId={run.id} status={run.status} />}
+        {run && <StallNote run={run} lastText={promptBefore(items, null) ?? run.task ?? null} />}
       </div>
       {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
       <AssemblyAnimationChip />
@@ -140,11 +147,37 @@ function YouLine({ text }: { text: string }): JSX.Element {
 
 function Empty(): JSX.Element {
   return (
-    <div class="cv-empty">
-      <p class="dim">No runs yet.</p>
-      <Button onClick={() => { composerOpen.value = true; }}>New run</Button>
+    <div class="cv-empty" data-chat-empty>
+      <p class="dim">No messages yet. Describe what you want to build below: your first message starts this build's agent.</p>
     </div>
   );
+}
+
+/** Your last words before the row `key` (null: before the end), for Retry. */
+export function promptBefore(items: readonly ThreadItem[], key: string | null): string | null {
+  let end = key === null ? items.length : items.findIndex((i) => i.key === key);
+  if (end < 0) end = items.length;
+  for (let i = end - 1; i >= 0; i--) {
+    const it = items[i];
+    if ((it.kind === "user" || it.kind === "queued") && it.text.trim()) return it.text;
+  }
+  return null;
+}
+
+/** Retry is offered only on an error the run did not get past (review fix 1): the error is the
+ *  thread's last item (notes aside), or the run ended failed / cancelled and this is its last
+ *  error with nothing of yours after it. An error the agent recovered from (a reply followed)
+ *  never offers it, so a finished turn is never sent twice. It sends your words before the error
+ *  (else the run's task). */
+export function retryTextFor(items: readonly ThreadItem[], key: string, task: string | null, status: string | null = null): string | null {
+  const at = items.findIndex((i) => i.key === key);
+  if (at < 0) return null;
+  const after = items.slice(at + 1);
+  if (after.some((i) => i.kind === "user" || i.kind === "queued")) return null;
+  const last = after.every((i) => i.kind === "note");
+  const ended = (status === "failed" || status === "cancelled") && !after.some((i) => i.kind === "error");
+  if (!last && !ended) return null;
+  return promptBefore(items, key) ?? (task?.trim() ? task : null);
 }
 
 function Queued(): JSX.Element {
@@ -153,14 +186,24 @@ function Queued(): JSX.Element {
   return <div class="cv-note faint" data-queued>{`waiting for a free agent slot${why}`}</div>;
 }
 
-export function Item({ item, agent, runId = null }: { item: ThreadItem; agent: AgentRun["agent"]; runId?: string | null }): JSX.Element {
+/** `run` / `retryText` (the dock's Conversation): an error row offers Retry with those words. */
+export function Item({ item, agent, runId = null, run = null, retryText = null }: {
+  item: ThreadItem; agent: AgentRun["agent"]; runId?: string | null; run?: AgentRun | null; retryText?: string | null;
+}): JSX.Element {
   switch (item.kind) {
     case "user": {
       // a comment pinned on the model (U2a): the words, then the pin, never the raw location block
       const fb = item.feedback ?? null;
+      // run-scoped: the same step id never collides across runs
+      const rowKey = `${runId ?? ""}/${item.key}`;
+      const edited = editedKeys.value.has(rowKey);
       return (
-        <div class="cv-msg cv-user" data-msg="user" data-row data-kind="message">
-          <div class="label">you</div>
+        <div class={`cv-msg cv-user${edited ? " is-edited" : ""}`} data-msg="user" data-row data-kind="message" data-edited={edited ? "" : undefined}>
+          <div class="cv-msg-head">
+            <span class="label">you</span>
+            {edited && <span class="cv-edited faint">edited · sent again below</span>}
+            {!fb && item.key !== "task" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={rowKey} />}
+          </div>
           {fb ? <FeedbackNote feedback={fb} runId={runId} /> : <div class="cv-text text">{item.text}</div>}
         </div>
       );
@@ -176,7 +219,10 @@ export function Item({ item, agent, runId = null }: { item: ThreadItem; agent: A
             // streaming text is not yet a finished reply: show it plain with a caret, then render
             // the landed message as markup once the step arrives
             ? <div class="cv-text text" data-live-text>{item.text}<span class="cv-caret" aria-hidden="true">▍</span></div>
-            : <div class="cv-text"><Markup source={item.text} /></div>}
+            // Claude Code's API error, echoed as a reply (P10 E3): plain text, never markup
+            : isApiErrorText(item.text)
+              ? <div class="cv-text text cv-fail" data-plain-error>{item.text}</div>
+              : <div class="cv-text"><Markup source={item.text} /></div>}
         </div>
       );
     case "activity":
@@ -188,15 +234,7 @@ export function Item({ item, agent, runId = null }: { item: ThreadItem; agent: A
         </button>
       );
     case "error":
-      return (
-        <div class="cv-line cv-error" data-error data-row data-kind="error">
-          <span class="cv-g cv-fail" aria-hidden="true">✕</span>
-          <span class="cv-body">
-            <span class="cv-fail text">{item.message ? `${item.code} · ${item.message}` : item.code}</span>
-            {item.hint && <span class="cv-hint faint text">{item.hint}</span>}
-          </span>
-        </div>
-      );
+      return <ErrorCard item={item} retryText={retryText} run={run} />;
     case "note":
       return <div class="cv-note faint text" data-row data-kind="note">{item.text}</div>;
     case "approval":
@@ -212,7 +250,7 @@ export function Item({ item, agent, runId = null }: { item: ThreadItem; agent: A
     case "announce":
       return <AnnouncementCard announcement={item.announcement} />;
     case "queued":
-      return <QueuedLine item={item} />;
+      return <QueuedLine item={item} runId={runId} />;
     case "studies":
       return <StudyGrid calls={item.calls} />;
   }
@@ -220,16 +258,24 @@ export function Item({ item, agent, runId = null }: { item: ThreadItem; agent: A
 
 /** A message sent while the lead was busy (I2): your words at once, with a chip that reads
  *  "queued" until the lead reads them, then "delivered" (or "not delivered" and why). */
-function QueuedLine({ item }: { item: Extract<ThreadItem, { kind: "queued" }> }): JSX.Element {
-  const chip = item.status === "delivered" ? "delivered"
-    : item.status === "dropped" ? `not delivered · ${item.reason ?? "dropped"}`
+function QueuedLine({ item, runId }: { item: Extract<ThreadItem, { kind: "queued" }>; runId: string | null }): JSX.Element {
+  // taken back (Cancel) but not yet settled by the core's "dropped": shown as cancelled at once
+  const status = item.status === "queued" && cancelledQueued.value.has(item.messageId) ? "dropped" : item.status;
+  const reason = status !== item.status ? "cancelled" : item.reason;
+  const chip = status === "delivered" ? "delivered"
+    : status === "dropped" ? (reason === "cancelled" ? "cancelled" : `not delivered · ${reason ?? "dropped"}`)
     : `queued${item.position && item.position > 1 ? ` · ${item.position} in line` : ""} · delivered when the agent finishes this step`;
+  const rowKey = `${runId ?? ""}/${item.key}`;
+  const edited = editedKeys.value.has(rowKey);
   return (
-    <div class={`cv-msg cv-user cv-queued is-${item.status}`} data-msg="user" data-row data-kind="queued" data-queued-message={item.messageId}
-      data-queued-status={item.status}>
+    <div class={`cv-msg cv-user cv-queued is-${status}${edited ? " is-edited" : ""}`} data-msg="user" data-row data-kind="queued" data-queued-message={item.messageId}
+      data-queued-status={status} data-edited={edited ? "" : undefined}>
       <div class="cv-msg-head">
         <span class="label">you</span>
-        <span class={`cv-queued-chip is-${item.status}`} data-queued-chip role="status">{chip}</span>
+        <span class={`cv-queued-chip is-${status}`} data-queued-chip role="status">{chip}</span>
+        {status === "queued" && runId && <CancelQueuedButton runId={runId} messageId={item.messageId} />}
+        {edited && <span class="cv-edited faint">edited · sent again below</span>}
+        {status !== "queued" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={rowKey} />}
       </div>
       <div class="cv-text text">{item.text}</div>
     </div>

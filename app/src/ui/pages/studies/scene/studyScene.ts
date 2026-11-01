@@ -15,6 +15,7 @@ import type { PartFace } from "../../../../api/types";
 import { EDGE_THRESHOLD_DEG, MM_PER_GLTF_UNIT, type PartScene } from "../../../viewer/loadPart";
 import { fitOrtho, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type RendererLike } from "../../../viewer/scene";
 import { colormap, type Marker } from "../model";
+import { faceSpan, FIXTURE_ACCENT, fixturePlate, LOAD_ACCENT, solidArrow } from "./markers";
 import {
   advect, channelValues, colorize, dirVec, faceAnchor, finiteRange, flowField, matchFace, planePoint, readChannels, seedParticles,
   streamlines, threeAttribute, type Bounds, type Channel, type FlowField, type Particles, type V3,
@@ -59,6 +60,8 @@ export interface StudySceneHandle {
   /** Animate the shown mode shape (or stop). Static frame with reduced motion. */
   setAnimate(on: boolean): void;
   setMarkers(markers: readonly Marker[], faces: readonly PartFace[], selectedCase: number | null): void;
+  /** Plan 10 E8: where marker `i`'s label goes (a load's arrow tail), null when none is drawn. */
+  labelPoint?(i: number): V3 | null;
   /** Wind: particles on this velocity section (null: none). */
   setFlow(section: StudySection | null, frame?: readonly (readonly number[])[] | null): void;
   /** A section plane: clips the result and shows the core's section values on it. */
@@ -217,10 +220,7 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
 
   // ---- markers
 
-  function arrow(origin: THREE.Vector3, dir: THREE.Vector3, len: number, color: string): THREE.Object3D {
-    const a = new THREE.ArrowHelper(dir, origin, len, new THREE.Color(color).getHex(), len * 0.28, len * 0.16);
-    return a;
-  }
+
 
   // ---- particles
 
@@ -372,6 +372,11 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
       kick();
     },
 
+    labelPoint(i) {
+      const o = markers.children.find((x) => x.userData.markerIndex === i);
+      return (o?.userData.labelAt as V3 | undefined) ?? null;
+    },
+
     setMarkers(list, faces, selectedCase) {
       clearGroup(markers);
       const b = bounds();
@@ -402,15 +407,25 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
         if (m.role === "load") {
           const d = dirVec(m.direction) ?? (m.kind === "pressure" ? (at.normal.map((x) => -x) as V3) : null);
           if (!d) continue;
-          // length grows with the magnitude (log), between 18% and 45% of the part
+          // length grows with the magnitude (log), between 12% and 28% of the part
           const rel = typeof m.magnitude === "number" ? Math.log1p(Math.abs(m.magnitude)) / Math.log1p(maxMag) : 1;
-          const len = size * (0.18 + 0.27 * Math.max(0, Math.min(1, rel)));
-          const dir = new THREE.Vector3(...d);
-          const obj = m.kind === "moment" ? momentGlyph(center, dir, size * 0.14, color) : arrow(center.clone().addScaledVector(dir, -len), dir, len, color);
+          const len = size * (0.12 + 0.16 * Math.max(0, Math.min(1, rel)));
+          const dir = new THREE.Vector3(...d).normalize();
+          // Plan 10 E8: a solid arrow in the load accent (the selected case's in blue) with a dark
+          // outline, its tip on the load face, pointing the way the load acts; the label sits at its tail
+          const accent = sel ? c.selected : LOAD_ACCENT;
+          const tail = center.clone().addScaledVector(dir, -len);
+          const obj = m.kind === "moment" ? momentGlyph(center, dir, size * 0.14, accent) : solidArrow(tail, dir, len, size, accent);
           obj.userData.marker = m.role;
+          obj.userData.labelAt = (m.kind === "moment" ? center.clone().addScaledVector(dir, size * 0.16) : tail).toArray();
+          obj.userData.markerIndex = list.indexOf(m);
           markers.add(obj);
         } else {
-          const glyph = supportGlyph(m.role, center, normal, size * 0.06, m.role === "contact" ? c.ink : color);
+          // Plan 10 E8: a fixed face is a dark hatched plate on the face, sized from the face
+          const span = faceSpan(m.face, b, faces.find((x) => x.id === m.face)?.area ?? null, size);
+          const plate = Math.min(Math.max(span * 0.95, size * 0.1), size * 0.35);
+          const glyph = m.role === "support" ? fixturePlate(center, normal, plate, sel ? c.selected : FIXTURE_ACCENT)
+            : supportGlyph(m.role, center, normal, size * 0.06, m.role === "contact" ? c.ink : color);
           glyph.userData.marker = m.role;
           markers.add(glyph);
           if (m.role === "contact") pairs.set(m.kind, [...(pairs.get(m.kind) ?? []), center.clone().addScaledVector(normal, size * 0.02)]);

@@ -6,6 +6,8 @@ import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { parts } from "../../state/store";
 import { BomSummary } from "./BomSummary";
+import { useBuildBomLoader } from "./bomData";
+import { BoughtParts } from "./BoughtParts";
 import "./left.css";
 import { fmtMass, totalMass } from "./mass";
 import { PartTree } from "./PartTree";
@@ -32,6 +34,7 @@ function UndoToast(): JSX.Element | null {
 }
 
 export function LeftPane(): JSX.Element {
+  useBuildBomLoader();
   const list = parts.value;
   const counted = list.some((p) => p.kind !== "skeleton");
   // one total for the build (FW-app M7: the viewer no longer repeats it): its assembly's, every
@@ -46,7 +49,7 @@ export function LeftPane(): JSX.Element {
     <div class="left-pane" data-testid="left-pane">
       <section class="left-parts" aria-label="Parts">
         <header class="left-sec-head"><span class="left-sec-title">Parts</span></header>
-        <div class="left-parts-body pane-body"><PartTree /></div>
+        <div class="left-parts-body pane-body"><PartTree /><BoughtParts /></div>
         {counted && (
           <div class="left-total" data-testid="parts-total" title={title}>
             <span>Total</span>

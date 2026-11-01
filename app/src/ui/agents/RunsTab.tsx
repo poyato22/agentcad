@@ -259,7 +259,7 @@ export function RunsTab(): JSX.Element {
       {notice && <div class="am-notice text" role="status">{notice}</div>}
       {error && <div class="am-error tone-red text" role="alert">{error}</div>}
       {tree === null && !error && <div class="am-empty faint">Loading runs…</div>}
-      {tree !== null && groups.length === 0 && <div class="am-empty faint">No runs yet. Start one with New run (⌘N).</div>}
+      {tree !== null && groups.length === 0 && <div class="am-empty faint">No runs yet. Message the build's agent in the dock to start one.</div>}
       {groups.map((g, gi) => (
         <section key={g.projectId ?? "none"} class="am-group" aria-label={`Build ${g.name}`}>
           <h3 class="am-group-h">{g.name}</h3>

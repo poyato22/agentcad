@@ -158,6 +158,23 @@ export class CoreClient {
     return this.json("POST", `/runs/${enc(runId)}/message`, okSchema, { body: { text } });
   }
   cancel(runId: string): Promise<{ ok: true }> { return this.json("POST", `/runs/${enc(runId)}/cancel`, okSchema); }
+  /** P10 E24 (core C1): one chat per build. The message goes to the build's lead (queued behind
+   *  its current step while it works); with no lead yet the core starts one on the default model
+   *  (Claude Code when signed in). null: this core has no such route (an older core). */
+  async chat(projectId: string, text: string): Promise<CreateRunResult | null> {
+    const res = await this.request("POST", `/projects/${enc(projectId)}/chat`, { body: { text } });
+    if (await routeMissing(res)) return null;
+    if (!res.ok) throw await toError(res);
+    return createRunResultSchema.parse(await res.json());
+  }
+  /** P10 E9 (core C1): take back a message still waiting for a busy lead (it is dropped with the
+   *  reason "cancelled"). false: this core can't cancel a queued message (no such route). */
+  async cancelQueued(runId: string, messageId: string): Promise<boolean> {
+    const res = await this.request("POST", `/runs/${enc(runId)}/queued/${enc(messageId)}/cancel`, {});
+    if (await routeMissing(res)) return false;
+    if (!res.ok) throw await toError(res);
+    return true;
+  }
   cancelAll(): Promise<CancelAllResult> { return this.json("POST", "/runs/cancel_all", cancelAllSchema); }
 
   // ---- Plan 5 (C1): agent management — the run tree, rename/pin/archive, delete, cleanup
@@ -860,6 +877,15 @@ export class CoreClient {
       throw new CoreError("network", `${method} ${path}: ${errText(e)}`, { retryable: true });
     }
   }
+}
+
+/** A route this core doesn't have: 404 / 405 from the framework itself ({"detail": …}), not one
+ *  of the core's own error answers ({error, message}). Reads a clone, so `res` stays readable. */
+async function routeMissing(res: Response): Promise<boolean> {
+  if (res.status !== 404 && res.status !== 405) return false;
+  let body: unknown = null;
+  try { body = await res.clone().json(); } catch { /* not JSON */ }
+  return !(typeof body === "object" && body !== null && "error" in body);
 }
 
 export async function toError(res: Response): Promise<CoreError> {

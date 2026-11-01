@@ -33,7 +33,7 @@ export type ThreadItem =
       stepIds: number[];
     }
   | { kind: "fold"; key: string; text: string; foldKey: string; count: number }
-  | { kind: "error"; key: string; code: string; message: string; hint: string | null; ts: number; stepIds: number[] }
+  | { kind: "error"; key: string; code: string; message: string; hint: string | null; cause?: string | null; ts: number; stepIds: number[] }
   | { kind: "note"; key: string; text: string; stepIds: number[]; stream?: StreamKind }
   | { kind: "approval"; key: string; approval: Approval }
   | { kind: "question"; key: string; question: Question }
@@ -292,7 +292,7 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
         break;
       }
       case "error":
-        out.push({ kind: "error", key, code: it.code, message: it.message, hint: it.hint, ts: it.step.ts, stepIds: [it.step.id] });
+        out.push({ kind: "error", key, code: it.code, message: it.message, hint: it.hint, cause: it.cause ?? null, ts: it.step.ts, stepIds: [it.step.id] });
         last = null;
         break;
       case "note":

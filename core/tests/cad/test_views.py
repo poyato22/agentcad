@@ -255,6 +255,20 @@ async def test_present_view_section_and_exploded(tmp_path):
     assert out2.data["view_spec"]["section"] is not None
 
 
+async def test_present_view_laid_out(tmp_path):
+    # Plan 10 E36: a knolling shot of the build's parts; the app lays them out live
+    _make_part(tmp_path, "body")
+    _make_part(tmp_path, "lid")
+    store, ctx = _store_ctx(tmp_path, "pA", "pA")
+    store.register_part("body", "pA")
+    store.register_part("lid", "pA")
+    out = await views.present_view.handler(ctx, views.PresentViewArgs(
+        target="pA", kind="laid_out", caption="what it is made of"))
+    spec = out.data["view_spec"]
+    assert spec["kind"] == "laid_out" and sorted(spec["parts"]) == ["body", "lid"]
+    assert spec["explode"] == 0.0
+
+
 def test_render_views_is_read_only_tool():
     assert views.render_views.safety == SafetyClass.READ
     assert views.critique_model.safety == SafetyClass.READ

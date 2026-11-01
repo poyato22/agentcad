@@ -33,19 +33,30 @@ export interface PartCardView {
   cardId: string | null;
   running: boolean;
   failed: boolean;
+  /** P10 E15 (core C1): the core inserts a shown part into the build and lists it in the parts
+   *  list by itself; the result names the part / the row when it did (null: an older core). */
+  partId: string | null;
+  bomId: string | null;
 }
+
+const idOf = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
 
 export function partCardView(call: Call, runId: string | null = call.runId ?? null): PartCardView | null {
   if (!isPartShowName(call.name)) return null;
   const running = call.result === null;
   const failed = call.ok === false;
   let cardId: string | null = null;
+  let partId: string | null = null;
+  let bomId: string | null = null;
   if (!running && !failed) {
     const d = resultData(call);
     const r = partShowResultSchema.safeParse(d);
     cardId = r.success ? r.data.card_id : partShowResultSchema.safeParse(rec(d.card)).data?.card_id ?? null;
+    const card = rec(d.card);
+    partId = idOf(d.part_id) ?? idOf(card.part_id);
+    bomId = idOf(d.bom_id) ?? idOf(d.item_id) ?? idOf(d.bom_row_id) ?? idOf(card.bom_id);
   }
-  return { callId: call.callId, runId, cardId, running, failed };
+  return { callId: call.callId, runId, cardId, running, failed, partId, bomId };
 }
 
 /** "KV 1750", "mass 27.5 g": one spec as a line. */

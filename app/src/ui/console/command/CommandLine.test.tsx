@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { CoreError, type CoreClient } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
-import { actions, beginCoreSession, bindClient, corePid, newRunOpen, resetStore, runs, selectedRunId, sessionRuns } from "../../../state/store";
+import { actions, beginCoreSession, bindClient, corePid, resetStore, runs, selectedRunId, sessionRuns } from "../../../state/store";
 import { addCatalogChip, agentChips, clearAgentChips } from "../../../state/agentChips";
+import { activeBuildId } from "../../../state/builds";
 import { CommandLine } from "./CommandLine";
 
 function run(id: string, agent: string, task: string, status: AgentRun["status"] = "done"): AgentRun {
@@ -11,12 +12,14 @@ function run(id: string, agent: string, task: string, status: AgentRun["status"]
     input_tokens: 0, output_tokens: 0, usd: 0, created_at: 1000, updated_at: 1000 };
 }
 
-const client = { message: vi.fn(), cancel: vi.fn(), cancelAll: vi.fn() };
+// P10 E24: an older core without POST /projects/{id}/chat (null): the lead path is POST /runs
+const client = { message: vi.fn(), cancel: vi.fn(), cancelAll: vi.fn(), chat: vi.fn() };
 
 beforeEach(() => {
   client.message.mockReset().mockResolvedValue({ ok: true });
   client.cancel.mockReset().mockResolvedValue({ ok: true });
   client.cancelAll.mockReset().mockResolvedValue({ cancelled: [], failed: [] });
+  client.chat.mockReset().mockResolvedValue(null);
   bindClient(client as unknown as CoreClient);
   runs.value = new Map([
     ["r1", run("r1", "designer", "stiffen upright", "done")],
@@ -209,11 +212,11 @@ describe("CommandLine", () => {
     await waitFor(() => expect(client.cancel).toHaveBeenCalledWith("r1"));
   });
 
-  it("slash_new_opens_dialog_and_follow_filter_work", async () => {
+  it("there is no /new (P10 E24: one chat per build); /follow and /filter work", async () => {
     render(<CommandLine />);
     type("/new");
     enter();
-    await waitFor(() => expect(newRunOpen.value).toBe(true));
+    expect((await screen.findByRole("alert")).textContent).toContain("unknown command /new");
     type("/follow off");
     enter();
     const { follow, filter } = await import("../../../state/store");
@@ -231,13 +234,32 @@ describe("CommandLine", () => {
     expect(client.message).not.toHaveBeenCalled();
   });
 
-  it("no_selection_explains", async () => {
+  it("no build and no run: says to open a build (never 'select a run')", async () => {
     selectedRunId.value = null;
     runs.value = new Map(); // with runs, the console's fallback run is the target
     render(<CommandLine />);
+    expect(screen.getByTestId("target-chip").textContent).not.toContain("no run selected");
     type("hello");
     enter();
-    expect((await screen.findByRole("alert")).textContent).toContain("select a run");
+    expect((await screen.findByRole("alert")).textContent).toContain("Open a build first");
+  });
+
+  it("in a build the composer always talks to its lead, whatever thread is shown", async () => {
+    const lead = { ...run("L1", "engineer", "build a robot arm"), role: "lead" as const, project_id: "b1" };
+    const sub = { ...run("S1", "verifier", "check the joints"), role: "sub" as const, project_id: "b1", parent_id: "L1" };
+    runs.value = new Map<string, AgentRun>([["L1", lead], ["S1", sub]]);
+    activeBuildId.value = "b1";
+    onTestFinished(() => { activeBuildId.value = null; });
+    actions.selectRun("S1");
+    client.chat.mockResolvedValue({ run_id: "L1", role: "lead", new_lead: false, notes: [] });
+    render(<CommandLine />);
+    expect(screen.getByTestId("target-chip").textContent).toBe("→ engineer · build robot arm");
+    type("go on");
+    enter();
+    await waitFor(() => expect(client.chat).toHaveBeenCalledWith("b1", "go on"));
+    expect(client.message).not.toHaveBeenCalled();
+    // the lead's thread shows your words
+    await waitFor(() => expect(selectedRunId.value).toBe("L1"));
   });
 
   it("history_up_down", async () => {

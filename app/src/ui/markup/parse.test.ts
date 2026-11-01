@@ -25,6 +25,12 @@ describe("parseInline — emphasis and code", () => {
   it("leaves unmatched delimiters as text", () => {
     expect(show(parseInline("a * b"))).toBe("a * b");
   });
+  it("never opens or closes _ emphasis inside a word (P10 E3: TLS error codes stay whole)", () => {
+    expect(show(parseInline("UNABLE_TO_GET_ISSUER_CERT_LOCALLY"))).toBe("UNABLE_TO_GET_ISSUER_CERT_LOCALLY");
+    expect(show(parseInline("snake_case and __init__ files"))).toBe("snake_case and S(init) files");
+    expect(show(parseInline("a _real_ one, foo_bar_baz"))).toBe("a E(real) one, foo_bar_baz");
+    expect(show(parseInline("x *in*word stays"))).toBe("x E(in)word stays");
+  });
 });
 
 describe("parseInline — part chips", () => {

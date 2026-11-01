@@ -1,11 +1,14 @@
-// The agent dock (Plan 9 D2 / D4): three streams stacked and visible at once — View and Simulations
-// over the whole build's agent tree (treeStreams: the lead and every sub-agent), and the
-// Conversation of the shown run (streams.ts splits it). Each scrolls on its own and
-// collapses to its header (with an unread count while collapsed); the dividers between them drag
-// to resize, and the dock's left edge drags its width (dockLayout, remembered). An empty stream
-// shrinks to one quiet line. The composer sits at the foot. There is no button bar: the
-// Conversation header holds the "needs you" count and one ⋯ menu (new run, agent browser, full log).
-import type { ComponentChildren, JSX } from "preact";
+// The agent dock (P10 E6): View, Simulations and Conversation side by side as columns — View and
+// Simulations over the whole build's agent tree (treeStreams: the lead and every sub-agent), the
+// Conversation the build's one chat (the lead's thread, or a sub-agent's opened from its card).
+// Any combination can be open; a closed column is a slim vertical tab with its unread count.
+// Open columns share the dock's width (drag the dividers between them); the dock grows with each
+// open column and its left edge drags its width (dockLayout, remembered). Dragging an edge or a
+// divider never selects page text (E10). The composer sits at the foot of the Conversation (of
+// the dock while the Conversation is closed). The Conversation header holds the design focus,
+// "← Back to lead" on a sub-agent's thread (E13) and the "needs you" count. There is no ⋯ menu:
+// New run is gone (E24) and the full log and agent browser are in Profile → Developer (E22).
+import { Fragment, type ComponentChildren, type JSX } from "preact";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import type { StreamKind } from "../../api/types";
 import { runLabel } from "../../lib/names";
@@ -13,21 +16,20 @@ import { finishedSims } from "../../state/activity";
 import { activeBuildId } from "../../state/builds";
 import { effectiveRun, needsYou } from "../../state/selection";
 import { actions, selectedRunId } from "../../state/store";
-import { SpecPanel } from "../spec";
-import { OverflowMenu } from "../common/OverflowMenu";
 import { ModelWarning } from "./cards/critique/ModelWarning";
+import { BackToLead } from "./BackToLead";
 import { CommandLine } from "./command/CommandLine";
-import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
 import { DesignFocus } from "./DesignFocus";
 import { buildRuns, effectiveRunId, labelOf, offListRuns, retainThreadFrames, retainTreeFrames, runLabels, threadFrame, treeFrame } from "./derived";
-import { dockLayout, resizeStream, resizeWidth, setDockLayout, toggleStream } from "./dockLayout";
+import {
+  dockLayout, minWidth, openStreams, resizeColumns, resizeWidth, setDockLayout, STREAMS, TAB_W, toggleStream, VIEWPORT_MIN, WIDTH_MAX,
+} from "./dockLayout";
 import { shownPending } from "./queued";
 import { retainBuildStudies } from "./buildStudies";
 import { SimStream, simExtras, simExtrasRunning } from "./SimStream";
 import { simRunning, splitStreams } from "./streams";
 import { markSeen, unreadOf } from "./unread";
-import { composerOpen, setConsoleView } from "./view";
 import { ViewStream } from "./ViewStream";
 import "./dock.css";
 
@@ -42,7 +44,7 @@ export function Dock(): JSX.Element {
   // the Conversation is the shown run's thread; View and Simulations are the whole build's tree
   const text = useMemo(() => splitStreams(frame.items).text, [frame.items]);
   const tree = treeFrame.value;
-  // stable key lists: a Section only marks rows seen when its rows changed (N4)
+  // stable key lists: a column only marks rows seen when its rows changed (N4)
   const viewKeys = useMemo(() => tree.view.map((e) => e.key), [tree.view]);
   const extras = simExtras.value;
   const simKeys = useMemo(() => [...tree.sim.map((e) => e.key), ...extras.map((r) => `rec/${r.id}`)], [tree.sim, extras]);
@@ -53,55 +55,76 @@ export function Dock(): JSX.Element {
     if (shownId !== null && selectedRunId.peek() === null) actions.selectRun(shownId);
   }, [shownId]);
   const layout = dockLayout.value;
-  const root = useRef<HTMLDivElement>(null);
+  const cols = useRef<HTMLDivElement>(null);
   const running = tree.sim.filter((e) => simRunning(e.item, finishedSims.value)).length + simExtrasRunning.value;
   // unread rows of View / Simulations are counted per build (they span its runs); the
   // Conversation's per shown run
   const buildKey = `build:${tree.buildId ?? ""}`;
-
-  const open = (s: StreamKind) => !layout.collapsed[s];
+  const open = openStreams(layout);
   const simCount = tree.sim.length + extras.length;
-  const filled = (s: "view" | "sim") => open(s) && (s === "sim" ? simCount : tree.view.length) > 0;
+
+  const column = (s: StreamKind): JSX.Element => {
+    switch (s) {
+      case "view":
+        return <Column stream="view" runId={buildKey} keys={viewKeys} count={tree.view.length}><ViewStream entries={tree.view} /></Column>;
+      case "sim":
+        return <Column stream="sim" runId={buildKey} keys={simKeys} count={simCount} running={running}><SimStream entries={tree.sim} /></Column>;
+      case "text":
+        return (
+          <Column stream="text" runId={frame.runId} keys={textKeys} count={null} head={<ConversationHead />} foot={<CommandLine />}>
+            <Conversation items={text} />
+          </Column>
+        );
+    }
+  };
   return (
-    <div class="dock" ref={root} data-dock data-text-collapsed={layout.collapsed.text ? "" : undefined}>
+    <div class="dock" data-dock data-cols={open.length} data-text-collapsed={layout.collapsed.text ? "" : undefined}>
       <WidthEdge />
-      <Section stream="view" runId={buildKey} keys={viewKeys} count={tree.view.length}
-        height={filled("view") ? layout.view : null}>
-        <ViewStream entries={tree.view} />
-      </Section>
-      {filled("view") && <Divider which="view" root={root} />}
-      <Section stream="sim" runId={buildKey} keys={simKeys} count={simCount} running={running}
-        height={filled("sim") ? layout.sim : null}>
-        <SimStream entries={tree.sim} />
-      </Section>
-      {filled("sim") && open("text") && <Divider which="sim" root={root} />}
-      <Section stream="text" runId={frame.runId} keys={textKeys} count={null} fill head={<ConversationHead />}>
-        <SpecPanel />
-        <Conversation items={text} />
-      </Section>
-      {composerOpen.value ? <Composer /> : <CommandLine />}
+      <div class="dock-cols" ref={cols}>
+        {STREAMS.map((s) => {
+          const next = open[open.indexOf(s) + 1];
+          return (
+            <Fragment key={s}>
+              {column(s)}
+              {!layout.collapsed[s] && next && <ColumnDivider a={s} b={next} cols={cols} />}
+            </Fragment>
+          );
+        })}
+      </div>
+      {layout.collapsed.text && <CommandLine />}
     </div>
   );
 }
 
-function Section({ stream, runId, keys, count, running = 0, height = null, fill = false, head, children }: {
+/** One column, or its slim tab while closed. */
+function Column({ stream, runId, keys, count, running = 0, head, foot, children }: {
   stream: StreamKind; runId: string | null; keys: readonly string[]; count: number | null; running?: number;
-  /** Fixed height (px) of a filled stream; null: as tall as its content (empty) or flexible (fill). */
-  height?: number | null; fill?: boolean; head?: ComponentChildren; children: ComponentChildren;
+  head?: ComponentChildren; foot?: ComponentChildren; children: ComponentChildren;
 }): JSX.Element {
-  const collapsed = dockLayout.value.collapsed[stream];
+  const layout = dockLayout.value;
+  const collapsed = layout.collapsed[stream];
   const unread = collapsed ? unreadOf(runId, stream, keys) : 0;
   useEffect(() => { if (!collapsed) markSeen(runId, stream, keys); }, [collapsed, runId, keys]);
   const title = TITLE[stream];
-  const style = !collapsed && height !== null ? { height: `${height}px` } : undefined;
+  const toggle = () => setDockLayout(toggleStream(dockLayout.peek(), stream));
+  if (collapsed) {
+    return (
+      <button type="button" class="dock-tab" data-stream={stream} data-collapsed="" aria-expanded={false}
+        aria-label={`Show ${title.toLowerCase()}${unread > 0 ? ` · ${unread} new` : ""}${running > 0 ? ` · ${running} running` : ""}`}
+        title={`Show ${title.toLowerCase()}`} onClick={toggle}>
+        <span class="dock-tab-t">{title}</span>
+        {running > 0 && <span class="dock-dot" data-running={running} aria-hidden="true" />}
+        {unread > 0 && <span class="dock-unread num" data-unread={unread} aria-hidden="true">{unread}</span>}
+      </button>
+    );
+  }
+  const last = openStreams(layout).length === 1;
+  const share = layout.share[stream];
   return (
-    <section class="dock-s" data-stream={stream} data-collapsed={collapsed ? "" : undefined} data-fill={fill ? "" : undefined}
-      data-sized={style ? "" : undefined} style={style} aria-label={title}>
+    <section class="dock-s" data-stream={stream} aria-label={title} style={{ flex: `${share} 1 0px` }}>
       <header class="dock-h">
-        <button type="button" class="dock-t" aria-expanded={!collapsed} aria-controls={`dock-b-${stream}`}
-          onClick={() => setDockLayout(toggleStream(dockLayout.peek(), stream))}
-          title={collapsed ? `Show ${title.toLowerCase()}` : `Collapse ${title.toLowerCase()}`}>
-          <span class="dock-chev" aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+        <button type="button" class="dock-t" aria-expanded={true} aria-controls={`dock-b-${stream}`} aria-disabled={last ? "true" : undefined}
+          onClick={toggle} title={last ? `${title} (the last open column stays open)` : `Close ${title.toLowerCase()}`}>
           <span class="dock-title">{title}</span>
           {/* a running count replaces the total: "2 running ●" reads at a glance; idle streams show how many */}
           {count !== null && count > 0 && running === 0 && <span class="dock-n num">{count}</span>}
@@ -110,63 +133,91 @@ function Section({ stream, runId, keys, count, running = 0, height = null, fill 
               <span class="num">{running}</span> running<span class="dock-dot" aria-hidden="true" />
             </span>
           )}
-          {unread > 0 && <span class="dock-unread num" data-unread={unread} aria-label={`${unread} new`}>{unread}</span>}
         </button>
         {head}
       </header>
-      {!collapsed && <div class="dock-b" id={`dock-b-${stream}`} data-stream-body={stream}>{children}</div>}
+      <div class="dock-b" id={`dock-b-${stream}`} data-stream-body={stream}>{children}</div>
+      {foot}
     </section>
   );
 }
 
-/** The divider under a stream: drag (or ↑ / ↓) to resize the stream above it. */
-function Divider({ which, root }: { which: "view" | "sim"; root: { current: HTMLDivElement | null } }): JSX.Element {
-  const total = () => root.current?.clientHeight || 800;   // 0 before layout (tests): a typical dock
-  const start = useRef<{ y: number; layout: typeof dockLayout.value } | null>(null);
-  const label = `Resize ${TITLE[which].toLowerCase()}`;
-  return (
-    <div class="dock-div" role="separator" aria-orientation="horizontal" aria-label={label} tabIndex={0} data-divider={which}
-      aria-valuenow={dockLayout.value[which]}
-      onPointerDown={(e) => {
-        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-        start.current = { y: e.clientY, layout: dockLayout.peek() };
-      }}
-      onPointerMove={(e) => {
-        const s = start.current;
-        if (s) setDockLayout(resizeStream(s.layout, which, e.clientY - s.y, total()), false);
-      }}
-      onPointerUp={() => { if (start.current) { start.current = null; setDockLayout(dockLayout.peek()); } }}
-      onPointerCancel={() => { start.current = null; }}
-      onKeyDown={(e) => {
-        const d = e.key === "ArrowUp" ? -16 : e.key === "ArrowDown" ? 16 : 0;
-        if (!d) return;
-        e.preventDefault();
-        setDockLayout(resizeStream(dockLayout.peek(), which, d, total()));
-      }} />
-  );
+/** A drag that never selects text (E10): pointer capture, no default, `body.dock-resizing`
+ *  (user-select: none everywhere) until the pointer is released. */
+function useDrag<T>(begin: (e: PointerEvent) => T, move: (s: T, e: PointerEvent) => void, end: () => void) {
+  const start = useRef<T | null>(null);
+  const stop = () => {
+    if (start.current === null) return;
+    start.current = null;
+    document.body.classList.remove("dock-resizing");
+    end();
+  };
+  useEffect(() => () => { document.body.classList.remove("dock-resizing"); }, []);
+  return {
+    onPointerDown: (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      document.body.classList.add("dock-resizing");
+      start.current = begin(e);
+    },
+    onPointerMove: (e: PointerEvent) => { if (start.current !== null) { e.preventDefault(); move(start.current, e); } },
+    onPointerUp: stop,
+    onPointerCancel: stop,
+    onLostPointerCapture: stop,
+  };
 }
 
-/** The dock's left edge: drag (or ← / →) to change its width (360–640 px). */
-function WidthEdge(): JSX.Element {
-  const start = useRef<{ x: number; layout: typeof dockLayout.value } | null>(null);
+/** The divider between two open columns: drag (or ← / →) to move width from one to the other. */
+function ColumnDivider({ a, b, cols }: { a: StreamKind; b: StreamKind; cols: { current: HTMLDivElement | null } }): JSX.Element {
+  // the open columns' width now (0 before layout, in tests: the layout's own width)
+  const total = () => {
+    const el = cols.current;
+    const sum = el ? [...el.querySelectorAll<HTMLElement>(".dock-s")].reduce((t, c) => t + c.getBoundingClientRect().width, 0) : 0;
+    const l = dockLayout.peek();
+    return sum > 0 ? sum : l.widths[openStreams(l).length - 1];
+  };
+  const drag = useDrag(
+    (e) => ({ x: e.clientX, layout: dockLayout.peek(), total: total() }),
+    (s, e) => setDockLayout(resizeColumns(s.layout, a, b, e.clientX - s.x, s.total), false),
+    () => setDockLayout(dockLayout.peek()),
+  );
   return (
-    <div class="dock-edge" role="separator" aria-orientation="vertical" aria-label="Resize the agent dock" tabIndex={0}
-      aria-valuenow={dockLayout.value.width} aria-valuemin={360} aria-valuemax={640}
-      onPointerDown={(e) => {
-        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-        start.current = { x: e.clientX, layout: dockLayout.peek() };
-      }}
-      onPointerMove={(e) => {
-        const s = start.current;
-        if (s) setDockLayout(resizeWidth(s.layout, e.clientX - s.x), false);
-      }}
-      onPointerUp={() => { if (start.current) { start.current = null; setDockLayout(dockLayout.peek()); } }}
-      onPointerCancel={() => { start.current = null; }}
+    <div class="dock-div" role="separator" aria-orientation="vertical" tabIndex={0} data-divider={`${a}|${b}`}
+      aria-label={`Resize ${TITLE[a].toLowerCase()} and ${TITLE[b].toLowerCase()}`} {...drag}
       onKeyDown={(e) => {
         const d = e.key === "ArrowLeft" ? -16 : e.key === "ArrowRight" ? 16 : 0;
         if (!d) return;
         e.preventDefault();
-        setDockLayout(resizeWidth(dockLayout.peek(), d));
+        setDockLayout(resizeColumns(dockLayout.peek(), a, b, d, total()));
+      }} />
+  );
+}
+
+/** The widest the dock may get now: the window less the model's room, the gaps and the tabs. */
+function widthMax(): number {
+  const w = globalThis.innerWidth || 0;
+  const l = dockLayout.peek();
+  return w > 0 ? w - VIEWPORT_MIN - 24 - (STREAMS.length - openStreams(l).length) * TAB_W : WIDTH_MAX;
+}
+
+/** The dock's left edge: drag (or ← / →) to change its width for this many open columns. */
+function WidthEdge(): JSX.Element {
+  const l = dockLayout.value;
+  const n = openStreams(l).length;
+  const drag = useDrag(
+    (e) => ({ x: e.clientX, layout: dockLayout.peek(), max: widthMax() }),
+    (s, e) => setDockLayout(resizeWidth(s.layout, e.clientX - s.x, s.max), false),
+    () => setDockLayout(dockLayout.peek()),
+  );
+  return (
+    <div class="dock-edge" role="separator" aria-orientation="vertical" aria-label="Resize the agent dock" tabIndex={0}
+      aria-valuenow={l.widths[n - 1]} aria-valuemin={minWidth(n)} aria-valuemax={WIDTH_MAX} {...drag}
+      onKeyDown={(e) => {
+        const d = e.key === "ArrowLeft" ? -16 : e.key === "ArrowRight" ? 16 : 0;
+        if (!d) return;
+        e.preventDefault();
+        setDockLayout(resizeWidth(dockLayout.peek(), d, widthMax()));
       }} />
   );
 }
@@ -188,6 +239,7 @@ function ConversationHead(): JSX.Element {
   return (
     <div class="dock-hx" data-conversation-head>
       <DesignFocus run={current} buildId={current?.project_id ?? activeBuildId.value} />
+      {notLead && <BackToLead buildId={current?.project_id ?? activeBuildId.value} />}
       {notLead && label && <span class="dock-who dim text" data-run-label title={label}>{label}</span>}
       {current && <ModelWarning run={current} />}
       {others.length > 0 && (
@@ -196,18 +248,6 @@ function ConversationHead(): JSX.Element {
           <span class="num">{others.length}</span>
         </button>
       )}
-      <MoreMenu hasRun={current !== null} />
     </div>
-  );
-}
-
-/** The Conversation's one menu (Plan 9 D2: no button bar). */
-function MoreMenu({ hasRun }: { hasRun: boolean }): JSX.Element {
-  return (
-    <OverflowMenu label="Conversation options" class="dock-more" items={[
-      { label: "New run…", onSelect: () => { composerOpen.value = true; } },
-      { label: "Agent browser", onSelect: () => setConsoleView("browser", false), disabled: !hasRun },
-      { label: "Full log", onSelect: () => setConsoleView("details") },
-    ]} />
   );
 }

@@ -1,7 +1,7 @@
 // Plan 5 A3: several builds at once, the part tree (drag + keyboard), part colors, live
 // variables, feature ops from a pick, the code editor, and editing alongside an agent (409s).
 import type { Page } from "@playwright/test";
-import { expect, test, type FakeCall, type FakeControl } from "./fixtures";
+import { expect, type FakeCall, type FakeControl, homeMenu, test } from "./fixtures";
 
 const BENCH = "b0benchrig00";
 
@@ -79,9 +79,9 @@ test("new_build_rename_in_the_top_bar_trash_undo_and_restore_from_home", async (
   await home.getByRole("button", { name: "Open Gimbal arm" }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Move to Trash" }).click();
   await expect(home.getByRole("button", { name: "Open Gimbal arm" })).toHaveCount(0);
-  await home.getByRole("button", { name: /^Trash/ }).click();
+  await homeMenu(page, "Trash");
   await home.locator('[data-build]', { hasText: "Gimbal arm" }).getByRole("button", { name: "Restore" }).click();
-  await home.getByRole("button", { name: /^Trash/ }).click();
+  await homeMenu(page, "Trash");
   await expect(home.getByRole("button", { name: "Open Gimbal arm" })).toBeVisible();
 });
 

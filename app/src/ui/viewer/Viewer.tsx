@@ -167,6 +167,9 @@ export function Viewer(): JSX.Element {
   /** Something on the sheet that Esc closes first (a label, the ops, a comment, a pin). */
   const chipOpen = useRef(false);
   const [picks, setPicks] = useState<Picked[]>([]);
+  /** E16: what a measure click would pick, under the pointer (null: nothing). */
+  const [hover, setHover] = useState<Picked | null>(null);
+  const hoverFrame = useRef(0);
   const [measured, setMeasured] = useState<MeasureState>(IDLE);
   const measureSeq = useRef(0);
   const [comment, setComment] = useState<Comment | null>(null);
@@ -391,6 +394,8 @@ export function Viewer(): JSX.Element {
       if (e.defaultPrevented || typing(e.target) || viewTab.peek() !== "model" || modalOpen()) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "m" || e.key === "M") { e.preventDefault(); viewerTool.value = viewerTool.peek() === "measure" ? "select" : "measure"; }
+      // E16: Esc clears measure's picks first, then goes back to Select
+      else if (e.key === "Escape" && viewerTool.peek() === "measure" && picksRef.current.length > 0) { e.preventDefault(); setPicks([]); }
       else if (e.key === "Escape" && viewerTool.peek() !== "select") { e.preventDefault(); viewerTool.value = "select"; }
       else if (e.key === "Escape" && chipOpen.current) { setChip(null); setOps(null); setComment(null); setOpenPin(null); }
       else if (e.key === "Escape") { e.preventDefault(); closePart(); }   // D7: back to the assembly
@@ -420,6 +425,31 @@ export function Viewer(): JSX.Element {
     }
   }
 
+  const picksRef = useRef(picks);
+  picksRef.current = picks;
+  // E16: the hover preview, while measuring (a frame at most; never while dragging an orbit)
+  useEffect(() => {
+    const v = viewerRef.current;
+    const focus = activePart.peek();
+    const m = tool === "measure" && hover && focus && hover.kind !== "vertex" ? markerOfPick(focus, hover) : null;
+    v?.setHover?.(m);
+  }, [hover, tool, partId]);
+  useEffect(() => { if (tool !== "measure") setHover(null); }, [tool]);
+  useEffect(() => () => { if (hoverFrame.current) cancelAnimationFrame(hoverFrame.current); }, []);
+  function onPointerMove(e: PointerEvent): void {
+    if (viewerTool.peek() !== "measure" || e.buttons || hoverFrame.current) return;
+    const cx = e.clientX; const cy = e.clientY;
+    hoverFrame.current = requestAnimationFrame(() => {
+      hoverFrame.current = 0;
+      const v = viewerRef.current; const host = hostRef.current; const focus = activePart.peek();
+      if (!v || !host || !focus) return;
+      const r = host.getBoundingClientRect();
+      const hit = v.pick(cx - r.left, cy - r.top);
+      const pk = hit && hit.partId === focus.part_id ? pickTarget(focus.metrics, hit, (p) => v.toScreen(p)) : null;
+      setHover((prev) => (JSON.stringify(prev) === JSON.stringify(pk) ? prev : pk));
+    });
+  }
+
   function onPointerUp(e: PointerEvent): void {
     const d = down.current;
     down.current = null;
@@ -433,7 +463,6 @@ export function Viewer(): JSX.Element {
     const mode: ViewerTool = viewerTool.peek();
     if (!hit) {
       setOps(null); setChip(null); setOpenPin(null);
-      if (mode === "measure" && !e.shiftKey) setPicks([]);
       if (mode === "comment") setComment(null);
       return;
     }
@@ -452,6 +481,7 @@ export function Viewer(): JSX.Element {
     if (mode === "measure") {
       const pk = pickTarget(target.metrics, hit, toScreen);
       if (pk) setPicks((prev) => togglePick(prev, pk, e.shiftKey));
+      setHover(null);
       return;
     }
     if (!ops) {
@@ -487,6 +517,7 @@ export function Viewer(): JSX.Element {
   // m11: a pin rides with its exploded body (it used to hang in mid-air at its rest point)
   const shownPins: Pin[] = tab === "model" ? pins.filter((p) => shownIds.has(p.partId)).map((p) => followExplode(p, modeHost)) : [];
   const dots: Vec3[] = tool === "measure" ? picks.flatMap((p) => (p.kind === "vertex" || p.kind === "point" ? [p.point] : [])) : [];
+  const hoverDot: Vec3 | null = tool === "measure" && hover?.kind === "vertex" ? hover.point : null;
 
   return (
     <div class="vp" ref={hostRef} data-testid="viewer" data-tab={tab} style={backgroundStyle(bg)} data-bg-mode={bg.mode}
@@ -502,6 +533,9 @@ export function Viewer(): JSX.Element {
         data-tool={tool}
         onPointerDown={(e) => { if (e.button === 0) down.current = { x: e.clientX, y: e.clientY }; }}
         onPointerUp={onPointerUp}
+        onPointerMove={onPointerMove}
+        onPointerLeave={() => setHover(null)}
+        data-hover={tool === "measure" && hover ? hover.kind : undefined}
       />
       {/* Plan 9 D7: one part open alone; the corner leads back to the build's assembly (or Esc).
           The script opens from View ▸ Part script, and while it shows "Back to the model" sits here */}
@@ -530,8 +564,8 @@ export function Viewer(): JSX.Element {
       {part === null && <div class="vp-empty label">No part yet. Ask an agent to create one.</div>}
       {part?.kind === "skeleton" && tab === "model" && <SkeletonPanel part={part} />}
       {tab === "model" && tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click the model where something should change</div>}
-      {tab === "model" && v && (shownPins.length > 0 || dots.length > 0) && (
-        <PinLayer pins={shownPins} dots={dots} toScreen={(p) => v.toScreen(p)} bounds={bounds} openPin={openPin} onOpen={setOpenPin}
+      {tab === "model" && v && (shownPins.length > 0 || dots.length > 0 || hoverDot) && (
+        <PinLayer pins={shownPins} dots={dots} hoverDot={hoverDot} toScreen={(p) => v.toScreen(p)} bounds={bounds} openPin={openPin} onOpen={setOpenPin}
           onThread={(p) => { actions.selectRun(p.runId); setOpenPin(null); }} />
       )}
       {tab === "model" && tool === "select" && chip && !ops && (

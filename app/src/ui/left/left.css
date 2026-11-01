@@ -76,3 +76,24 @@
 .vars-error { color: var(--red); }
 .vars-conflict { color: var(--ink); background: var(--blue-tint); border-top-color: var(--blue); }
 .vars-actions { display: inline-flex; gap: 6px; margin-left: auto; }
+
+/* ---- Plan 10 E14: bought parts (the build's bought BOM rows) under the tree; a row opens its info */
+.left-bought { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; }
+.left-fold { display: flex; align-items: baseline; gap: 6px; padding: 0; font: inherit; color: inherit; background: transparent; border: 0; cursor: pointer; }
+.left-fold:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+.bought-list { list-style: none; margin: 0; padding: 0 0 4px; }
+.bought-row {
+  display: flex; align-items: baseline; gap: 6px; width: calc(100% - 16px); margin: 0 8px; padding: 4px 6px;
+  font: inherit; color: var(--ink); background: transparent; border: 0; border-radius: var(--r-row); cursor: pointer; text-align: left;
+}
+.bought-row:hover { background: var(--raised, var(--paper2)); }
+.bought-row[aria-expanded="true"] { background: var(--blue-tint); }
+.bought-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.bought-cost { margin-left: auto; color: var(--dim); }
+.bought-info { margin: 2px 8px 6px 14px; padding: 6px 8px; border-left: 2px solid var(--blue); font-size: 12px; }
+.bought-facts { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.bought-facts div { display: flex; justify-content: space-between; gap: 10px; }
+.bought-facts dt { color: var(--dim); }
+.bought-facts dd { margin: 0; color: var(--ink); text-align: right; overflow-wrap: anywhere; }
+.bought-notes { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bought-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }

@@ -12,7 +12,12 @@ import { runs, steps } from "../../state/store";
 
 export type { FeedbackPin };
 
-export interface LocalPin { buildId: string | null; runId: string; stepId: number | null; partId: string; point: Vec3; faceId: string | null; text: string; ts: number }
+export interface LocalPin {
+  buildId: string | null; runId: string; stepId: number | null; partId: string; point: Vec3; faceId: string | null; text: string; ts: number;
+  /** Plan 10 E35: pinned in the assembly view: on this instance (`point` is still in the part's
+   *  own frame, so the pin follows the instance's pose and the explode). */
+  instanceId?: string | null;
+}
 export interface Pin extends LocalPin { n: number; key: string }
 
 /** Pins sent from this window whose step may not be in yet. */
@@ -39,7 +44,7 @@ export const buildPins: ReadonlySignal<Pin[]> = computed(() => {
       const f = pinStep(s);
       if (!f) continue;
       out.push({ buildId: run?.project_id ?? null, runId, stepId: s.id, partId: f.part_id, point: f.point, faceId: f.face_id ?? null,
-        text: f.text, ts: s.ts, n: 0, key: `s${s.id}` });
+        text: f.text, ts: s.ts, n: 0, key: `s${s.id}`, instanceId: f.instance_id ?? null });
     }
   }
   localPins.value.forEach((p, i) => {

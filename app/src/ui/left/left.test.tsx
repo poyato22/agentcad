@@ -171,5 +171,8 @@ describe("left pane", () => {
     expect(openPartId.value).toBeNull();
     fireEvent.click(screen.getByText("mount plate"));
     expect(openPartId.value).toBe("mount_plate");
+    // Plan 10 E7: the same row again closes it (back to the assembly)
+    fireEvent.click(screen.getByText("mount plate"));
+    expect(openPartId.value).toBeNull();
   });
 });

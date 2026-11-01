@@ -14,7 +14,8 @@ import { Matrix4, Quaternion, Vector3 } from "three";
 import type { Assembly, AssemblyPart, Instance, Interference, Joint, JointValue, Mat4 } from "../../api/assembly";
 import { CoreError, type CoreClient } from "../../api/client";
 import type { MisesEvent } from "../../api/types";
-import { mobility, samePose, solve, type FaceResolver, type Mobility, type SolveResult, type Vec3 } from "./kinematics";
+import { jointWorldFrame, mobility, samePose, solve, type FaceResolver, type Mobility, type SolveResult, type Vec3 } from "./kinematics";
+import type { ExplodeLink } from "../viewer/scene";
 
 export type AssemblyClient = Pick<CoreClient, "projects" | "activeProjectId" | "assemblyParts" | "assembly" | "interference">;
 
@@ -137,6 +138,28 @@ export class AssemblyController {
   }
 
   currentPose(): Readonly<Record<string, Mat4>> { return this.pose; }
+
+  /** Plan 10 E4: the joint tree for the explode, at `pose`: each placed instance → the instance
+   *  that places it, with that joint's world axis and origin (a ball joint has no axis). */
+  explodeLinks(pose: Readonly<Record<string, Mat4>> = this.pose): Map<string, ExplodeLink> {
+    const d = this.data.peek(); const s = this.solved.peek();
+    const out = new Map<string, ExplodeLink>();
+    if (!d || !s) return out;
+    const r = (v: number) => Math.round(v * 1e4) / 1e4;
+    for (const inst of d.instances) {
+      const p = s.placedBy[inst.id];
+      const j = p ? this.joint(p.joint) : null;
+      if (!p || !j) continue;
+      const parent = p.from === "a" ? j.a.instance_id : j.b.instance_id;
+      const f = jointWorldFrame(d, pose as Record<string, Mat4>, j, p.from, this.resolver());
+      out.set(inst.id, {
+        parent,
+        axis: f && j.kind !== "ball" ? [r(f[0][2]), r(f[1][2]), r(f[2][2])] : null,
+        origin: f ? [r(f[0][3]), r(f[1][3]), r(f[2][3])] : null,
+      });
+    }
+    return out;
+  }
 
   /** The scene listens here (every frame of a glide or an animation); returns unsubscribe. */
   onPose(cb: (pose: Readonly<Record<string, Mat4>>) => void): () => void {

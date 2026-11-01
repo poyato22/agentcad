@@ -858,6 +858,35 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         return answer;
       },
     },
+    // P10 E24 (the app's contract for core C1): one chat per build. The text goes to the build's
+    // lead (queued while it works); with no lead, one starts on the default model: the profile's
+    // when set, else Claude Code when signed in. Answers like POST /runs.
+    {
+      method: "POST", re: /^\/projects\/([^/]+)\/chat$/, h: (m, q, raw, r, res) => {
+        const text = req(asBody(raw), "text", "string");
+        const projectId = decodeURIComponent(m[1]);
+        const signedIn = models().vendors.some((v) => v.vendor === CLAUDE_CODE && v.key === "signed_in");
+        const profileDefault = (state.setup.profile as { default_model?: string | null }).default_model ?? null;
+        const modelRef = findLead(projectId) ? null : profileDefault ?? (signedIn ? `${CLAUDE_CODE}/sonnet` : null);
+        const start = routes.find((x) => x.method === "POST" && x.re.source === "^\\/runs$") as Route;
+        return start.h(m, q, { prompt: text, project_id: projectId, ...(modelRef ? { model_ref: modelRef } : {}) }, r, res);
+      },
+    },
+    // P10 E9 (the app's contract for core C1): take back a message still waiting for a busy lead
+    {
+      method: "POST", re: /^\/runs\/([^/]+)\/queued\/([^/]+)\/cancel$/, h: (m) => {
+        const id = decodeURIComponent(m[1]);
+        const mid = decodeURIComponent(m[2]);
+        const q = leadQueues.get(id) ?? [];
+        const at = q.findIndex((x) => x.message_id === mid);
+        if (at < 0) throw mises("not_found", `no queued message ${mid}`, "it was delivered or dropped already");
+        q.splice(at, 1);
+        if (!q.length) leadQueues.delete(id);
+        appendStep({ kind: "decision", payload: { queued_message_dropped: { message_id: mid, reason: "cancelled" } } }, id);
+        emit({ type: "message_dropped", run_id: id, data: { run_id: id, message_id: mid, reason: "cancelled" } });
+        return { ok: true };
+      },
+    },
     {
       method: "POST", re: /^\/runs\/external$/, h: (_m, _q, raw) => {
         const b = asBody(raw);
@@ -1294,6 +1323,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     ...measureRoutes({
       parts: () => state.parts, partVersion: (id) => state.builds.rows.get(id)?.version, partProject: (id) => state.builds.rows.get(id)?.project_id,
       partLabel: (id) => state.builds.rows.get(id)?.label,
+      instance: (pid, iid) => state.assembly.byProject.get(pid)?.instances.find((i) => i.id === iid) ?? null,
       liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null), runs: () => [...state.runs.values()],
       newRun: (task, projectId) => { const r = newRun("engineer", "fake", "fake-model", task, false, "done"); r.project_id = projectId; return r; },
       appendStep: (st, runId) => appendStep(st, runId), emit: (ev) => { emit(ev); },

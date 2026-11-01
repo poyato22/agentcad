@@ -1,17 +1,26 @@
-import { showRoutedNotes } from "../routedNotes";
+// The composer at the foot of the dock (P10 E24: one chat per build). It always talks to the
+// build's lead — the first message of a build creates it (chat.ts) — so there is no run picker and
+// no "New run". Viewing a sub-agent's thread is read-only; "Message this agent" points the
+// composer at it until you go back to the lead (or show another thread). "@agent …" still
+// addresses a run by name, "@all" every finished run, and "/" the commands. Edit (E9) puts a
+// message of yours back here: sending it starts a new turn and marks the old one edited.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
 import { registerShortcut } from "../../../lib/keys";
 import { runLabel } from "../../../lib/names";
-import { agentChips, chipsPromptLine, clearAgentChips } from "../../../state/agentChips";
+import { agentChips, removeAgentChip } from "../../../state/agentChips";
+import { activeBuildId } from "../../../state/builds";
 import { effectiveRun } from "../../../state/selection";
 import { actions, corePid, filter, follow, runs, sessionRuns, type LogFilter } from "../../../state/store";
 import { stopAll } from "../../topbar/stopAll";
-import { followLead, leadUnreachable, NEW_LEAD_NOTE } from "../leadFollow";
+import { buildLead, composerDraft, markEdited, messageTarget, sendChat } from "../chat";
+import { leadUnreachable } from "../leadFollow";
 import { shownPending } from "../queued";
+import { startErrorText } from "../startError";
 import { stopBusy, stoppable as anyStoppable } from "../stopTarget";
+import { composerOpen } from "../view";
 import { allTargets } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
 import "./command.css";
@@ -19,15 +28,15 @@ import "./command.css";
 const FILTER_KINDS: readonly LogFilter["kind"][] = ["everything", "decisions", "tool_calls", "files", "errors"];
 
 const HELP = [
-  "@designer … message a run by agent or label · @all … every finished (done) run of this core session",
-  "/new  new run · /stop  stop the selected run · Esc  stop the agents · /stopall  stop every run (⌘⇧.)",
+  "your message goes to the build's lead · @designer … message a run by agent or label · @all … every finished (done) run of this core session",
+  "/stop  stop the shown run · Esc  stop the agents · /stopall  stop every run (⌘⇧.)",
   "/follow [on|off] · /filter everything|decisions|tool_calls|files|errors|all|run · /clear",
   "approvals are decided on their card, never here",
 ].join("\n");
 
 /** The core's message plus its hint: "run is still working — wait or stop it". */
 function describeError(e: unknown): string {
-  if (e instanceof CoreError) return e.hint ? `${e.message} — ${e.hint}` : e.message;
+  if (e instanceof CoreError) return startErrorText(e);
   return e instanceof Error ? e.message : String(e);
 }
 
@@ -36,6 +45,11 @@ export function CommandLine(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The thread row being edited (Edit on one of your messages), or null. */
+  const [editOf, setEditOf] = useState<string | null>(null);
+  /** What you were typing when you chose Edit: kept, and back once the edit is sent or cancelled. */
+  const stash = useRef<string | null>(null);
+  const restore = useRef<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const history = useRef<string[]>([]);
   const cursor = useRef<number>(-1); // -1 = not browsing history
@@ -45,14 +59,45 @@ export function CommandLine(): JSX.Element {
 
   const allRuns = [...runs.value.values()];
   const parsed: Command = value.trim() ? parseCommand(value, allRuns) : { kind: "message", target: "selected", text: "" };
-  // the run the console shows (selected, else the newest running run): what the chip names
-  // (or the run just started/followed that the store doesn't list yet — I2: a second message sent
-  // right after a new lead took over still has a target)
-  const selected = effectiveRun.value ?? shownPending.value ?? undefined;
-  const chip = chipText(parsed, selected, allRuns, corePid.value);
+  // the thread on screen (or one just started that the store doesn't list yet)
+  const shown = effectiveRun.value ?? shownPending.value ?? null;
+  const lead = buildLead.value;
+  const chosenId = messageTarget.value;
+  const chosen = chosenId ? runs.value.get(chosenId) ?? null : null;
+  // a sub-agent only when the user asked to message it; else the lead (a core without builds:
+  // the run on screen)
+  const target: AgentRun | null = chosen && chosen.role !== "lead" ? chosen : activeBuildId.value ? null : shown;
+  const viewingSub = shown !== null && shown.role !== "lead" && shown.id !== target?.id && activeBuildId.value !== null;
+  const chip = chipText(parsed, target, lead, allRuns, corePid.value);
   // the send button is Stop while the build's lead (or a sub-agent) works (Plan 9 D2), or while
   // a background study / review the agents started still runs (B3)
   const stoppable = anyStoppable.value;
+
+  // "Message this agent" holds only while its thread is the one shown
+  useEffect(() => { if (chosenId && shown?.id !== chosenId) messageTarget.value = null; }, [shown?.id, chosenId]);
+
+  // Edit: the words come back here, ready to change and send again
+  const want = composerDraft.value;
+  useEffect(() => {
+    if (!want) return;
+    composerDraft.value = null;
+    // a draft of your own is never lost to Edit: it waits (the first one, across repeated Edits)
+    if (editOf === null && value.trim() && value !== want.text) stash.current = value;
+    setValue(want.text);
+    setEditOf(want.editOf);
+    setError(null);
+    cursor.current = -1;
+    requestAnimationFrame(() => {
+      const el = input.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [want]);
+
+  // "Use with agent" (parts directory) and other openers ask for the composer: focus it
+  const ask = composerOpen.value;
+  useEffect(() => { if (ask) { composerOpen.value = false; input.current?.focus(); } }, [ask]);
 
   async function execute(cmd: Command): Promise<boolean> {
     if (cmd.kind === "invalid") { setError(cmd.reason); return false; }
@@ -75,42 +120,17 @@ export function CommandLine(): JSX.Element {
       if (failed.length) { setError(failed.join("\n")); return false; }
       return true;
     }
-    let run: AgentRun | undefined;
-    if (cmd.target === "selected") {
-      run = selected;
-      if (!run) { setError("select a run first, or address one with @agent"); return false; }
-    } else {
+    let to: AgentRun | null = target;
+    if (cmd.target !== "selected") {
       const label = cmd.target.label;
-      run = allRuns.find((r) => runLabel(r, allRuns) === label);
-      if (!run) { setError(`no run matches @${label}`); return false; }
+      const named = allRuns.find((r) => runLabel(r, allRuns) === label);
+      if (!named) { setError(`no run matches @${label}`); return false; }
+      to = named;
     }
     try {
-      // "Use with agent" chips ride along to the run you message too, not only a new run (M-6)
-      const chipLine = chipsPromptLine(agentChips.peek());
-      const text = chipLine ? `${cmd.text}\n\n${chipLine}` : cmd.text;
-      // the build's lead takes a prompt even while it works: through POST /runs the core routes
-      // it to that lead and queues it behind the current step (U3c); other runs get /message
-      // (an archived or unreachable lead too: the core hands the prompt to the build's current
-      // lead or starts a new one, and the console follows that run — I2)
-      if (run.role === "lead" && run.project_id) {
-        const res = await actions.client().createRun({ prompt: text, project_id: run.project_id });
-        showRoutedNotes(res);
-        const note = followLead(run, res);
-        if (note) setInfo(note);
-      } else {
-        try {
-          await actions.client().message(run.id, text);
-        } catch (e) {
-          // a run of an earlier core process (after a restart) is gone from this core: rather than
-          // fail with "unknown run", hand the message to its build's lead and follow that (I2)
-          if (!(e instanceof CoreError && e.code === "not_found" && /unknown run/i.test(e.message) && run.project_id)) throw e;
-          const res = await actions.client().createRun({ prompt: text, project_id: run.project_id });
-          showRoutedNotes(res);
-          followLead(run, res);
-          setInfo(res.new_lead ? NEW_LEAD_NOTE : "that run ended with the earlier Mises session · sent to the build's lead");
-        }
-      }
-      if (chipLine) clearAgentChips();
+      const sent = await sendChat(cmd.text, to);
+      if (sent.note) setInfo(sent.note);
+      if (editOf) { markEdited(editOf); setEditOf(null); restore.current = stash.current; stash.current = null; }
       return true;
     } catch (e) {
       setError(describeError(e));
@@ -121,11 +141,12 @@ export function CommandLine(): JSX.Element {
   async function slash(name: string, arg: string): Promise<boolean> {
     try {
       switch (name) {
-        case "new": actions.openNewRun(); return true;
-        case "stop":
-          if (!selected) { setError("select a run first"); return false; }
-          await actions.client().cancel(selected.id);
+        case "stop": {
+          const run = shown ?? lead;
+          if (!run) { setError("no agent is working on this build"); return false; }
+          await actions.client().cancel(run.id);
           return true;
+        }
         case "stopall": await stopAll(); return true; // same request, guard and toast as ⌘⇧.
         case "follow": {
           const a = arg.toLowerCase();
@@ -164,7 +185,8 @@ export function CommandLine(): JSX.Element {
     if (ok) {
       if (cmd.kind !== "slash" || cmd.name !== "clear") history.current.push(line);
       cursor.current = -1;
-      setValue("");
+      setValue(restore.current ?? "");
+      restore.current = null;
     }
   }
 
@@ -183,10 +205,20 @@ export function CommandLine(): JSX.Element {
     return true;
   }
 
+  function cancelEdit(): void {
+    setEditOf(null);
+    setValue(stash.current ?? "");
+    stash.current = null;
+  }
+
   function onKeyDown(e: KeyboardEvent): void {
     if (e.isComposing) return;
     const el = e.currentTarget as HTMLTextAreaElement;
-    if (e.key === "Escape" && stoppable && !e.defaultPrevented) {
+    if (e.key === "Escape" && editOf !== null && !e.defaultPrevented) {
+      // Esc first leaves the edit: your earlier draft comes back
+      e.preventDefault();
+      cancelEdit();
+    } else if (e.key === "Escape" && stoppable && !e.defaultPrevented) {
       // Esc stops the busy agents like the Stop button (Plan 9 D2) — not one that waits on your
       // approval or answer, and not when another handler (Animate) already took this Esc
       e.preventDefault();
@@ -202,12 +234,40 @@ export function CommandLine(): JSX.Element {
   }
 
   const rows = Math.min(5, Math.max(1, value.split("\n").length));
+  const shownLabel = shown ? runLabel(shown, allRuns) : "";
   return (
     <div class="cmd" data-command-line>
-      {chip && <div class="cmd-chip dim" data-testid="target-chip">{chip}</div>}
+      {viewingSub && (
+        <div class="cmd-view" data-viewing-sub={shown?.id}>
+          <span class="cmd-view-t dim text">{`Viewing ${shownLabel} · your message goes to the lead`}</span>
+          <button type="button" class="cmd-link" data-testid="message-this-agent" onClick={() => { if (shown) messageTarget.value = shown.id; input.current?.focus(); }}>
+            Message this agent
+          </button>
+        </div>
+      )}
+      <div class="cmd-chips">
+        {chip && <span class="cmd-chip dim" data-testid="target-chip">{chip}</span>}
+        {chosen && target === chosen && (
+          <button type="button" class="cmd-link" data-testid="back-to-lead" onClick={() => { messageTarget.value = null; input.current?.focus(); }}>
+            Message the lead instead
+          </button>
+        )}
+        {editOf !== null && (
+          <span class="cmd-chip cmd-editing" data-testid="editing-chip">
+            {stash.current ? "Editing your message · your draft comes back after" : "Editing your message · sends as a new turn"}
+            <button type="button" class="cmd-link" onClick={() => { cancelEdit(); input.current?.focus(); }}>Cancel edit</button>
+          </span>
+        )}
+      </div>
       {agentChips.value.length > 0 && (
-        <div class="cmd-chip dim text" data-testid="cmd-agent-chips">
-          {`with ${agentChips.value.length} parts-directory item${agentChips.value.length === 1 ? "" : "s"}: ${agentChips.value.map((c) => c.label).join(", ")} (sent with your next message to one run)`}
+        // parts-directory items ("Use with agent") ride along with your next message; × drops one
+        <div class="cv-context cmd-context" role="list" aria-label="Context for the agent" data-testid="cmd-agent-chips">
+          {agentChips.value.map((c) => (
+            <span key={c.id} class="cv-context-chip" role="listitem" data-chip={c.id} title={`${c.id}: the agent reads it with catalog_get`}>
+              <span class="cv-context-label">{c.label}</span>
+              <button type="button" class="cv-context-x" aria-label={`Remove ${c.label}`} onClick={() => removeAgentChip(c.id)}>×</button>
+            </span>
+          ))}
         </div>
       )}
       <div class="cmd-row">
@@ -215,7 +275,7 @@ export function CommandLine(): JSX.Element {
           ref={input}
           class="cmd-input"
           aria-label="Command line"
-          placeholder="Message the agent, @all, or / for commands…"
+          placeholder={lead || target ? "Message the agent, @all, or / for commands…" : "Describe what to build — your first message starts the build's agent"}
           rows={rows}
           value={value}
           spellcheck={false}
@@ -242,14 +302,15 @@ export function CommandLine(): JSX.Element {
   );
 }
 
-function chipText(cmd: Command, selected: AgentRun | undefined, all: readonly AgentRun[], pid: number | null): string {
+function chipText(cmd: Command, target: AgentRun | null, lead: AgentRun | null, all: readonly AgentRun[], pid: number | null): string {
   if (cmd.kind === "slash") return `/${cmd.name}`;
   if (cmd.kind === "invalid") return "";
   if (cmd.target === "all") return "→ all idle runs";
   if (cmd.target === "selected") {
-    if (!selected) return "→ no run selected";
-    if (selected.project_id && leadUnreachable(selected, pid)) return "→ new lead (the earlier one can't be reached)";
-    return `→ ${runLabel(selected, all)}`;
+    const to = target ?? lead;
+    if (!to) return "→ the build's agent (starts with your first message)";
+    if (to.project_id && leadUnreachable(to, pid)) return "→ new lead (the earlier one can't be reached)";
+    return `→ ${runLabel(to, all)}`;
   }
   return `→ ${cmd.target.label}`;
 }

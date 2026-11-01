@@ -16,6 +16,7 @@ import { Led } from "../../../common/Led";
 import { PhaseBar } from "../../../console/studycard/StudyCard";
 import { buildLog } from "../../../console/logModel";
 import { buildThread, type ThreadItem } from "../../../console/threadModel";
+import { isApiErrorText } from "../../../console/errorText";
 import { Markup } from "../../../markup/render";
 import type { ActiveStudy } from "../controller";
 import { fmtStudyMetric, honesty, metricLabel, phaseText, summaryMetrics, TYPE_NAMES, verdictTone } from "../model";
@@ -201,7 +202,13 @@ function RanCard({ active, rec, onCancel, onWatch, onOpen }: {
 function Item({ item, onOpenRun }: { item: ThreadItem; onOpenRun: () => void }): JSX.Element | null {
   switch (item.kind) {
     case "user": return <div class="sa-user" data-testid="sa-user">{item.text}</div>;
-    case "agent": return <div class="sa-agent" data-testid="sa-agent" data-live={String(item.live)}><Markup source={item.text} /></div>;
+    case "agent":
+      // Claude Code's API error echoed as a reply (P10 E3): plain text, never markup
+      return (
+        <div class="sa-agent" data-testid="sa-agent" data-live={String(item.live)}>
+          {isApiErrorText(item.text) ? <span class="text" data-plain-error>{item.text}</span> : <Markup source={item.text} />}
+        </div>
+      );
     case "activity":
       return <div class={`sa-act tone-${item.tone === "fail" ? "red" : "faint"}`} data-testid="sa-activity">{item.text}{item.hint ? ` · ${item.hint}` : ""}</div>;
     case "error": return <div class="sa-act tone-red" role="alert">{item.message}{item.hint ? ` · ${item.hint}` : ""}</div>;

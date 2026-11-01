@@ -48,7 +48,7 @@ describe("AgentsTab", () => {
     fireEvent.input(within(form).getByPlaceholderText("e.g. rib-checker"), { target: { value: "Bad Name" } });
     expect(within(form).getByText(/Use 2–41 lowercase letters/)).toBeTruthy();
     fireEvent.input(within(form).getByPlaceholderText("e.g. rib-checker"), { target: { value: "rib-checker" } });
-    fireEvent.input(within(form).getByPlaceholderText("One line, shown in New run"), { target: { value: "Checks rib spacing" } });
+    fireEvent.input(within(form).getByPlaceholderText("One line: what this agent is for"), { target: { value: "Checks rib spacing" } });
     expect(create.disabled).toBe(true);                               // instructions are required
     fireEvent.input(within(form).getByPlaceholderText("How this agent should work"), { target: { value: "Measure every rib." } });
     fireEvent.click(within(form).getByRole("radio", { name: /Only these/ }));
@@ -70,7 +70,7 @@ describe("AgentsTab", () => {
     const form = screen.getByRole("form", { name: "Edit ribber" });
     const body = within(form).getByRole("textbox", { name: "Instructions" }) as HTMLTextAreaElement;
     await waitFor(() => expect(body.value).toBe("Add a rib every 10 mm."));
-    fireEvent.input(within(form).getByPlaceholderText("One line, shown in New run"), { target: { value: "adds ribs fast" } });
+    fireEvent.input(within(form).getByPlaceholderText("One line: what this agent is for"), { target: { value: "adds ribs fast" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save agent" }));
     await waitFor(() => expect(core.state.calls.some((c) => c.method === "PUT" && c.path === "/agents/ribber")).toBe(true));
     const put = core.state.calls.find((c) => c.method === "PUT" && c.path === "/agents/ribber") as { body: Record<string, unknown> };

@@ -2,7 +2,7 @@
 // presented-view cards in the thread, the full-window view and the model warning.
 // Chromium with SwiftShader software WebGL (stencil buffer included).
 import type { Page } from "@playwright/test";
-import { expect, openPartView, test } from "./fixtures";
+import { expect, openPartView, test, useDefaultDock } from "./fixtures";
 
 test.use({ launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } });
 
@@ -44,6 +44,7 @@ async function pixelsAt(page: Page, selector: string, x: number, y: number, r = 
 }
 
 test("section_caps_close_the_cut_in_the_part_color", async ({ page }) => {
+  await useDefaultDock(page);              // the cut needs the model's room (P10 E6: one dock column)
   await openDesign(page);
   await page.locator('[data-part="pi_battery"] .tree-name').first().click();
   await expect(page.locator("[data-testid=viewer-canvas]")).toHaveAttribute("data-bbox-size", /^40\.00,26\.00,12\.00$/, { timeout: 10_000 });
@@ -93,7 +94,8 @@ test("view_stream_shows_the_newest_large_the_rest_in_a_filmstrip_and_one_live_ca
   await expect(big).toHaveCount(1);
   await expect(big).toHaveAttribute("data-kind", "exploded");
   await expect(big).toHaveAttribute("data-live", "true");
-  expect((await big.boundingBox())!.width).toBeGreaterThanOrEqual(400);
+  // the View column's full width (P10 E6: a column of the dock)
+  expect((await big.boundingBox())!.width).toBeGreaterThanOrEqual((await viewStream(page).boundingBox())!.width - 30);
   await expect(big.getByTestId("live-view")).toHaveAttribute("data-state", "ready", { timeout: 10_000 });
   await expect(page.locator("[data-testid=live-view]")).toHaveCount(1);
   // a critique round shows large too and expands to its issues

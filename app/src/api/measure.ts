@@ -35,7 +35,12 @@ export const measureResultSchema = z.object({
 export const measureWarmSchema = z.object({ part_id: z.string(), warm: z.boolean() });
 
 /** A comment pinned on the model. */
-export interface FeedbackBody { part_id: string; point: Vec3; face_id?: string; text: string }
+export interface FeedbackBody {
+  part_id: string; point: Vec3; face_id?: string; text: string;
+  /** Plan 10 E35: a pin dropped in the assembly view: the instance and the point in world mm
+   *  (`point` stays in the part's own frame). */
+  instance_id?: string; world_point?: Vec3;
+}
 /** The build's lead the pin went to (core orchestrator/lead.submit_feedback, U3c): `step_id` is
  *  the stored pin (a decision step {feedback}); `queued` when the lead was busy. */
 export interface FeedbackResult { run_id: string; step_id: number | null; queued?: boolean; position?: number | null }
@@ -49,10 +54,13 @@ export const feedbackResultSchema = z.object({
 export interface FeedbackPin {
   part_id: string; point: Vec3; text: string; face_id?: string | null; part?: string | null; nearby_hole?: string | null;
   nearby_feature?: { face_id?: string | null; type?: string | null; area_mm2?: number | null; center?: Vec3 | null } | null;
+  /** Plan 10 E35: an assembly pin's instance (id, name) and world point. */
+  instance_id?: string | null; instance?: string | null; world_point?: Vec3 | null;
 }
 export const feedbackPinSchema = z.object({
   part_id: z.string(), point: vec3, text: z.string(), face_id: z.string().nullish(), part: z.string().nullish(), nearby_hole: z.string().nullish(),
   nearby_feature: z.object({ face_id: z.string().nullish(), type: z.string().nullish(), area_mm2: z.number().nullish(), center: vec3.nullish() }).nullish(),
+  instance_id: z.string().nullish(), instance: z.string().nullish(), world_point: vec3.nullish(),
 });
 
 /** The pin on a step's payload, if it carries a well-formed one. */
