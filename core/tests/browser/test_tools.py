@@ -116,33 +116,36 @@ async def test_open_suggested_site_without_a_card(env, web):
     assert snap["url"] == PRODUCT and snap["title"].startswith("Micro servo")
 
 
-async def test_open_other_domain_asks_a_card_per_domain(env, web):
+async def test_open_other_domain_without_a_card(env, web):
+    # E31: reading a public https page is not approval-gated; a non-suggested host loses its
+    # query but is still opened, with no card
     url = "https://shop.example.com/p/servo"
     web.fixture(url, "product_servo.html")
-    with pytest.raises(MisesError) as e:                     # a card domain gets no query
-        await env.call("web_open", {"url": url + "?d=c2VjcmV0"})
-    assert e.value.code == ErrorCode.INVALID_INPUT and url in e.value.hint
-    assert web.requests == [] and env.store.pending_approvals(env.run.id) == []
-    task = asyncio.create_task(env.call("web_open", {"url": url}))
-    card = await env.next_card()
-    assert web.requests == []                                # nothing before the card
-    assert card.action == "web_open" and card.payload == {"url": url}
-    assert card.deltas["domain"] == "shop.example.com"
-    assert card.deltas["allow_domain"] == "shop.example.com"
-    assert "shop.example.com" in card.deltas["approval_reason"]
-    env.decide(card)
-    out = await task
-    assert out.ok and web.hosts() == ["shop.example.com"]
+    out = await env.call("web_open", {"url": url + "?d=c2VjcmV0"})
+    assert out.ok and env.store.pending_approvals(env.run.id) == []
+    assert web.hosts() == ["shop.example.com"] and web.requests[0].url.query == b""
 
 
-async def test_open_rejected_card_fetches_nothing(env, web):
-    url = "https://shop.example.com/p/servo"
-    web.fixture(url, "product_servo.html")
-    task = asyncio.create_task(env.call("web_open", {"url": url}))
-    env.decide(await env.next_card(), approve=False)
+async def test_open_exfil_shaped_link_refused(env, web):
+    # E31: a link whose path looks like a data carrier is refused outright, never fetched
+    url = "https://shop.example.com/" + "a" * 70 + "/x"
     with pytest.raises(MisesError) as e:
-        await task
+        await env.call("web_open", {"url": url})
     assert e.value.code == ErrorCode.DENIED and web.requests == []
+
+
+async def test_new_domain_cap_per_turn(env, web):
+    # E31: a handful of new sites per request, then refused
+    from mises.browser.tools import NEW_DOMAIN_CAP
+    for i in range(NEW_DOMAIN_CAP):
+        u = f"https://site{i}.example.com/p"
+        web.fixture(u, "product_servo.html")
+        assert (await env.call("web_open", {"url": u})).ok
+    over = "https://toomany.example.com/p"
+    web.fixture(over, "product_servo.html")
+    with pytest.raises(MisesError) as e:
+        await env.call("web_open", {"url": over})
+    assert e.value.code == ErrorCode.DENIED and "new sites" in e.value.message
 
 
 async def test_open_always_allowed_domain_needs_no_card(env, web):
@@ -235,7 +238,7 @@ async def test_open_allowed_domain_drops_the_query(env, web):
     "/" + "a" * 70 + "/169",                                                # blob-like segment
     "/" + "/".join(["seg"] * 90),                                           # path too long
 ])
-async def test_odd_suggested_links_ask_a_card(env, web, bad):
+async def test_odd_suggested_links_dropped_or_refused(env, web, bad):
     url = ADA + bad
     base = url.split("?")[0]
     web.fixture(base, "product_servo.html")
@@ -244,12 +247,10 @@ async def test_odd_suggested_links_ask_a_card(env, web, bad):
         out = await env.call("web_open", {"url": url})
         assert out.ok and web.requests[0].url.query == b""
         return
-    task = asyncio.create_task(env.call("web_open", {"url": url}))
-    card = await env.next_card()
-    assert web.requests == [] and "unusual shape" in card.deltas["approval_reason"]
-    env.decide(card, approve=False)
-    with pytest.raises(MisesError):
-        await task
+    # E31: a blob-like or over-long path is refused outright (no card), nothing fetched
+    with pytest.raises(MisesError) as e:
+        await env.call("web_open", {"url": url})
+    assert e.value.code == ErrorCode.DENIED and web.requests == []
 
 
 async def test_fetch_budget_per_run(env, web):

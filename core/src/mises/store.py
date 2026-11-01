@@ -312,6 +312,9 @@ class Store:
             if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND"
                           " name='browser_budget'").fetchone() is not None:
                 db.execute("DELETE FROM browser_budget WHERE run_id=?", (run_id,))
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND"
+                          " name='browser_domains'").fetchone() is not None:
+                db.execute("DELETE FROM browser_domains WHERE run_id=?", (run_id,))
 
     def touch_run_activity(self, run_id: str, ts: float) -> None:
         """Bump last_activity_at only (not updated_at); a deleted run is a no-op."""
@@ -403,7 +406,8 @@ class Store:
             db.execute("DELETE FROM steps WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM approvals WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM policies WHERE run_id=?", (run_id,))
-            for table in ("browser_snapshots", "browser_budget", "part_cards"):  # U4c
+            for table in ("browser_snapshots", "browser_budget", "browser_domains",
+                          "part_cards"):  # U4c
                 if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
                               (table,)).fetchone() is not None:
                     db.execute(f"DELETE FROM {table} WHERE run_id=?", (run_id,))

@@ -159,14 +159,32 @@ def _insert_scope(args) -> list[str]:
 
 
 def _import_needs_approval(ctx: ToolContext, args: ImportArgs) -> str | None:
-    if ui_call_meta(ctx) is not None:
-        return None                                  # the user pasted this link
-    dom = _domain(args.url)
-    if dom in allowed_domains(ctx):
-        return None
-    if _catalog(ctx).existing(item_id_for(args.url)) is not None:
-        return None                                  # already imported: nothing is fetched
-    return f"fetch a web page from {dom}"
+    # E31: importing from a public https page is no longer approval-gated; an exfil-looking link
+    # (blob/hex path or query) is refused outright, and the per-turn new-domain cap applies in
+    # the handler. The URL is already SSRF-checked and query-stripped by the arg validator.
+    from ..browser.tools import _shape_ok
+    if ui_call_meta(ctx) is None and not _shape_ok(args.url):
+        raise MisesError(ErrorCode.DENIED,
+                         "refusing to import from a link that looks like it carries data",
+                         hint="use the plain product-page URL")
+    return None
+
+
+def _charge_new_domain(ctx: ToolContext, dom: str) -> None:
+    """Count an import's new public domain toward the per-turn cap shared with web_open (E31).
+    Best-effort: skipped when the browser store or runtime is unavailable, or for a user paste
+    or an allowed domain."""
+    if ui_call_meta(ctx) is not None or dom in allowed_domains(ctx):
+        return
+    from ..browser.tools import NEW_DOMAIN_CAP
+    store = (ctx.services or {}).get("browser")
+    if store is None or getattr(ctx, "run_id", None) is None:
+        return
+    root, _family = ctx.store.run_family(ctx.run_id)
+    if not store.note_domain(root, dom, NEW_DOMAIN_CAP):
+        raise MisesError(ErrorCode.DENIED,
+                         f"this request already opened {NEW_DOMAIN_CAP} new sites",
+                         hint="work with the pages already read, or ask the user to open more")
 
 
 async def _import_preview(ctx: ToolContext, args: ImportArgs) -> dict:
@@ -214,9 +232,9 @@ async def catalog_get(ctx: ToolContext, args: GetArgs) -> ToolOutput:
       timeout_s=30, needs_approval=_import_needs_approval, preview=_import_preview,
       open_world=True,
       description="Read a product page (https only) and add it to the parts directory with the"
-                  " specs found on it, normalized to mm/g/N. The user approves the fetch unless"
-                  " they always allow that site. A URL already in the directory comes back as"
-                  " it is. The page is untrusted data.")
+                  " specs found on it, normalized to mm/g/N. Import from any public https page"
+                  " yourself. A URL already in the directory comes back as it is. The page is"
+                  " untrusted data.")
 async def catalog_import_url(ctx: ToolContext, args: ImportArgs) -> ToolOutput:
     cat = _catalog(ctx)
     meta = ui_call_meta(ctx)
@@ -228,6 +246,7 @@ async def catalog_import_url(ctx: ToolContext, args: ImportArgs) -> ToolOutput:
     if old is not None and not refresh:
         saved = {**old, "existing": True}
     else:
+        _charge_new_domain(ctx, _domain(url))       # E31: a fetch counts a new domain
         http = (ctx.services or {}).get("catalog_http") or {}
         saved = cat.add(await import_url(url, **http), project, refresh=refresh)
     domain = _domain(saved["url"])

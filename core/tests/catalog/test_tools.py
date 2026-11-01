@@ -88,18 +88,11 @@ async def test_search_and_get_builtin(env):
     assert "untrusted_page_data" not in got.data
 
 
-async def test_agent_import_asks_a_card_with_domain_and_path_before_fetching(env, web):
+async def test_agent_import_without_a_card(env, web):
+    # E31: an agent imports from a public https page itself; query/fragment dropped, no card
     web.fixture(URL, "injection.html")
-    task = asyncio.create_task(env.call("catalog_import_url",
-                                        {"url": URL + "?d=c2VjcmV0#frag"}))
-    card = await env.next_card()
-    assert web.requests == []                            # nothing went out before the card
-    assert card.action == "catalog_import_url"
-    assert card.payload == {"url": URL}                  # query and fragment dropped
-    assert card.deltas["domain"] == "shop.example.com" and card.deltas["path"] == "/p/falcon"
-    assert card.deltas["url"] == URL and "shop.example.com" in card.deltas["approval_reason"]
-    env.decide(card)
-    out = await task
+    out = await env.call("catalog_import_url", {"url": URL + "?d=c2VjcmV0#frag"})
+    assert env.store.pending_approvals(env.run.id) == []
     assert [r.url.query for r in web.requests] == [b""]
     assert out.data["domain"] == "shop.example.com"
     assert "IGNORE" not in out.summary and "exfiltrate" not in out.summary
@@ -115,12 +108,12 @@ async def test_agent_import_asks_a_card_with_domain_and_path_before_fetching(env
     assert "exfiltrate" not in hits.summary
 
 
-async def test_rejected_card_fetches_nothing(env, web):
-    web.fixture(URL, "table_motor.html")
-    task = asyncio.create_task(env.call("catalog_import_url", {"url": URL}))
-    env.decide(await env.next_card(), approve=False)
+async def test_exfil_shaped_import_refused(env, web):
+    # E31: a link that looks like a data carrier is refused outright, nothing fetched
+    bad = "https://shop.example.com/" + "a" * 70 + "/x"
+    web.fixture(bad, "table_motor.html")
     with pytest.raises(MisesError) as e:
-        await task
+        await env.call("catalog_import_url", {"url": bad})
     assert e.value.code == ErrorCode.DENIED and web.requests == []
 
 

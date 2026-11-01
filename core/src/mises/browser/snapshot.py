@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS browser_snapshots (
   id TEXT PRIMARY KEY, run_id TEXT, project_id TEXT, data TEXT, created_at REAL);
 CREATE INDEX IF NOT EXISTS browser_snapshots_run ON browser_snapshots(run_id, created_at);
 CREATE TABLE IF NOT EXISTS browser_budget (run_id TEXT PRIMARY KEY, used INTEGER);
+CREATE TABLE IF NOT EXISTS browser_domains (
+  run_id TEXT, domain TEXT, PRIMARY KEY (run_id, domain));
 """
 
 # what a page that refuses robots says instead of its content
@@ -253,6 +255,23 @@ class SnapshotStore:
             db.execute("INSERT OR REPLACE INTO browser_budget VALUES (?,?)", (run_id, used))
         return used
 
+    def note_domain(self, run_id: str, domain: str, cap: int) -> bool:
+        """E31: record that run `run_id`'s family opened `domain` this turn. Returns True when
+        the domain is already counted or fits under `cap` distinct new domains; False (and
+        records nothing) when it would be the (cap+1)-th new domain. Cleared each user turn
+        with the fetch budget (store.start_turn)."""
+        with self.store._tx() as db:
+            row = db.execute("SELECT 1 FROM browser_domains WHERE run_id=? AND domain=?",
+                             (run_id, domain)).fetchone()
+            if row is not None:
+                return True
+            n = db.execute("SELECT COUNT(*) FROM browser_domains WHERE run_id=?",
+                           (run_id,)).fetchone()[0]
+            if n >= cap:
+                return False
+            db.execute("INSERT INTO browser_domains VALUES (?,?)", (run_id, domain))
+        return True
+
     def ids_for_run(self, run_id: str) -> list[str]:
         return [r[0] for r in self.store._all("SELECT id FROM browser_snapshots WHERE run_id=?",
                                               (run_id,))]
@@ -261,3 +280,4 @@ class SnapshotStore:
         with self.store._tx() as db:
             db.execute("DELETE FROM browser_snapshots WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM browser_budget WHERE run_id=?", (run_id,))
+            db.execute("DELETE FROM browser_domains WHERE run_id=?", (run_id,))
