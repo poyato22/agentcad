@@ -17,9 +17,9 @@ import { SectionHandle } from "../viewer/modes/SectionHandle";
 import { MODES_OFF, XRAY_OPACITY, type ModesState, type Vec3 } from "../viewer/modes/state";
 import { fmtVolume } from "./format";
 
-const AXES: { key: string; normal: Vec3 }[] = [{ key: "X", normal: [1, 0, 0] }, { key: "Y", normal: [0, 1, 0] }, { key: "Z", normal: [0, 0, 1] }];
+export const AXES: { key: string; normal: Vec3 }[] = [{ key: "X", normal: [1, 0, 0] }, { key: "Y", normal: [0, 1, 0] }, { key: "Z", normal: [0, 0, 1] }];
 
-function axisOf(n: Vec3): string | null {
+export function axisOf(n: Vec3): string | null {
   const u = unit(n);
   for (const a of AXES) if (Math.abs(Math.abs(u.dot(new THREE.Vector3(...a.normal))) - 1) < 1e-6) return a.key;
   return null;

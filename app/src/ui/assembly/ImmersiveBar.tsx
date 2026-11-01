@@ -11,9 +11,11 @@ import type { ModeHost } from "../viewer/scene";
 import { restBox } from "../viewer/modes/controller";
 import { prefersReducedMotion, tween } from "../viewer/modes/motion";
 import type { AssemblyController } from "./controller";
+import { sectionAt, sectionRange, unit } from "../viewer/modes/section";
+import { XRAY_OPACITY, type ModesState } from "../viewer/modes/state";
 import { assemblyModes, type Immersive } from "./state";
 import { AXIS_NORMAL, SWEEP_REST_AT, sweepEnds, sweepSection } from "./sweep";
-import { towardCamera } from "./ViewerPill";
+import { AXES, axisOf, towardCamera } from "./ViewerPill";
 import { modalOpen } from "../pages/router";
 
 const SPEEDS = [0.5, 1, 2] as const;
@@ -29,7 +31,7 @@ export function ImmersiveBar({ imm, ctl, host, onClose }: { imm: Immersive; ctl:
         <span class="asm-imm-title">{title}</span>
         {caption && <span class="asm-imm-caption" data-agent-text>{caption}</span>}
       </div>
-      {imm.mode === "animation" ? <MotionBar ctl={ctl} onClose={onClose} />
+      {imm.mode === "animation" ? <MotionBar ctl={ctl} host={host} onClose={onClose} />
         : imm.mode === "sweep" ? <SweepBar key={JSON.stringify(imm.sweep)} imm={imm} host={host} onClose={onClose} />
           : <div class="asm-imm-bar"><CloseButton onClose={onClose} /></div>}
     </div>
@@ -58,7 +60,45 @@ function useArrows(nudge: (dir: 1 | -1, big: boolean) => void): void {
   }, []);
 }
 
-function MotionBar({ ctl, onClose }: { ctl: AssemblyController; onClose(): void }): JSX.Element {
+/** G5: Section (axis, flip, the plane's slider) and X-ray while a motion plays: the cut is a
+ *  world plane, so the moving parts pass through it and their caps follow them every frame. */
+function MotionModes({ host }: { host: ModeHost | null }): JSX.Element {
+  const modes = assemblyModes.value;
+  const set = (patch: Partial<ModesState>) => { assemblyModes.value = { ...assemblyModes.peek(), ...patch }; };
+  const sec = modes.section;
+  const xrayOn = modes.xray.opacity < 0.999;
+  const box = host ? restBox(host.parts()) : null;
+  const range = box ? sectionRange(box, unit(sec.normal)) : [0, 0];
+  const at = sectionAt(sec, box);
+  return (
+    <span class="imm-modes" data-testid="motion-modes">
+      <button type="button" class="pill-btn" aria-pressed={sec.on} data-testid="motion-section" disabled={!box} title="Cut the assembly with a plane"
+        onClick={() => set({ section: sec.on ? { ...sec, on: false } : { on: true, normal: towardCamera(host, sec.normal), at: null } })}>
+        <span aria-hidden="true">◧</span> Section
+      </button>
+      {sec.on && (
+        <span class="pill-section" data-testid="motion-section-controls">
+          <span class="pill-axes" role="group" aria-label="Section plane normal">
+            {AXES.map((a) => (
+              <button key={a.key} type="button" class="pill-axis" aria-pressed={axisOf(sec.normal) === a.key}
+                onClick={() => set({ section: { on: true, normal: towardCamera(host, a.normal), at: null } })}>{a.key}</button>
+            ))}
+            <button type="button" class="pill-axis" title="Look at the cut from the other side" aria-label="Flip the section"
+              onClick={() => set({ section: { on: true, normal: [-sec.normal[0], -sec.normal[1], -sec.normal[2]], at: -at } })}>⇄</button>
+          </span>
+          <input type="range" class="pill-range" min={range[0]} max={range[1]} step={Math.max((range[1] - range[0]) / 200, 0.01)} value={at}
+            aria-label="Section plane position" data-testid="motion-section-slider"
+            onInput={(e) => set({ section: { ...sec, at: Number(e.currentTarget.value) } })} />
+          <span class="pill-val num" data-testid="motion-section-value">{`${at.toFixed(1)} mm`}</span>
+        </span>
+      )}
+      <button type="button" class="pill-btn" aria-pressed={xrayOn} data-testid="motion-xray" title="See through the parts to what is inside"
+        onClick={() => set({ xray: { ...modes.xray, opacity: xrayOn ? 1 : XRAY_OPACITY } })}>X-ray</button>
+    </span>
+  );
+}
+
+function MotionBar({ ctl, host, onClose }: { ctl: AssemblyController; host: ModeHost | null; onClose(): void }): JSX.Element {
   // a twentieth of the motion a press (a quarter with ⇧), paused there
   useArrows((dir, big) => {
     const cur = ctl.motion.peek();
@@ -92,6 +132,8 @@ function MotionBar({ ctl, onClose }: { ctl: AssemblyController; onClose(): void 
             onClick={() => ctl.setMotion({ speed: s })}>{`${s}×`}</button>
         ))}
       </span>
+      <span class="pill-sep" aria-hidden="true" />
+      <MotionModes host={host} />
       <span class="pill-sep" aria-hidden="true" />
       <CloseButton onClose={onClose} />
     </div>

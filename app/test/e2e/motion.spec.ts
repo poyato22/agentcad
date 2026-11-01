@@ -166,6 +166,49 @@ test("an_animation_card_opens_the_assembly_full_window_and_plays_with_scrub_loop
   await expect.poll(async () => differs((await pixels(page)).sig, rest.sig)).toBeLessThan(15);
 });
 
+test("while_it_plays_section_with_its_slider_and_x-ray_stay_usable_and_follow_the_moving_parts_(G5)", async ({ page, fake }) => {
+  await open(page, fake, "animation");
+  await view(page).getByTestId("motion-card").getByTestId("motion-card-open").click();
+  const bar = page.getByTestId("motion-bar");
+  await expect(bar).toHaveAttribute("data-playing", "true");
+  const canvas = page.getByTestId("assembly-canvas");
+  await page.getByTestId("motion-section").click();
+  await expect(canvas).toHaveAttribute("data-section", "on");
+  await expect(bar).toHaveAttribute("data-playing", "true");          // the motion keeps playing
+  const scrub = page.getByTestId("motion-scrub");
+  const seek = async (t: number) => {
+    await scrub.evaluate((el, v) => { const i = el as HTMLInputElement; i.value = String(v); i.dispatchEvent(new Event("input", { bubbles: true })); }, t);
+    await page.waitForTimeout(200);
+  };
+  const slide = async (v: number) => {
+    await page.getByTestId("motion-section-slider").evaluate((el, x) => { const i = el as HTMLInputElement; i.value = String(x); i.dispatchEvent(new Event("input", { bubbles: true })); }, v);
+    await page.waitForTimeout(200);
+  };
+  await seek(0);
+  const min = Number(await page.getByTestId("motion-section-slider").getAttribute("min"));
+  const max = Number(await page.getByTestId("motion-section-slider").getAttribute("max"));
+  await slide(min + 0.3 * (max - min));
+  const little = await pixels(page);
+  await slide(min + 0.9 * (max - min));
+  const most = await pixels(page);
+  expect(most.total).toBeGreaterThan(little.total * 1.1);              // the slider moves the cut
+  // the cut stays while the parts move through it: scrubbing changes what it shows
+  await seek(2);
+  const moved = await pixels(page);
+  expect(differs(moved.sig, most.sig)).toBeGreaterThan(5);
+  await expect(canvas).toHaveAttribute("data-section", "on");
+  await page.getByTestId("motion-xray").click();
+  await expect(page.getByTestId("motion-xray")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("motion-play").click();
+  await expect(bar).toHaveAttribute("data-playing", "true");
+  await page.waitForTimeout(400);
+  await slide(min + 0.5 * (max - min));                                 // a cut through both plates, for the shot
+  await shots(page, "g5-section-xray-playing");
+  // closing puts the modes back as they were before Play
+  await page.getByTestId("assembly-immersive-close").click();
+  await expect(canvas).toHaveAttribute("data-section", "off");
+});
+
 test("a_section_sweep_card_sweeps_the_cut_once_then_the_user_drags_it", async ({ page, fake }) => {
   await open(page, fake, "section_sweep");
   const c = view(page).getByTestId("motion-card");

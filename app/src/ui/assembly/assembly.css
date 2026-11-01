@@ -114,6 +114,10 @@
 .imm-scrub:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
 .imm-axis { display: inline-grid; place-items: center; margin-left: 4px; cursor: default; color: var(--ink); background: var(--raised, var(--paper2)); }
 .imm-speed { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+/* G5: Section and X-ray inside the motion bar; a narrow window wraps the bar to two rows */
+.imm-modes { display: inline-flex; align-items: center; gap: 4px; }
+.asm-imm-bar:has(.imm-modes) { flex-wrap: wrap; justify-content: center; }
+.asm-imm-bar:has(.imm-modes .pill-section) .imm-scrub { width: clamp(100px, 18vw, 300px); }
 
 /* the view modes' section handle is drawn by ui/viewer/modes (modes.css) */
 @media (prefers-reduced-motion: reduce) {
