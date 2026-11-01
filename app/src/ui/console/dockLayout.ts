@@ -3,7 +3,7 @@
 // dock's width by their `share` (the vertical dividers between them move share from one to the
 // next); the dock's width depends on how many are open — one width per count, dragged at its left
 // edge (defaults 440 / 760 / 1080), plus a slim tab per closed column — and CSS caps it so the
-// model always keeps 360 px (base.css --console-w). At least one column stays open. A per-viewer
+// model always keeps VIEWPORT_MIN (base.css --console-w; ui/shell/room.ts also counts the Parts surface). At least one column stays open. A per-viewer
 // convenience kept in localStorage — it may be unavailable, and then the layout just isn't
 // remembered. The math is pure; the signal and storage wrap it.
 import { signal, type Signal } from "@preact/signals";
@@ -30,7 +30,7 @@ export const WIDTH_MAX = 1800;
 /** A closed column's slim tab. */
 export const TAB_W = 30;
 /** The model keeps at least this much of the window (the CSS cap; drags stop there too). */
-export const VIEWPORT_MIN = 360;
+export const VIEWPORT_MIN = 520;
 
 export const DEFAULT_LAYOUT: DockLayout = {
   // the Conversation on its own (the dock's old footprint); View and Simulations wait as tabs
@@ -102,7 +102,8 @@ export function resizeColumns(l: DockLayout, a: StreamKind, b: StreamKind, dx: n
   const sum = open.reduce((t, s) => t + l.share[s], 0);
   const px = (s: StreamKind) => (l.share[s] / sum) * total;
   const pair = px(a) + px(b);
-  const lo = Math.min(COL_MIN, pair / 2);
+  // squeezed below COL_MIN each (the model keeps its room: ui/shell/room) the pair still trades width
+  const lo = Math.min(COL_MIN, pair * 0.4);
   const na = clamp(px(a) + dx, lo, pair - lo);
   const round = (v: number) => Math.round(v * 1000) / 1000;
   return { ...l, share: { ...l.share, [a]: round((na / total) * sum), [b]: round(((pair - na) / total) * sum) } };

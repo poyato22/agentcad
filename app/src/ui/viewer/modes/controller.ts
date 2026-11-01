@@ -2,7 +2,7 @@
 // applied together and re-applied after every restyle of the viewer (new parts, shaded / wire,
 // theme), since a part that reloads comes with fresh materials.
 import * as THREE from "three";
-import { visibleWidth, type ModeHost, type ShownPart } from "../scene";
+import { keepOffset, visibleWidth, type ModeHost, type ShownPart } from "../scene";
 import { dirFromAzEl, liveBox } from "./camera";
 import { Exploder } from "./explode";
 import { Layouter } from "./layout";
@@ -95,7 +95,7 @@ export class ModesController {
   private followZoom(): void {
     const { camera, controls } = this.host;
     if (this.exploder.value <= 0) {
-      if (this.baseZoom !== null) { camera.zoom = this.baseZoom; camera.updateProjectionMatrix(); this.baseZoom = null; }
+      if (this.baseZoom !== null) { camera.zoom = this.baseZoom; this.keepAxis(); camera.updateProjectionMatrix(); this.baseZoom = null; }
       if (this.baseTarget !== null) { this.slideTarget(this.baseTarget); this.baseTarget = null; }
       return;
     }
@@ -109,6 +109,7 @@ export class ModesController {
     const shift = rest ? mid.sub(rest.getCenter(new THREE.Vector3())) : new THREE.Vector3();
     this.slideTarget(this.baseTarget.clone().add(shift));
     camera.zoom = Math.min(this.baseZoom, this.fitZoom(box));
+    this.keepAxis();
     camera.updateProjectionMatrix();
   }
 
@@ -123,7 +124,7 @@ export class ModesController {
         camera.position.copy(this.baseTarget).addScaledVector(this.baseDir, camera.position.distanceTo(controls.target) || 100);
         camera.lookAt(controls.target);
       }
-      if (this.baseZoom !== null) camera.zoom = this.baseZoom;
+      if (this.baseZoom !== null) { camera.zoom = this.baseZoom; this.keepAxis(); }
       camera.updateProjectionMatrix();
       this.baseDir = null; this.baseTarget = null; this.baseZoom = null;
       controls.update?.();
@@ -146,7 +147,15 @@ export class ModesController {
     camera.lookAt(target);
     camera.updateMatrixWorld(true);
     camera.zoom = this.baseZoom + (this.fitZoom(box) - this.baseZoom) * f;
+    this.keepAxis();
     camera.updateProjectionMatrix();
+  }
+
+  /** After a zoom: keep the camera's axis in the middle of what the floating surfaces leave (three
+   *  zooms about the canvas centre; viewer/scene keepOffset). */
+  private keepAxis(): void {
+    const { camera, canvas } = this.host;
+    if (camera instanceof THREE.OrthographicCamera && canvas) keepOffset(camera, canvas, this.host.insets?.() ?? { left: 0, right: 0 });
   }
 
   /** The zoom that just fits `box` around the target, keeping the camera's direction. */

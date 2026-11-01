@@ -170,8 +170,27 @@ export function offsetOrtho(camera: THREE.OrthographicCamera, width: number, hei
   const halfH = (camera.top - camera.bottom) / 2;
   const s = (2 * halfH) / Math.max(1, height);
   const cx = insetL + visibleWidth(width, insetL, insetR) / 2;
-  camera.left = -cx * s; camera.right = (width - cx) * s;
+  // three zooms an orthographic frustum about its middle (the canvas centre), not the camera's
+  // axis: shift that middle by 1/zoom so a zoom (the explode backing out, a scroll) keeps the axis
+  // — and the model on it — in the middle of what the surfaces leave (P10 FWA)
+  const z = camera.zoom > 0 ? camera.zoom : 1;
+  const mid = ((width / 2 - cx) * s) / z;
+  camera.left = mid - (width * s) / 2; camera.right = mid + (width * s) / 2;
   camera.updateProjectionMatrix();
+}
+
+/** Re-applies offsetOrtho when the zoom changed since it last ran (a scroll, an explode backing
+ *  out), so zooming pivots on the free area's middle. Returns whether it re-offset. */
+export function keepOffset(camera: THREE.OrthographicCamera, canvas: HTMLCanvasElement, insets: { left: number; right: number }): boolean {
+  const ud = camera.userData as { offsetZoom?: number };
+  if (ud.offsetZoom === camera.zoom) return false;
+  ud.offsetZoom = camera.zoom;
+  if (!insets.left && !insets.right) return false;
+  const w = canvas.clientWidth || canvas.width;
+  const h = canvas.clientHeight || canvas.height;
+  if (!w || !h) return false;
+  offsetOrtho(camera, w, h, insets.left, insets.right);
+  return true;
 }
 
 /** The canvas width the floating surfaces leave (at least a third of it). */
@@ -254,7 +273,8 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
 
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = false;
-  controls.addEventListener("change", requestRender);
+  // a scroll zoom pivots on the free area's middle, not the canvas centre (P10 FWA)
+  controls.addEventListener("change", () => { keepOffset(camera, canvas, { left: insetL, right: insetR }); requestRender(); });
   /** The user turned, panned or zoomed since the last fit: a fold then only slides the view. */
   let moved = false;
   controls.addEventListener("start", () => { moved = true; });

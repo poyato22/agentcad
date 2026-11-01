@@ -55,7 +55,10 @@ for (const theme of ["dark", "light"] as const) {
     await col(page, "view").click();
     await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "2");
     const two = await rect(page, "[data-region=console]");
-    expect(Math.round(two.width)).toBe(760 + 30);
+    // 790 wanted; beside the open Parts surface the model keeps 520 px (1440 − 264 − 520 − 24:
+    // ui/shell/room), and two columns fit that, so the Parts surface stays open
+    expect(Math.round(two.width)).toBe(1440 - 264 - 520 - 24);
+    await expect(page.locator(".app")).toHaveAttribute("data-left", "open");
     const v = await rect(page, "[data-dock] [data-stream=view]");
     const t = await rect(page, "[data-dock] [data-stream=text]");
     expect(v.x + v.width).toBeLessThanOrEqual(t.x + 1);                       // side by side, View left
@@ -70,8 +73,10 @@ for (const theme of ["dark", "light"] as const) {
     await col(page, "sim").click();
     await expect(con(page).locator("[data-dock]")).toHaveAttribute("data-cols", "3");
     const three = await rect(page, "[data-region=console]");
-    // 1080 wanted; capped so the model keeps 360 px (1440 − 360 − 2 × 12)
-    expect(Math.round(three.width)).toBe(1440 - 360 - 24);
+    // 1080 wanted; three columns don't fit beside the Parts surface, so it folds to its tab by
+    // itself and the model keeps 520 px (1440 − 58 − 520 − 24)
+    await expect(page.locator(".app")).toHaveAttribute("data-left", "rail");
+    expect(Math.round(three.width)).toBe(1440 - 58 - 520 - 24);
     const xs = await Promise.all((["view", "sim", "text"] as const).map(async (s) => (await rect(page, `[data-dock] [data-stream=${s}]`)).x));
     expect([...xs].sort((a, b) => a - b)).toEqual(xs);
     // the 3D view centres in what is left (shell/insets follows the dock)

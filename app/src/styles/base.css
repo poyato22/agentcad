@@ -44,8 +44,9 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 600; margin: 0; let
 .app {
   --gap: 12px;
   /* the dock (P10 E6): its columns' width (App sets --dock-w: 440 / 760 / 1080 px for 1 / 2 / 3
-     open columns, or as dragged), never so wide that the model keeps less than 360px */
-  --console-w: min(var(--dock-w, 440px), calc(100vw - 360px - 2 * var(--gap)));
+     open columns, or as dragged), never so wide that the model keeps less than 520px (ui/shell/room.ts:
+     App caps --dock-w further while the Parts surface is open) */
+  --console-w: min(var(--dock-w, 440px), calc(100vw - 520px - 2 * var(--gap)));
   display: grid;
   grid-template-rows: var(--topbar-h) minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);

@@ -26,9 +26,15 @@
 /* ---- the viewer pill */
 .asm-pill {
   position: absolute; left: var(--mid); bottom: 18px; transform: translateX(-50%); z-index: 6;
-  display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 32px);
-  flex-wrap: nowrap; justify-content: center; white-space: nowrap;
+  display: flex; align-items: center; gap: 2px; padding: 4px;
+  /* P10 FWA: centred in the free area and never wider than it (so never under the dock or the
+     Parts surface): buttons fold into More first (ViewerPill pillFold), then it wraps to a second
+     row. max-content: its width never depends on how far --mid is from the right edge. */
+  width: max-content; max-width: calc(var(--vis-w) - 32px);
+  flex-wrap: wrap; justify-content: center; white-space: nowrap;
 }
+.pill-menu.pill-menu-end { left: auto; right: 0; min-width: 160px; }
+.pill-overflow > .pill-btn > span { opacity: .7; }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
   font: inherit; color: color-mix(in srgb, var(--ink) 82%, var(--dim)); background: transparent; border: 0; border-radius: var(--r-btn);
@@ -70,7 +76,8 @@
   position: absolute; left: var(--mid); top: 52px; transform: translateX(-50%); z-index: 7; max-width: min(560px, calc(var(--vis-w) - 32px));
   display: flex; gap: 8px; align-items: center; padding: 5px 6px 5px 12px;
 }
-.asm-empty { font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
+/* P10 FWA: balanced lines, never one word per line (the model keeps 520 px: ui/shell/room) */
+.asm-empty { font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0; text-transform: none; text-wrap: balance; }
 
 /* interference tag: hangs off the overlap, red (fail) */
 .asm-tag {

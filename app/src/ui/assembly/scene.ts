@@ -12,7 +12,7 @@ import type { Mat4 } from "../../api/assembly";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MaterialParams } from "../../lib/appearance";
 import { meshColors, type PartScene } from "../viewer/loadPart";
-import { fitOrtho, offsetOrtho, visibleWidth, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type ExplodeLink, type ModeHost, type RendererLike, type ShownPart } from "../viewer/scene";
+import { fitOrtho, keepOffset, offsetOrtho, visibleWidth, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type ExplodeLink, type ModeHost, type RendererLike, type ShownPart } from "../viewer/scene";
 import type { Vec3 } from "./kinematics";
 
 export interface SceneInstance {
@@ -182,7 +182,8 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
 
   const orbit = new OrbitControls(camera, canvas);
   orbit.enableDamping = false;
-  orbit.addEventListener("change", requestRender);
+  // a scroll zoom pivots on the free area's middle, not the canvas centre (P10 FWA)
+  orbit.addEventListener("change", () => { keepOffset(camera, canvas, { left: insetL, right: insetR }); requestRender(); });
   /** The user turned, panned or zoomed since the last fit: a fold then only slides the view. */
   let moved = false;
   orbit.addEventListener("start", () => { moved = true; });

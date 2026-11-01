@@ -12,7 +12,7 @@
 // (state/home.ts homeView), not build pages. Every shortcut in the app is listed in
 // lib/shortcuts.ts and docs/shortcuts.md:
 //   ⌘1 Design · ⌘2 Studies · ⌘3 Print · ⌘4 BOM · ⌘0 Home (U1)
-import { signal, type Signal } from "@preact/signals";
+import { computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { isTrustedKey, registerShortcut } from "../../lib/keys";
 import { atHome } from "../../state/home";
 
@@ -116,8 +116,22 @@ export function resetDockMemory(): void { for (const k of Object.keys(dockOpenOn
 
 /** Whether the Design page's Parts surface is folded to its slim tab. */
 export const leftCollapsed: Signal<boolean> = signal<boolean>(false);
-export function toggleLeft(): void { leftCollapsed.value = !leftCollapsed.value; }
-export function setLeftCollapsed(on: boolean): void { leftCollapsed.value = on; }
+/** P10 FWA: the open dock needs the Parts surface's room so the model keeps VIEWPORT_MIN
+ *  (ui/shell/room.ts sets it). The surface then shows as its tab by itself, and comes back when the
+ *  room does; opening the tab meanwhile (a click, ⌘[) keeps it open until then. */
+export const partsAutoFold: Signal<boolean> = signal<boolean>(false);
+const partsForcedOpen = signal<boolean>(false);
+/** Whether the Parts surface shows as its slim tab: the user folded it, or the dock needs its room. */
+export const leftFolded: ReadonlySignal<boolean> = computed(() => leftCollapsed.value || (partsAutoFold.value && !partsForcedOpen.value));
+export function toggleLeft(): void {
+  if (leftFolded.peek()) { leftCollapsed.value = false; partsForcedOpen.value = partsAutoFold.peek(); }
+  else { leftCollapsed.value = true; partsForcedOpen.value = false; }
+}
+export function setLeftCollapsed(on: boolean): void { leftCollapsed.value = on; partsForcedOpen.value = false; }
+export function setPartsAutoFold(on: boolean): void {
+  if (partsAutoFold.peek() !== on) partsAutoFold.value = on;
+  if (!on) partsForcedOpen.value = false;
+}
 
 /** ⌘[ folds / unfolds the Parts surface (Design), ⌘] the agent dock: inside a build, never under
  *  a modal (the immersive views step with ⌘[ / ⌘], and they are modal). Returns unregister. */

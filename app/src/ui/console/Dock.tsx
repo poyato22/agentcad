@@ -23,8 +23,9 @@ import { Conversation } from "./Conversation";
 import { DesignFocus } from "./DesignFocus";
 import { buildRuns, effectiveRunId, labelOf, offListRuns, retainThreadFrames, retainTreeFrames, runLabels, threadFrame, treeFrame } from "./derived";
 import {
-  dockLayout, minWidth, openStreams, resizeColumns, resizeWidth, setDockLayout, STREAMS, TAB_W, toggleStream, VIEWPORT_MIN, WIDTH_MAX,
+  dockLayout, minWidth, openStreams, resizeColumns, resizeWidth, setDockLayout, STREAMS, TAB_W, toggleStream, WIDTH_MAX,
 } from "./dockLayout";
+import { dockMax } from "../shell/room";
 import { shownPending } from "./queued";
 import { retainBuildStudies } from "./buildStudies";
 import { SimStream, simExtras, simExtrasRunning } from "./SimStream";
@@ -194,11 +195,12 @@ function ColumnDivider({ a, b, cols }: { a: StreamKind; b: StreamKind; cols: { c
   );
 }
 
-/** The widest the dock may get now: the window less the model's room, the gaps and the tabs. */
+/** The widest the open columns may get now: the dock's cap (the window less the model's room, the
+ *  gaps and the Parts surface; ui/shell/room.ts) less the closed columns' tabs. */
 function widthMax(): number {
-  const w = globalThis.innerWidth || 0;
+  const cap = dockMax.peek();
   const l = dockLayout.peek();
-  return w > 0 ? w - VIEWPORT_MIN - 24 - (STREAMS.length - openStreams(l).length) * TAB_W : WIDTH_MAX;
+  return Number.isFinite(cap) ? cap - (STREAMS.length - openStreams(l).length) * TAB_W : WIDTH_MAX;
 }
 
 /** The dock's left edge: drag (or ← / →) to change its width for this many open columns. */

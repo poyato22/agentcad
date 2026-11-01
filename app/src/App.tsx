@@ -25,8 +25,9 @@ import { ConsolePane } from "./ui/console/ConsolePane";
 import { dockLayout, dockWidth } from "./ui/console/dockLayout";
 import { LeftPane } from "./ui/left/LeftPane";
 import {
-  activePage, consoleCollapsed, installPageShortcuts, installSurfaceShortcuts, leftCollapsed, modalOpen, toggleConsole, toggleLeft,
+  activePage, consoleCollapsed, installPageShortcuts, installSurfaceShortcuts, leftFolded as leftFoldedSignal, modalOpen, toggleConsole, toggleLeft,
 } from "./ui/pages/router";
+import { dockMax, installRoom } from "./ui/shell/room";
 import { activeBuildId } from "./state/builds";
 import { DrawingDrop } from "./ui/imports";
 import { BomPage } from "./ui/pages/bom";
@@ -56,7 +57,8 @@ export function SidebarIcon({ side }: { side: "left" | "right" }): JSX.Element {
 }
 
 function LeftRegion(): JSX.Element {
-  if (leftCollapsed.value) {
+  // folded by the user, or by itself while the open dock needs its room (ui/shell/room)
+  if (leftFoldedSignal.value) {
     return (
       <div class="region region-left" data-region="left" data-folded="">
         <button type="button" class="surface surface-tab" data-surface="" title="Show the parts (⌘[)" aria-label="Show the parts"
@@ -133,7 +135,9 @@ export function App(): JSX.Element {
   const home = atHome.value;
   const page = activePage.value;
   const folded = consoleCollapsed.value;
-  const leftFolded = leftCollapsed.value;
+  // P10 FWA: the model keeps 520 px whatever the dock (ui/shell/room)
+  useEffect(() => installRoom(), []);
+  const leftFolded = leftFoldedSignal.value;
   const partOpen = openPartId.value !== null;
   // the floating surfaces' footprint on the build view (re-measured as they mount, fold or resize)
   const appRef = useRef<HTMLDivElement>(null);
@@ -142,8 +146,9 @@ export function App(): JSX.Element {
     <div class="app" ref={appRef} data-region="app" data-conn={conn.value} data-home={home ? "" : undefined}
       data-page={page} data-console={folded ? "rail" : "open"} data-left={leftFolded ? "rail" : "open"}
       // the agent dock's width: its open columns plus a tab per closed one (P10 E6; ui/console/dockLayout)
-      // (capped in base.css so the model always keeps 360 px)
-      style={folded ? undefined : { "--dock-w": `${dockWidth(dockLayout.value)}px` }}>
+      // capped so the model keeps 520 px beside the Parts surface (ui/shell/room; base.css again
+      // without it)
+      style={folded ? undefined : { "--dock-w": `${Math.min(dockWidth(dockLayout.value), dockMax.value)}px` }}>
       {home
         ? <div class="region region-page" data-region="page"><HomePage /></div>
         : <><div class="region region-topbar" data-region="topbar"><TopBar /></div><PageRegion /><ConsoleRegion /></>}
