@@ -74,6 +74,10 @@ CLOSE_GRACE_S = 2.0                    # stdin EOF -> SIGTERM on a normal close
 MCP_FILE, AGENTS_FILE, RULES_FILE = "claude-mcp.json", "claude-agents.json", "mises-rules.md"
 
 
+# E3: where the app edits the environment Claude Code runs with (Profile.claude_code_env): the
+# Network fields NODE_EXTRA_CA_CERTS / HTTPS_PROXY / NO_PROXY. The error hints point there.
+NETWORK_SETTINGS = "Profile & settings → Claude Code → Network"
+
 # E3: classify a Claude Code failure from its message/stderr so the app can explain it and
 # offer the right fix. Ordered: the most specific cause first (TLS before a generic network
 # error, which a cert failure can also look like).
@@ -82,8 +86,8 @@ _ERROR_CLASSES: tuple[tuple[re.Pattern, str, str, str], ...] = (
                 r"DEPTH_ZERO_SELF_SIGNED", re.I),
      "tls", "Claude Code could not verify the TLS certificate on the way to Anthropic.",
      "A VPN or proxy that filters HTTPS (e.g. a corporate or Windscribe CA) is likely "
-     "intercepting the connection. Start Mises from a terminal with NODE_EXTRA_CA_CERTS set to "
-     "your CA bundle, or set it in Profile → Claude Code."),
+     "intercepting the connection. Set NODE_EXTRA_CA_CERTS to your CA bundle in "
+     f"{NETWORK_SETTINGS} (or turn the VPN's HTTPS filtering off), then retry."),
     (re.compile(r"\b401\b|unauthori[sz]|invalid api key|authentication", re.I),
      "auth", "Anthropic did not accept Claude Code's sign-in.",
      "Sign in again from Setup or Profile (runs `claude auth login`)."),
@@ -95,7 +99,7 @@ _ERROR_CLASSES: tuple[tuple[re.Pattern, str, str, str], ...] = (
      "Retry in a little while."),
     (re.compile(r"\bproxy\b|EPROXY", re.I),
      "proxy", "Claude Code's request to Anthropic failed at a proxy.",
-     "Check HTTPS_PROXY / HTTP_PROXY, or set them in Profile → Claude Code."),
+     f"Check HTTPS_PROXY and NO_PROXY in {NETWORK_SETTINGS}, then retry."),
     (re.compile(r"ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|ECONNRESET|getaddrinfo|"
                 r"network|ENETUNREACH", re.I),
      "network", "Claude Code could not reach Anthropic over the network.",
