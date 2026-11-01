@@ -349,11 +349,9 @@ def _mises_on_face(face, point, label: str) -> None:
                          "regeneration — remove or redo the op")
 
 
-def _precise_volume(shape) -> float:
-    """The solid volume by OCCT's adaptive BRepGProp integration at a tight tolerance (closed
-    shells only), for the part's mass (Plan 9 B2): build123d's default `volume` can be off by
-    a few percent on lofted / B-spline surfaces. Falls back to `shape.volume` when the precise
-    call is unavailable or finds no closed volume."""
+def _precise_props(shape):
+    """OCCT's adaptive BRepGProp volume integration at a tight tolerance (closed shells only),
+    run once per build for both the volume and the inertia; None when unavailable."""
     try:
         from OCP.BRepGProp import BRepGProp
         from OCP.GProp import GProp_GProps
@@ -361,17 +359,49 @@ def _precise_volume(shape) -> float:
         BRepGProp.VolumeProperties_s(shape.wrapped, props, 1e-9, True)
         vol = float(props.Mass())
         if math.isfinite(vol) and vol > 0:
-            return vol
+            return props
     except Exception:  # noqa: BLE001 - any OCP trouble: the default volume
         pass
-    return float(shape.volume)
+    return None
+
+
+def _precise_volume(shape, props=...) -> float:
+    """The solid volume by OCCT's adaptive BRepGProp integration (closed shells only), for the
+    part's mass (Plan 9 B2): build123d's default `volume` can be off by a few percent on
+    lofted / B-spline surfaces. Falls back to `shape.volume` when the precise call is
+    unavailable or finds no closed volume."""
+    props = _precise_props(shape) if props is ... else props
+    return float(props.Mass()) if props is not None else float(shape.volume)
+
+
+def _inertia(shape, density: float, props=...) -> dict | None:
+    """Mass properties from the B-rep (Plan 10 C3, for mises.dyn): the precise volume
+    integration x density (g/cm3). {mass_kg, com_mm, inertia_kgm2 (3x3, about the centre of
+    mass, part axes)}; None when OCCT finds no closed volume."""
+    try:
+        props = _precise_props(shape) if props is ... else props
+        if props is None:
+            return None
+        vol = float(props.Mass())
+        rho = density * 1e-6                 # g/cm3 -> kg/mm3
+        c = props.CentreOfMass()
+        mat = props.MatrixOfInertia()        # mm^5 (unit density), about the centre of mass
+        inertia = [[mat.Value(i, j) * rho * 1e-6 for j in (1, 2, 3)] for i in (1, 2, 3)]
+        if not all(math.isfinite(x) for row in inertia for x in row):
+            return None
+        return {"mass_kg": vol * rho, "com_mm": [c.X(), c.Y(), c.Z()],
+                "inertia_kgm2": inertia, "density_g_cm3": density}
+    except Exception:  # noqa: BLE001 - mass properties are best effort
+        return None
 
 
 def _metrics(shape, density: float) -> dict:
     bb = shape.bounding_box()
-    vol = _precise_volume(shape)
+    props = _precise_props(shape)
+    vol = _precise_volume(shape, props)
     com = shape.center()
     return {
+        "inertia": _inertia(shape, density, props),
         "valid": bool(shape.is_valid),
         "volume_mm3": vol,
         "area_mm2": float(shape.area),

@@ -178,6 +178,65 @@ async def build_massing(d: Path, script: str) -> dict:
     return m
 
 
+CLASH_WORKER = Path(__file__).resolve().parent / "clash_worker.py"
+
+
+async def massing_clashes(massing_dir: Path, tolerance_pct: float = 2.0) -> dict:
+    """Plan 10 C3 (E26): the solids of a built massing that overlap. A pair clashes when its
+    common volume is over `tolerance_pct` % of the smaller solid (and over 1 mm3). Runs the
+    check in the build sandbox on a copy of model.step. {solids, clashes, checked, note?}."""
+    import secrets
+    import shutil
+    import sys
+
+    from ..sim.proc import run_sandboxed
+    from ..sim.types import SimError
+    job = Path(massing_dir).parent / f"clash_{secrets.token_hex(4)}"
+    safe_io.ensure_dir(job)
+    try:
+        if safe_io.copy_out(massing_dir, "model.step", job) is None:
+            return {"solids": [], "clashes": [], "checked": False,
+                    "note": "the massing has no model.step"}
+        nonce = secrets.token_hex(16)
+        try:
+            await run_sandboxed([sys.executable, "-I", str(CLASH_WORKER), str(job)], job,
+                                timeout_s=120, what="massing interference",
+                                env={"MISES_NONCE": nonce}, memory_limit_mb=2048)
+        except SimError as e:
+            return {"solids": [], "clashes": [], "checked": False, "note": e.message}
+        try:
+            res = safe_io.read_json(job, "result.json")
+        except (OSError, ValueError, safe_io.UnsafePath):
+            res = None
+        if not isinstance(res, dict) or res.get("nonce") != nonce or not res.get("ok"):
+            return {"solids": [], "clashes": [], "checked": False,
+                    "note": (res or {}).get("error") or "the interference check gave no result"}
+        solids = res.get("solids") or []
+        clashes = []
+        for p in res.get("pairs") or []:
+            a, b = solids[p["a"]], solids[p["b"]]
+            small = max(min(a["volume_mm3"], b["volume_mm3"]), 1e-9)
+            share = 100.0 * p["volume_mm3"] / small
+            if p["volume_mm3"] > 1.0 and share > tolerance_pct:
+                clashes.append({"solids": [p["a"], p["b"]],
+                                "labels": [a.get("label") or f"solid {p['a']}",
+                                           b.get("label") or f"solid {p['b']}"],
+                                "centers_mm": [a["center"], b["center"]],
+                                "overlap_mm3": round(p["volume_mm3"], 1),
+                                "overlap_pct_of_smaller": round(share, 1)})
+        clashes.sort(key=lambda c: -c["overlap_pct_of_smaller"])
+        failed = res.get("failed_pairs") or []
+        if res.get("incomplete") or failed:
+            # fail closed: a pair we could not intersect may clip
+            note = res.get("incomplete") or (
+                f"the boolean failed for {len(failed)} pair(s) of solids "
+                f"({', '.join(f'{a}-{b}' for a, b in failed[:6])})")
+            return {"solids": solids, "clashes": clashes, "checked": False, "note": note}
+        return {"solids": solids, "clashes": clashes, "checked": True}
+    finally:
+        shutil.rmtree(job, ignore_errors=True)
+
+
 # ---- rendering (sandboxed render worker)
 
 def cameras_for(views: list[str]) -> dict[str, list[list[float]]]:

@@ -146,7 +146,7 @@ class ResultArgs(BaseModel):
 
 SIM_WAIT_MAX_S = 600.0
 REVIEW_ID_PREFIX = "review_"
-JOB_ID_RE = r"^(sim_|review_|study_|to_)[0-9a-f]{12}$"
+JOB_ID_RE = r"^(sim_|review_|study_|to_|dyn_)[0-9a-f]{12}$"   # dyn_: dyn_to_fem (C3)
 
 
 class WaitArgs(BaseModel):

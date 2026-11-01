@@ -14,6 +14,7 @@ dependencies = [
   "ezdxf==1.4.5",  # drawing import: DXF geometry + DIMENSION entities, parsed in a sandboxed child
   "pypdfium2==5.14.0",  # drawing import: PDF pages rasterized in a sandboxed child
   "py-gearworks==0.0.24",  # mises.mech bevel/ring/cycloid gears, mesh phasing (Apache-2.0; 0.0.x, pinned)
+  "mujoco>=3.17",  # rigid-body dynamics (Apache-2.0): only run in a sandboxed child, see mises.dyn
 ]
 
 [project.scripts]

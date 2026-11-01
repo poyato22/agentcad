@@ -16,7 +16,7 @@ from ..cad import render as render_mod
 from ..cad import safe_io
 from ..events import Event
 from ..tools.registry import ToolContext, ToolRegistry, tool
-from ..types import ErrorCode, MisesError, SafetyClass, ToolImage, ToolOutput
+from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolImage, ToolOutput
 from . import MAX_PITCHES, MAX_SKETCHES, ConceptStore, new_id
 from . import gate as gate_mod
 from . import sketch as sk
@@ -141,12 +141,33 @@ class SketchArgs(BaseModel):
     option: Short | None = Field(None, description="the pitch option this sketch develops")
     scale_figure: Literal["auto", "on", "off"] = Field(
         "auto", description="a 1.75 m figure for scale (auto: designs >= 600 mm tall or >= 1.2 m long)")
+    clash_tolerance_pct: float = Field(
+        2.0, ge=0, le=25, description="Plan 10 E26: two massing solids that overlap by more "
+        "than this % of the smaller one are a clash and the sketch is not shown (fix the "
+        "massing, or fuse volumes that really are one piece)")
+
+
+class MassingClash(Exception):
+    """The massing's solids overlap: the sketch is refused with the clash list."""
+
+    def __init__(self, report: dict):
+        super().__init__("massing solids overlap")
+        self.report = report
 
 
 async def _sketch_images(ctx: ToolContext, d: Path, script: str, views: list[str],
-                         scale_figure: str, tag: str) -> tuple[list[dict], dict, dict]:
-    """Build the massing in `d`, render the sketch views; (images[], scale info, metrics)."""
+                         scale_figure: str, tag: str,
+                         clash_tolerance_pct: float | None = None
+                         ) -> tuple[list[dict], dict, dict]:
+    """Build the massing in `d`, render the sketch views; (images[], scale info, metrics).
+    With clash_tolerance_pct, the massing's solids are checked for overlaps first (E26) and
+    MassingClash is raised instead of rendering a sketch with clipping volumes."""
     metrics = await sk.build_massing(d / "massing", script)
+    if clash_tolerance_pct is not None and int(metrics.get("solids") or 1) > 1:
+        rep = await sk.massing_clashes(d / "massing", clash_tolerance_pct)
+        metrics["clash_check"] = {k: rep.get(k) for k in ("checked", "note")}
+        if rep["clashes"] or not rep.get("checked"):
+            raise MassingClash(rep)      # a check that could not run fails closed
     meshes, info = sk.scene_extras(metrics["bbox"], scale_figure)
     extras = sk.write_extras(d, meshes)
     out = await sk.render_sketch(d / "jobs", d / "massing", extras, views)
@@ -175,7 +196,10 @@ async def _sketch_images(ctx: ToolContext, d: Path, script: str, views: list[str
                   "revising. The user circles, lassos and pins areas with comments and sends "
                   "them back to you as a message with the marked images; answer with a revised "
                   "concept_sketch that addresses every numbered mark. Building parts starts "
-                  "after the user approves (concept_status shows where it stands).")
+                  "after the user approves (concept_status shows where it stands). The "
+                  "massing's solids are checked for interference first: overlapping volumes "
+                  "(over clash_tolerance_pct) refuse the sketch and return the clashes to fix. "
+                  "Look at the returned images yourself before you present the sketch.")
 async def concept_sketch(ctx: ToolContext, args: SketchArgs) -> ToolOutput:
     store = concepts(ctx)
     project = run_project(ctx)
@@ -192,8 +216,31 @@ async def concept_sketch(ctx: ToolContext, args: SketchArgs) -> ToolOutput:
     sketch_id = new_id("cks")
     d = home(ctx) / "concepts" / sketch_id
     views = list(dict.fromkeys(args.views))
-    images, info, metrics = await _sketch_images(ctx, d, args.massing_script, views,
-                                                 args.scale_figure, sketch_id)
+    try:
+        images, info, metrics = await _sketch_images(ctx, d, args.massing_script, views,
+                                                     args.scale_figure, sketch_id,
+                                                     args.clash_tolerance_pct)
+    except MassingClash as e:
+        cl = e.report["clashes"]
+        if not cl:
+            note = e.report.get("note") or "the interference check could not run"
+            return ToolOutput(ok=False, step_kind=StepKind.ERROR,
+                              summary=f"sketch not shown: the massing could not be checked for "
+                                      f"clipping volumes ({note}). Simplify the massing (fewer, "
+                                      "simpler solids; fuse volumes that are one piece) and "
+                                      "call concept_sketch again",
+                              data={"error": "clash_check_failed", "note": note,
+                                    "solids": e.report.get("solids", [])[:40]})
+        lines = "; ".join(f"{c['labels'][0]} x {c['labels'][1]}: {c['overlap_mm3']:.0f} mm3 "
+                          f"({c['overlap_pct_of_smaller']:.0f}% of the smaller)"
+                          for c in cl[:6])
+        return ToolOutput(ok=False, step_kind=StepKind.ERROR,
+                          summary=f"sketch not shown: {len(cl)} massing clash(es) - {lines}. "
+                                  "Move or resize those volumes (or fuse them if they are one "
+                                  "piece) and call concept_sketch again",
+                          data={"error": "massing_clash", "clashes": cl,
+                                "solids": e.report["solids"][:40],
+                                "tolerance_pct": args.clash_tolerance_pct})
     if not images:
         raise MisesError(ErrorCode.TOOL_FAILED, "the sketch render produced no image")
     callouts = [c.model_dump() for c in args.callouts]
@@ -223,6 +270,10 @@ async def concept_sketch(ctx: ToolContext, args: SketchArgs) -> ToolOutput:
         h = home(ctx)
         imgs = [tool_image(read_png(h, i["render_id"]) or b"", f"sketch v{version} {i['label']}")
                 for i in images]
+    data["clash_check"] = metrics.get("clash_check") or {"checked": False,
+                                                         "note": "one solid: nothing to clash"}
+    data["review"] = ("Look at the returned sketch images yourself before you present it: "
+                      "no volumes clipping through each other, proportions as intended.")
     return ToolOutput(
         summary=f"concept sketch v{version} ({label}) shown to the user; wait for their marks "
                 "or approval before building parts", data=data, images=imgs)
