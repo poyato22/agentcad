@@ -83,3 +83,42 @@ async def test_a_check_that_cannot_run_fails_closed(home, monkeypatch):  # noqa:
     assert out.ok is False and out.data["error"] == "clash_check_failed"
     assert "timed out" in out.summary
     assert rt.concepts.latest_sketch(project) is None
+
+
+# ---- FWC I6: pitch_options gets the same clash check (its option cards are shown to the user)
+def _option(name, script, **kw):
+    return {"name": name, "mood": ["calm", "soft", "white"], "massing_script": script,
+            "cmf": [{"name": "Shell", "color": "#f2f2ee", "finish": "gloss"},
+                    {"name": "Joints", "color": "#2a2c30", "finish": "matte"}],
+            "tradeoffs": {"mass_delta": "+8%", "part_count": 24, "molding": "2-part shells",
+                          "cost_tier": "$$", "risk": "pinch"}, **kw}
+
+
+@pytest.mark.timeout(300)
+async def test_a_pitch_with_a_clashing_option_is_refused(home):  # noqa: F811
+    rt, project, run = _gate_rt(home, "design")
+    out = await rt.gate.call(run.id, "pitch_options", {"options": [
+        _option("Clean", APART, baseline=True), _option("Clipped", CLASHING)]},
+        call_id="p1", workdir=rt.home)
+    assert out.ok is False and out.data["error"] == "massing_clash"
+    assert out.data["option"] == "Clipped" and "Clipped" in out.summary
+    assert out.data["clashes"][0]["overlap_mm3"] == pytest.approx(30 * 80 * 450, rel=1e-3)
+    assert rt.concepts.pitches(project) == []                     # no option card was shown
+    ok = await rt.gate.call(run.id, "pitch_options", {"options": [
+        _option("Clean", APART, baseline=True), _option("Wide", APART)]},
+        call_id="p2", workdir=rt.home)
+    assert ok.ok, ok.summary
+
+
+@pytest.mark.timeout(240)
+async def test_a_pitch_whose_check_cannot_run_fails_closed(home, monkeypatch):  # noqa: F811
+    rt, project, run = _gate_rt(home, "design")
+
+    async def broken(d, tol):
+        return {"solids": [], "clashes": [], "checked": False, "note": "timed out after 120s"}
+    monkeypatch.setattr(sk, "massing_clashes", broken)
+    out = await rt.gate.call(run.id, "pitch_options", {"options": [
+        _option("Clean", APART, baseline=True), _option("Wide", APART)]},
+        call_id="p1", workdir=rt.home)
+    assert out.ok is False and out.data["error"] == "clash_check_failed"
+    assert out.data["option"] == "Clean" and rt.concepts.pitches(project) == []

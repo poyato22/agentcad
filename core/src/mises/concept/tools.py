@@ -185,6 +185,36 @@ async def _sketch_images(ctx: ToolContext, d: Path, script: str, views: list[str
     return images, info, metrics
 
 
+def _clash_lines(cl: list[dict]) -> str:
+    return "; ".join(f"{c['labels'][0]} x {c['labels'][1]}: {c['overlap_mm3']:.0f} mm3 "
+                     f"({c['overlap_pct_of_smaller']:.0f}% of the smaller)" for c in cl[:6])
+
+
+def _clash_refusal(report: dict, tolerance_pct: float, what: str, tool_name: str,
+                   option: str | None = None) -> ToolOutput:
+    """E26: the refusal a sketch-rendering tool returns instead of showing clipping volumes
+    (`what` "sketch" / "pitch"; `option` the pitch option whose massing clashed)."""
+    cl = report["clashes"]
+    whose = f" (option {option!r})" if option else ""
+    extra = {"option": option} if option else {}
+    if not cl:
+        note = report.get("note") or "the interference check could not run"
+        return ToolOutput(ok=False, step_kind=StepKind.ERROR,
+                          summary=f"{what} not shown: the massing{whose} could not be checked "
+                                  f"for clipping volumes ({note}). Simplify the massing (fewer, "
+                                  "simpler solids; fuse volumes that are one piece) and call "
+                                  f"{tool_name} again",
+                          data={"error": "clash_check_failed", "note": note,
+                                "solids": report.get("solids", [])[:40], **extra})
+    return ToolOutput(ok=False, step_kind=StepKind.ERROR,
+                      summary=f"{what} not shown: {len(cl)} massing clash(es){whose} - "
+                              f"{_clash_lines(cl)}. Move or resize those volumes (or fuse "
+                              f"them if they are one piece) and call {tool_name} again",
+                      data={"error": "massing_clash", "clashes": cl,
+                            "solids": report["solids"][:40], "tolerance_pct": tolerance_pct,
+                            **extra})
+
+
 @tool("concept_sketch", safety=SafetyClass.LOCAL_MUTATE, timeout_s=300,
       description="Show the user what the build will look like BEFORE any parts: build a rough "
                   "massing model (massing_script: VARS + build(v), one simple solid per major "
@@ -221,26 +251,7 @@ async def concept_sketch(ctx: ToolContext, args: SketchArgs) -> ToolOutput:
                                                      args.scale_figure, sketch_id,
                                                      args.clash_tolerance_pct)
     except MassingClash as e:
-        cl = e.report["clashes"]
-        if not cl:
-            note = e.report.get("note") or "the interference check could not run"
-            return ToolOutput(ok=False, step_kind=StepKind.ERROR,
-                              summary=f"sketch not shown: the massing could not be checked for "
-                                      f"clipping volumes ({note}). Simplify the massing (fewer, "
-                                      "simpler solids; fuse volumes that are one piece) and "
-                                      "call concept_sketch again",
-                              data={"error": "clash_check_failed", "note": note,
-                                    "solids": e.report.get("solids", [])[:40]})
-        lines = "; ".join(f"{c['labels'][0]} x {c['labels'][1]}: {c['overlap_mm3']:.0f} mm3 "
-                          f"({c['overlap_pct_of_smaller']:.0f}% of the smaller)"
-                          for c in cl[:6])
-        return ToolOutput(ok=False, step_kind=StepKind.ERROR,
-                          summary=f"sketch not shown: {len(cl)} massing clash(es) - {lines}. "
-                                  "Move or resize those volumes (or fuse them if they are one "
-                                  "piece) and call concept_sketch again",
-                          data={"error": "massing_clash", "clashes": cl,
-                                "solids": e.report["solids"][:40],
-                                "tolerance_pct": args.clash_tolerance_pct})
+        return _clash_refusal(e.report, args.clash_tolerance_pct, "sketch", "concept_sketch")
     if not images:
         raise MisesError(ErrorCode.TOOL_FAILED, "the sketch render produced no image")
     callouts = [c.model_dump() for c in args.callouts]
@@ -323,6 +334,10 @@ class PitchArgs(BaseModel):
     options: list[PitchOption] = Field(..., min_length=2, max_length=3)
     question: Annotated[str, StringConstraints(max_length=300)] = Field(
         "", description="what the user should decide, e.g. 'Pick a direction or mix them'")
+    clash_tolerance_pct: float = Field(
+        2.0, ge=0, le=25, description="Plan 10 E26: as concept_sketch: an option whose massing "
+        "solids overlap by more than this % of the smaller one is a clash and the pitch is not "
+        "shown (fix that option's massing, or fuse volumes that really are one piece)")
 
     @model_validator(mode="after")
     def _rules(self):
@@ -345,6 +360,8 @@ class PitchArgs(BaseModel):
                   "molding, cost tier, risk, what the user gives up), and recommended + reason "
                   "on at most one. Exactly one option is the honest-engineering `baseline`. "
                   "Mises builds each massing and shows front/side silhouettes and a 3/4 sketch. "
+                  "Each option's massing is checked for interference first, as in "
+                  "concept_sketch: overlapping volumes refuse the pitch and return the clashes. "
                   "The user picks one or mixes them ('A's torso + B's legs'); then "
                   "concept_sketch the chosen direction.")
 async def pitch_options(ctx: ToolContext, args: PitchArgs) -> ToolOutput:
@@ -358,8 +375,13 @@ async def pitch_options(ctx: ToolContext, args: PitchArgs) -> ToolOutput:
     options = []
     for i, o in enumerate(args.options):
         d = h / "concepts" / pitch_id / f"o{i}"
-        images, info, _m = await _sketch_images(ctx, d, o.massing_script, ["three_quarter"],
-                                                "auto", f"{pitch_id}_o{i}")
+        try:
+            images, info, _m = await _sketch_images(ctx, d, o.massing_script,
+                                                    ["three_quarter"], "auto",
+                                                    f"{pitch_id}_o{i}", args.clash_tolerance_pct)
+        except MassingClash as e:       # E26: no option card with clipping volumes
+            return _clash_refusal(e.report, args.clash_tolerance_pct, "pitch", "pitch_options",
+                                  option=o.name)
         sil = await sk.render_silhouettes(d / "jobs", d / "massing")
         sil_ids = {v: save_png(h, f"{pitch_id}_o{i}_sil_{v}", png) for v, png in sil.items()}
         callouts = [c.model_dump() for c in o.callouts]
