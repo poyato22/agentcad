@@ -99,9 +99,12 @@ export async function openHome(page: import("@playwright/test").Page): Promise<v
   await page.addInitScript(() => { try { localStorage.setItem("mises.home.open", "1"); } catch { /* none */ } });
 }
 
-/** P10 E6: the dock opens the Conversation alone by default; the specs (written for three
- *  streams at once) see all three columns unless they stored a layout of their own. A spec about
- *  the default calls `useDefaultDock` (before page.goto). */
+/** P10 E6: the dock opens the Conversation alone by default. The specs about the View and
+ *  Simulations streams (written for three streams at once) see all three columns unless they
+ *  stored a layout of their own; the rest keep the default, so the model keeps its room for
+ *  viewport clicks. `useDefaultDock` (before page.goto) undoes the seed. */
+const ALL_COLUMNS = new Set(["agent-browser.spec.ts", "concept-sketch.spec.ts", "dock.spec.ts", "jobs.spec.ts", "generative.spec.ts", "geometry.spec.ts",
+  "motion.spec.ts", "studies-agent.spec.ts", "studies.spec.ts"]);
 export async function openAllDockColumns(page: import("@playwright/test").Page): Promise<void> {
   await page.addInitScript(() => {
     try {
@@ -118,7 +121,11 @@ export async function useDefaultDock(page: import("@playwright/test").Page): Pro
 export const test = base.extend<{ fake: FakeControl }>({
   // Existing specs drive the build shell; land there by default so launch-on-Home (R1) doesn't
   // hide the panes they assert. A Home spec opts back in with openHome().
-  page: async ({ page }, use) => { await openBuildShell(page); await openAllDockColumns(page); await use(page); },
+  page: async ({ page }, use, info) => {
+    await openBuildShell(page);
+    if (ALL_COLUMNS.has(info.file.split("/").pop() ?? "")) await openAllDockColumns(page);
+    await use(page);
+  },
   // eslint-disable-next-line no-empty-pattern
   fake: async ({}, use) => { await use(control()); },
 });

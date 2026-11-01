@@ -62,7 +62,9 @@ for (const theme of ["dark", "light"] as const) {
     expect(Math.abs(v.y - t.y)).toBeLessThan(1);
     expect(Math.abs(v.height - t.height)).toBeLessThan(1);                     // full height each
     await expect(col(page, "view").locator("[data-testid=view-card]")).toBeVisible();
-    const insetTwo = await page.locator("[data-region=viewer]").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--inset-r")));
+    const inset2 = () => page.locator("[data-region=viewer]").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--inset-r")));
+    await expect.poll(inset2).toBeGreaterThan(two.width);
+    const insetTwo = await inset2();
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/dock-2col-${theme}.png` });
 
     await col(page, "sim").click();
@@ -73,10 +75,10 @@ for (const theme of ["dark", "light"] as const) {
     const xs = await Promise.all((["view", "sim", "text"] as const).map(async (s) => (await rect(page, `[data-dock] [data-stream=${s}]`)).x));
     expect([...xs].sort((a, b) => a - b)).toEqual(xs);
     // the 3D view centres in what is left (shell/insets follows the dock)
-    const inset = await page.locator("[data-region=viewer]").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--inset-r")));
-    // (shared with the Parts surface when both cannot fit: shell/insets caps the pair)
-    expect(inset).toBeGreaterThan(insetTwo);
-    expect(inset).toBeGreaterThan(three.width * 0.9);
+    // (shared with the Parts surface when both cannot fit: shell/insets caps the pair; it is
+    // re-measured on the next resize observation)
+    const insetR = () => page.locator("[data-region=viewer]").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--inset-r")));
+    await expect.poll(insetR).toBeGreaterThan(Math.max(insetTwo, three.width * 0.9));
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/dock-3col-${theme}.png` });
 
     // remembered
