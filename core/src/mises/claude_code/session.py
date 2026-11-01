@@ -77,6 +77,12 @@ CLAUDE_CODE_TOOLS = frozenset({
     "TodoRead", "Skill", "SlashCommand", "ExitPlanMode", "EnterPlanMode", "AskUserQuestion",
     "ListMcpResourcesTool", "ReadMcpResourceTool", "Monitor", "ToolSearch", "LSP",
     "EnterWorktree", "ExitWorktree", "TaskStop", "TaskOutput", "SendMessage"})
+# P11 F9: the failures a run recovers from by itself (the runtime restarts the session):
+# the process exiting, Claude Code's own error_during_execution, the Mises tools not
+# connecting, and transient network / API trouble. A config problem (sign-in, TLS, proxy) or a
+# confinement abort is not retried.
+RECOVERABLE = frozenset({"exit", "error_during_execution", "mcp", "network", "rate_limit",
+                         "overloaded"})
 # stderr of a `--resume` whose conversation Claude Code no longer has (P11 F3)
 RESUME_LOST = re.compile(r"No conversation found with session ID", re.I)
 UNVERIFIED = "Claude Code output not recognised — confinement unverified"
@@ -185,6 +191,9 @@ class ClaudeCodeSession:
         self._unknown: dict[str, str] = {}   # tool_use id -> a name Claude Code does not have
         self.prompt_recorded = False   # the last prompt's user message step was written
         self.resume_lost = False       # --resume found no conversation (P11 F3)
+        # P11 F9: why the last turn failed ({kind, message}), for the runtime's recovery
+        self.failure: dict | None = None
+        self.handed_on = False         # the runtime replaced this session: close() leaves the run
         runtime.register_cancel_hook(run_id, self.cancel)
 
     @property
@@ -328,6 +337,7 @@ class ClaudeCodeSession:
         to Claude Code only; `record=False` skips the user message step (already written by
         the attempt this one retries)."""
         self.prompt_recorded = False
+        self.failure = None
         proc = self._proc
         if proc is None or proc.returncode is not None or self._closed or self._aborted:
             raise MisesError(ErrorCode.INVALID_INPUT, "Claude Code session is not running",
@@ -409,7 +419,7 @@ class ClaudeCodeSession:
         mid_turn = self._turn is not None and not self._turn.done()
         await self._shutdown(kill=self._aborted or self._cancelling or mid_turn)
         self._fail_turn(MisesError(ErrorCode.CANCELLED, "session closed"))
-        if not self.resume_lost:     # a lost resume hands the run on to a fresh session
+        if not (self.resume_lost or self.handed_on):   # handed on to a fresh session
             self._finish("failed" if self._failed else "cancelled" if mid_turn else "done")
         self._closed = True
         self.runtime.unregister_cancel_hook(self.run_id)
@@ -436,10 +446,14 @@ class ClaudeCodeSession:
         self.runtime.reopen_external_run(self.run_id, cancel_hook=self.cancel, provider=SOURCE,
                                          model=self.model_alias)
 
-    def _error(self, message: str, **extra: Any) -> None:
+    def _error(self, message: str, *, failure: str | None = None, **extra: Any) -> None:
         self._failed = True
+        if failure is not None:
+            self.failure = {"kind": failure, "message": message}
+        recover = {"recoverable": True} if failure in RECOVERABLE else {}
         self.runtime.store.append_step(self.run_id, StepKind.ERROR, {
-            "code": str(ErrorCode.TOOL_FAILED), "message": message, "source": SOURCE, **extra})
+            "code": str(ErrorCode.TOOL_FAILED), "message": message, "source": SOURCE,
+            **recover, **extra})
 
     def _fail_turn(self, err: MisesError) -> None:
         if self._turn is not None and not self._turn.done():
@@ -552,7 +566,8 @@ class ClaudeCodeSession:
                else f"Claude Code exited (code {rc})")
         tail = self.stderr_tail
         cls = classify_claude_error(tail)
-        self._error(msg, stderr_tail=tail, **(cls or {}))
+        self._error(msg, failure=(cls or {}).get("kind") or "exit", stderr_tail=tail,
+                    **(cls or {}))
         self._fail_turn(MisesError(ErrorCode.TOOL_FAILED, msg,
                                    hint=(cls or {}).get("hint")
                                    or "see the run's error step for Claude Code's stderr"))
@@ -658,7 +673,8 @@ class ClaudeCodeSession:
 
     def _abort(self, message: str) -> None:
         self._aborted = True
-        self._error(message)
+        self._error(message,
+                    failure="mcp" if "did not connect" in message else "confinement")
         self._kill_group(signal.SIGKILL)
         (self.workdir / MCP_FILE).unlink(missing_ok=True)
         self._fail_turn(MisesError(ErrorCode.DENIED, message,
@@ -773,7 +789,9 @@ class ClaudeCodeSession:
             detail = msg.get("result") if isinstance(msg.get("result"), str) else None
             message = f"Claude Code: {detail or msg.get('subtype') or 'error'}"
             cls = classify_claude_error(detail or msg.get("subtype"))
-            self._error(message, subtype=msg.get("subtype"), **(cls or {}))
+            kind = ("error_during_execution" if msg.get("subtype") == "error_during_execution"
+                    else (cls or {}).get("kind") or "error")
+            self._error(message, failure=kind, subtype=msg.get("subtype"), **(cls or {}))
             self._finish("failed")
             self._fail_turn(MisesError(ErrorCode.TOOL_FAILED, message,
                                        hint=(cls or {}).get("hint")))

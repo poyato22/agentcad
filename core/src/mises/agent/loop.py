@@ -249,7 +249,18 @@ class AgentLoop:
                         continue
                     count = streak[1] + 1 if key == streak[0] else 1
                     streak = (key, count)
-                    if count >= self.config.max_repeat_errors:
+                    if count == self.config.max_repeat_errors:
+                        # P11 F9: stuck: a strategy-switch note first, with the last error
+                        note = (f"Mises note: {key[0]} failed with {key[1]} {count} times in a "
+                                f"row (last: {results[c.id].content[:300]}). Switch strategy: "
+                                "do not repeat it; try a different approach or tool, simplify, "
+                                "or ask the user one specific question.")
+                        messages[-1].content.append(TextBlock(text=note))
+                        self.store.append_step(self.run_id, StepKind.DECISION, {"stuck": {
+                            "kind": "repeated_failure", "tool": key[0], "times": count,
+                            "note": note}})
+                    elif count >= 2 * self.config.max_repeat_errors:
+                        # the note did not help either: only now does the run stop
                         err = MisesError(ErrorCode.TOOL_FAILED,
                                          f"{key[0]} failed with {key[1]} {count} times in a row")
                         return self._stop(messages, final_text, "circuit_open", err)

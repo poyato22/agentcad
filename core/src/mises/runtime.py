@@ -1465,27 +1465,82 @@ class Runtime:
             self.activity_tracker(rid).set("idle", "waiting for your next message")
         return result
 
+    #: P11 F9: run-level recoveries per user turn, and the backoff before each (s, doubling)
+    CLAUDE_RECOVERIES = 3
+    CLAUDE_RECOVERY_BACKOFF_S = 1.0
+
     async def _prompt_claude(self, rid: str, st: _ClaudeRun, text: str, **kw) -> str:
-        """One turn of a Claude Code run. When its `--resume` finds no conversation any more
-        (P11 F3: "No conversation found with session ID"), the run goes on in a fresh session
-        seeded with a recap of the thread instead of failing."""
-        s = st.session
-        assert s is not None
-        try:
-            return await s.prompt(text, **kw)
-        except MisesError:
-            if not await s.lost_resume():
-                raise
+        """One turn of a Claude Code run, recovering by itself (P11 F3 / F9). When the turn
+        fails for a reason a restart can fix (the process exited, Claude Code's
+        error_during_execution, the Mises tools did not connect, a network / API hiccup) or its
+        `--resume` finds no conversation any more, the session is restarted (resumed when
+        Claude Code has the conversation, else fresh and seeded with a recap of the thread)
+        and told to carry on, with a backoff, at most CLAUDE_RECOVERIES times per user turn.
+        Each recovery is a visible note step; once the budget is spent the run stops with one
+        card saying what failed and what was tried (Retry / Continue in the app)."""
         from .claude_code.recap import thread_recap
-        recorded = s.prompt_recorded
-        await s.close()
-        url, token = await self._mcp()
-        info, auth = await self._claude_ready()
-        await self._spawn_claude(rid, st, self.store.get_run(rid).model, info, auth, url, token,
-                                 resume=None)
-        assert st.session is not None
-        seed = thread_recap(self.store, rid, drop_last_user=text if recorded else None)
-        return await st.session.prompt(text, **kw, seed=seed, record=not recorded)
+        from .claude_code.session import RECOVERABLE
+        tried: list[dict] = []
+        seed: str | None = kw.pop("seed", None)
+        record: bool = kw.pop("record", True)
+        while True:
+            s = st.session
+            assert s is not None
+            try:
+                return await s.prompt(text, **kw, seed=seed, record=record)
+            except MisesError as e:
+                lost = await s.lost_resume()
+                failure = s.failure or ({"kind": "exit", "message": e.message}
+                                        if s._proc is not None and s._proc.returncode is not None
+                                        and not st.cancel_requested else None)
+                if st.cancel_requested or e.code == ErrorCode.CANCELLED or not (
+                        lost or (failure and failure["kind"] in RECOVERABLE)):
+                    raise
+                cause = ("Claude Code no longer had the conversation" if lost
+                         else failure["message"])
+                record = record and not s.prompt_recorded
+                if len(tried) >= self.CLAUDE_RECOVERIES:
+                    self._recovery_exhausted(rid, cause, tried)
+                    raise
+            # restart: resume the conversation Claude Code still has, else a fresh session
+            keep = None if lost or not s._init_ok else s.session_id
+            s.handed_on = True
+            await s.close()
+            if not lost:            # a lost conversation needs no wait, a hiccup does
+                await asyncio.sleep(self.CLAUDE_RECOVERY_BACKOFF_S * 2 ** len(tried))
+            url, token = await self._mcp()
+            info, auth = await self._claude_ready()
+            await self._spawn_claude(rid, st, self.store.get_run(rid).model, info, auth, url,
+                                     token, resume=keep)
+            action = ("resumed the session" if keep else
+                      "started a fresh session with a recap of the thread")
+            tried.append({"cause": cause, "action": action})
+            self._recovery_note(rid, cause, action, len(tried))
+            note = (f"Mises note: your previous session stopped ({cause}) and Mises {action}. "
+                    "Carry on with the user's request from where you left off; check what "
+                    "is already built before you redo anything.")
+            recap = None if keep else thread_recap(self.store, rid, drop_last_user=text)
+            seed = "\n".join(x for x in (recap, note) if x)
+
+    def _recovery_note(self, rid: str, cause: str, action: str, attempt: int) -> None:
+        """A visible note in the thread (P11 F9): "Recovered: <action> after <cause>"."""
+        body = {"cause": cause, "action": action, "attempt": attempt,
+                "of": self.CLAUDE_RECOVERIES,
+                "text": f"Recovered: {action} after {cause.rstrip('.')}"}
+        with contextlib.suppress(Exception):
+            self.store.append_step(rid, StepKind.DECISION, {"recovery": body})
+        self.events.publish(Event(type="run_recovered", run_id=rid, data=body))
+
+    def _recovery_exhausted(self, rid: str, cause: str, tried: list[dict]) -> None:
+        """The recovery budget is spent: one clear card (P11 F9): what failed, what was tried,
+        and the two ways on (Retry the last message, Continue from here)."""
+        body = {"code": str(ErrorCode.TOOL_FAILED), "source": CLAUDE_CODE,
+                "message": f"Stopped after {len(tried)} recover{'y' if len(tried) == 1 else 'ies'}:"
+                           f" {cause}",
+                "recovery": {"exhausted": True, "cause": cause, "tried": tried,
+                             "actions": ["retry", "continue"]}}
+        with contextlib.suppress(Exception):
+            self.store.append_step(rid, StepKind.ERROR, body)
 
     def _finish_checks(self, run_id: str, result: RunResult | None = None) -> None:
         """A turn ended (end_turn): the finish checks, as ONE warning step. When the turn
@@ -2165,6 +2220,14 @@ class Runtime:
                 continue
             self._stalled.add(rid)
             newly.append(rid)
+            # P11 F9: no progress: the model's next Mises tool result carries a strategy note
+            note = (f"Mises note: this turn has made no progress for {round(idle)} s. If a "
+                    "call keeps failing or waiting, switch strategy: try a different approach "
+                    "or tool, simplify, or ask the user one specific question.")
+            self.tool_notes.setdefault(rid, []).append(note)
+            with contextlib.suppress(Exception):
+                self.store.append_step(rid, StepKind.DECISION, {"stuck": {
+                    "kind": "no_progress", "idle_s": round(idle, 1), "note": note}})
             self.events.publish(Event(type="run_stalled", run_id=rid,
                                       data={"run_id": rid, "idle_s": round(idle, 1)}))
         return newly

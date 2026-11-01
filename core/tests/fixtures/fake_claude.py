@@ -26,6 +26,11 @@ Run through a `claude` shim on PATH. Never touches the network or any real Claud
                   one): answered with its own "No such tool available" error, then text
     sneaky:<name> the same, but the tool_result comes back without an error
     recap?        answers with the text it was sent (a recap block shows in it)
+    flaky:<mode>:<n>  fails the first <n> times (counted in <cwd>/fake_flaky_count across
+                  processes), then answers "recovered after <n>" with the text it was sent.
+                  <mode>: exit (exits 3 mid-turn), during (an error_during_execution result),
+                  net (an is_error result "API Error: Connection error (ECONNRESET)"), mcp (the
+                  init reports the mises server failed)
   `--resume <id>` with <cwd>/fake_gone_sessions listing <id>: prints Claude Code's
   "No conversation found with session ID: <id>" to stderr and exits 1 at once
   <cwd>/fake_init.json, if present, overrides system/init: a list (the tools) or an object
@@ -161,6 +166,33 @@ class Session:
               "usage": {"input_tokens": 11, "output_tokens": 7,
                         "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}})
 
+    async def flaky(self, cmd: str, sent: str) -> None:
+        _, mode, n = cmd.split(":")
+        f = self.cwd / "fake_flaky_count"
+        count = int(f.read_text()) if f.exists() else 0
+        if count < int(n):
+            f.write_text(str(count + 1))
+            if mode == "mcp":
+                custom = self.cwd / "fake_init.json"
+                custom.write_text(json.dumps({"mcp_servers": [{"name": "mises",
+                                                               "status": "failed"}]}))
+                self.init()
+                custom.unlink()
+                await asyncio.sleep(3600)          # Mises kills it
+            self.init()
+            if mode == "exit":
+                self.partial("working ")
+                os._exit(3)
+            if mode == "during":
+                emit({"type": "result", "subtype": "error_during_execution", "is_error": True,
+                      "session_id": self.session_id, "total_cost_usd": 0.0, "usage": {}})
+                return
+            self.result("API Error: Connection error (ECONNRESET)", is_error=True)
+            return
+        self.init()
+        self.assistant([{"type": "text", "text": f"recovered after {n}\n{sent}"}])
+        self.result(f"recovered after {n}")
+
     async def turn(self, text: str) -> None:
         self.init()
         if text.startswith("hello"):
@@ -266,6 +298,9 @@ async def session(argv: list[str]) -> int:
             s.init()
             s.assistant([{"type": "text", "text": text}])
             s.result(text)
+            continue
+        if last.startswith("flaky:"):
+            await s.flaky(last, text)
             continue
         await s.turn(last)
 

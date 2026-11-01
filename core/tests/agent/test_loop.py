@@ -184,11 +184,27 @@ async def test_max_turns(tmp_path):
 
 
 async def test_circuit_breaker(tmp_path):
-    env = Env(tmp_path, [tool_turn(call(f"c{i}", "boom", n=i)) for i in range(5)])
+    # P11 F9: stuck after 3 identical failures: a strategy-switch note goes to the model (and a
+    # step says so); only if it keeps failing (2 x 3) does the run stop
+    env = Env(tmp_path, [tool_turn(call(f"c{i}", "boom", n=i)) for i in range(8)])
     env.add("boom", fail=ErrorCode.TOOL_FAILED)
     r = await env.loop(max_repeat_errors=3).run("go")
-    assert r.stop_reason == "circuit_open" and len(env.provider.requests) == 3
+    assert r.stop_reason == "circuit_open" and len(env.provider.requests) == 6
     assert "boom" in (r.error or "")
+    fourth = env.provider.requests[3].messages[-1].content
+    assert any("Switch strategy" in getattr(b, "text", "") for b in fourth)
+    stuck = [s.payload["stuck"] for s in env.store.steps(env.run_id, [StepKind.DECISION])
+             if "stuck" in s.payload]
+    assert len(stuck) == 1 and stuck[0]["times"] == 3
+
+
+async def test_a_stuck_agent_that_switches_strategy_finishes(tmp_path):
+    turns = [tool_turn(call(f"c{i}", "boom", n=i)) for i in range(3)]
+    env = Env(tmp_path, [*turns, tool_turn(call("d", "echo")), text_turn("done another way")])
+    env.add("boom", fail=ErrorCode.TOOL_FAILED)
+    env.add("echo")
+    r = await env.loop(max_repeat_errors=3).run("go")
+    assert r.stop_reason == "end_turn" and r.final_text == "done another way"
 
 
 async def test_circuit_breaker_resets_on_success(tmp_path):

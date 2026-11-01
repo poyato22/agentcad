@@ -111,7 +111,10 @@ def test_scan_stalls_publishes_once(rt, monkeypatch):
     sub = rt.events.subscribe(run.id)
     newly = rt.scan_stalls()
     assert run.id in newly
+    # P11 F9: the stuck turn's next tool result carries a strategy-switch note (once)
+    assert len(rt.tool_notes[run.id]) == 1 and "no progress" in rt.tool_notes[run.id][0]
     assert rt.scan_stalls() == []    # not reported twice
+    assert len(rt.tool_notes[run.id]) == 1
     # a fresh activity timestamp clears the flag
     rt.store.update_run(run.id, last_activity_at=time.time())
     assert rt.scan_stalls() == []

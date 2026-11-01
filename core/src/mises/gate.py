@@ -21,6 +21,11 @@ MAX_OUTPUT_BYTES = 16 * 1024
 # of base64 in total. Beyond that, images are dropped with a warning (the PNG handles remain).
 MAX_IMAGES = 6
 MAX_IMAGE_B64_BYTES = 4 * 1024 * 1024
+# P11 F9: the same call (tool + arguments) failing this many times is a stuck agent: its error
+# then carries a strategy-switch note; edits that undo each other (A, B, A, B) are oscillation
+STUCK_REPEATS = 3
+STRATEGY_SWITCH = ("Switch strategy: do not repeat this call. Try a different approach or tool, "
+                   "simplify the change, or ask the user one specific question.")
 
 
 def _year_start() -> float:
@@ -36,6 +41,9 @@ class Gate:
         self.events = events
         self.user = user
         self.services = services if services is not None else {}
+        # P11 F9: per run, failures of each identical call, and the last changing calls
+        self._fails: dict[str, dict[str, int]] = {}
+        self._edits: dict[str, list[str]] = {}
 
     async def call(self, run_id: str, tool_name: str, raw_input: dict, *, call_id: str,
                    workdir: Path, agent: bool = False) -> ToolOutput:
@@ -49,9 +57,9 @@ class Gate:
         try:
             out = await self._run(run_id, tool_name, raw_input, call_id, Path(workdir), agent)
         except MisesError as e:
-            e = self._redact_error(e, run_id)
+            e = self._stuck(run_id, tool_name, raw_input, self._redact_error(e, run_id))
             self._error(run_id, tool_name, call_id, e)
-            raise
+            raise e from None
         except asyncio.CancelledError:
             # every tool_call Step gets an outcome Step, also when the run is cancelled
             self._error(run_id, tool_name, call_id,
@@ -61,6 +69,49 @@ class Gate:
             self._error(run_id, tool_name, call_id, self._redact_error(
                 MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}"), run_id))
             raise
+        return self._progress(run_id, tool_name, raw_input, out)
+
+    def _key(self, name: str, raw_input: dict) -> str:
+        return sha256_hex(canonical_json([name, raw_input]))
+
+    def _stuck(self, run_id: str, name: str, raw_input: dict, e: MisesError) -> MisesError:
+        """P11 F9: the same call failing STUCK_REPEATS times: its error carries the last
+        errors and a strategy-switch note (and a step says so). Never ends the turn."""
+        if e.code == ErrorCode.CANCELLED:
+            return e
+        fails = self._fails.setdefault(run_id, {})
+        k = self._key(name, raw_input)
+        fails[k] = n = fails.get(k, 0) + 1
+        if n < STUCK_REPEATS:
+            return e
+        note = (f"This exact {name} call has now failed {n} times (last: {e.message}). "
+                + STRATEGY_SWITCH)
+        if n == STUCK_REPEATS:
+            self.store.append_step(run_id, StepKind.DECISION, {"stuck": {
+                "kind": "repeated_failure", "tool": name, "times": n, "error": e.message,
+                "note": note}})
+        e.hint = f"{e.hint}. {note}" if e.hint else note    # keeps its type and extras
+        return e
+
+    def _progress(self, run_id: str, name: str, raw_input: dict, out: ToolOutput) -> ToolOutput:
+        """P11 F9: a call that worked clears its failures; changing calls that undo each other
+        (the same two edits alternating: A, B, A, B) get an oscillation warning."""
+        k = self._key(name, raw_input)
+        self._fails.get(run_id, {}).pop(k, None)
+        t = self.registry._tools.get(name)
+        if t is None or t.safety == SafetyClass.READ or not out.ok:
+            return out
+        edits = self._edits.setdefault(run_id, [])
+        edits.append(k)
+        del edits[:-4]
+        if len(edits) == 4 and edits[0] == edits[2] and edits[1] == edits[3] \
+                and edits[0] != edits[1]:
+            note = ("These edits are going back and forth (the same two changes alternating). "
+                    + STRATEGY_SWITCH)
+            self.store.append_step(run_id, StepKind.DECISION, {"stuck": {
+                "kind": "oscillation", "tool": name, "note": note}})
+            edits.clear()
+            return out.model_copy(update={"warnings": [*out.warnings, note]})
         return out
 
     def _names(self) -> list[str]:
