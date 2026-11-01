@@ -5,8 +5,8 @@
 // which agent ran it and why. Esc closes; ⌘[ / ⌘] step through the other studies of the same
 // review, run or history. The top strip keeps clear of the macOS traffic lights. Text only.
 import type { JSX } from "preact";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import type { StudyCharts, StudyRecord } from "../../../../api/studies";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import type { StudyCharts, StudyRecord, StudyType } from "../../../../api/studies";
 import { needsYou } from "../../../../state/selection";
 import { parts, runs } from "../../../../state/store";
 import { setConsoleCollapsed } from "../../router";
@@ -18,7 +18,7 @@ import { CheckRows, PhaseBar } from "../../../console/studycard/StudyCard";
 import { StudyChart } from "../charts/StudyChart";
 import { studyData, type StudyData } from "../data";
 import { isTerminal, liveProgress, progressForCall } from "../live";
-import { fmtMetric, honesty, phaseText, typeName, VERDICT_TEXT, verdictTone } from "../model";
+import { fmtMetric, honesty, phaseText, settingsMarkers, typeName, VERDICT_TEXT, verdictTone, type Marker } from "../model";
 import { showInStudies } from "../nav";
 import { solverText } from "../ResultPanel";
 import { StudyView, type StudyViewDeps } from "../StudyView";
@@ -131,6 +131,8 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
     closeImmersive();
   }
   const status = failedToLoad ? "error" : rec?.status ?? "starting";
+  // E8: the study's loads and fixtures, drawn over the result (Show loads) with a legend
+  const markers: Marker[] = useMemo(() => (rec?.settings && rec.type ? settingsMarkers(rec.type as StudyType, rec.settings) : []), [rec]);
 
   return (
     <div class="imm" ref={root} role="dialog" aria-modal="true" aria-label={`Immersive view · ${typeName(type)} study${partId ? ` of ${partId}` : ""}`}
@@ -167,7 +169,8 @@ function Immersive({ target, deps }: { target: ImmersiveTarget; deps: ImmersiveD
           {running && (
             <div class="imm-live" data-testid="imm-live"><PhaseBar phase={phase ?? "queued"} pct={live?.pct ?? rec?.pct ?? null} detail={live?.detail ?? null} /></div>
           )}
-          <StudyView partId={partId} mtime={part?.mtime} record={shownRec} faces={part?.metrics?.face_list ?? []} immersive liveCaption={caption} deps={deps.view} />
+          <StudyView partId={partId} mtime={part?.mtime} record={shownRec} faces={part?.metrics?.face_list ?? []} immersive liveCaption={caption} deps={deps.view}
+            markers={markers} loadsOnResult />
         </div>
         <aside class="imm-side" aria-label="Study details">
           {error && <p class="tone-red text" role="alert" data-testid="imm-error">Could not open the study: {error}</p>}

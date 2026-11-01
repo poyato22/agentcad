@@ -58,6 +58,9 @@ describe("g4 announcements", () => {
     expect(modesForSpec(spec({ kind: "exploded" })).explode).toBe(1);
     expect(modesForSpec(spec({ kind: "exploded", explode: 0.4 })).explode).toBe(0.4);
     expect(modesForSpec(spec({ kind: "subset", parts: ["pi_fan"] })).isolate).toEqual(["pi_fan"]);
+    // Plan 10 E36: a laid-out view lays every part flat in a grid (never exploded too)
+    expect(modesForSpec(spec({ kind: "laid_out", explode: 0.4 }))).toMatchObject({ layout: 1, explode: 0 });
+    expect(modesForSpec(spec({ kind: "exploded" })).layout).toBe(0);
     expect(spec({ kind: "orbit" }).orbit).toEqual({ duration_s: 12, turns: 1 });
     // G1 sends explode 0 when the agent gave none: an exploded view still goes apart
     expect(modesForSpec(spec({ kind: "exploded", explode: 0 })).explode).toBe(1);

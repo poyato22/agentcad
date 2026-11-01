@@ -107,3 +107,12 @@ span.sf-item-name { cursor: default; }
 .st-mat-form { display: flex; flex-direction: column; gap: 6px; max-width: 420px; }
 .st-mat-form > .btn { align-self: flex-start; }
 .st-metrics { border: 1px solid var(--line2); padding: 10px 12px; background: var(--paper); border-top: 1px solid var(--line2); }
+
+/* Plan 10 E8: what the load / fixture glyphs over a result mean (bottom-left of the stage) */
+.sv-mlegend {
+  position: absolute; left: 10px; bottom: 10px; z-index: 2; margin: 0; padding: 6px 9px; list-style: none;
+  display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-small); color: var(--ink);
+  background: var(--paper); border: 1px solid var(--line2); pointer-events: none;
+}
+.sv-mlegend li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sv-mlegend svg { flex: none; color: var(--ink); }

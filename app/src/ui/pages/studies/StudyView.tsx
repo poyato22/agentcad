@@ -51,6 +51,9 @@ export interface StudyViewProps {
   liveCaption?: string | null;
   /** What the face pick is for, when it is more than one face (a contact pair). */
   pickHint?: string | null;
+  /** Plan 10 E8: draw the setup's loads and fixtures over the result too (the immersive view),
+   *  with a "Show loads" toggle and a legend. */
+  loadsOnResult?: boolean;
   deps?: StudyViewDeps;
 }
 
@@ -81,6 +84,8 @@ export function StudyView(props: StudyViewProps): JSX.Element {
   const [probe, setProbe] = useState<{ point: V3; data: StudyProbe | null; error: string | null } | null>(null);
   const [flowOn, setFlowOn] = useState(true);
   const [labels, setLabels] = useState<{ key: string; x: number; y: number; text: string }[]>([]);
+  /** E8: loads and fixtures shown over a result (on by default where the view offers it). */
+  const [showLoads, setShowLoads] = useState(true);
   /** Re-render after the scene changed on its own (async loads), so its data-* state is current. */
   const [, bump] = useState(0);
   const touch = () => bump((n) => n + 1);
@@ -149,13 +154,22 @@ export function StudyView(props: StudyViewProps): JSX.Element {
   useEffect(() => { sc.current?.setDeform(deform); }, [deform, info, channel]);
   useEffect(() => { sc.current?.setAnimate(animate); touch(); }, [animate, info, channel]);
 
-  // markers (setup view only)
+  // markers: the setup view, and over a result where the view asks (E8) while Show loads is on
+  const markersOn = !simId || (!!props.loadsOnResult && showLoads);
+  // the glyphs take the theme's ink when drawn: a theme change draws them again
+  const [themeTick, setThemeTick] = useState(0);
   useEffect(() => {
-    if (simId || !sc.current || state !== "loaded") { if (!simId) sc.current?.setMarkers([], [], null); setLabels([]); return; }
+    if (typeof MutationObserver !== "function") return;
+    const mo = new MutationObserver(() => setThemeTick((n) => n + 1));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => mo.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!markersOn || !sc.current || state !== "loaded") { sc.current?.setMarkers([], [], null); setLabels([]); touch(); return; }
     sc.current.setMarkers(props.markers ?? [], props.faces ?? [], props.selectedCase ?? null);
     placeLabels();
     touch();
-  }, [props.markers, props.faces, props.selectedCase, state, simId]);
+  }, [props.markers, props.faces, props.selectedCase, state, simId, markersOn, info, themeTick]);
 
   function placeLabels(): void {
     const s = sc.current; const b = s?.bounds();
@@ -165,7 +179,7 @@ export function StudyView(props: StudyViewProps): JSX.Element {
       if (m.role !== "load" || m.magnitude === null) return;
       const at = faceAnchor(m.face, b, props.faces ?? []);
       const p = at ? s.project(at.center) : null;
-      if (p) out.push({ key: `${i}`, x: p[0], y: p[1], text: `${sig3(m.magnitude)} ${m.unit}` });
+      if (p) out.push({ key: `${i}`, x: p[0], y: p[1], text: `${sig3(m.magnitude)} ${m.unit}${dirText(m.direction)}` });
     });
     setLabels(out);
   }
@@ -251,7 +265,8 @@ export function StudyView(props: StudyViewProps): JSX.Element {
           style={{ cursor: props.picking || probeOn ? "crosshair" : undefined }}
           data-markers={st?.markers ?? 0} data-particles={st?.particles ?? 0} data-streamlines={st?.streamlines ?? 0}
           data-animating={st?.animating ? "true" : "false"} data-section={st?.section ? "true" : "false"} />
-        {labels.map((l) => <span key={l.key} class="sv-mlabel" style={{ left: `${l.x}px`, top: `${l.y}px` }}>{l.text}</span>)}
+        {labels.map((l) => <span key={l.key} class="sv-mlabel" data-testid="load-label" style={{ left: `${l.x}px`, top: `${l.y}px` }}>{l.text}</span>)}
+        {simId && markersOn && (props.markers ?? []).length > 0 && <MarkerLegend markers={props.markers ?? []} />}
         {props.picking && <div class="sv-hint" role="status" data-testid="pick-hint">{props.pickHint ?? "Click a face of the part · Esc to stop"}</div>}
         {caption && <div class="sv-caption" role="status" data-testid="live-caption">{caption}</div>}
         {state !== "loaded" && state !== "loading" && state !== "none" && <div class="st-sheet-msg text">{state}</div>}
@@ -313,12 +328,51 @@ export function StudyView(props: StudyViewProps): JSX.Element {
             {section && <span class="sv-num">{sig3(section.offset)} mm</span>}
           </label>
           <Button onClick={() => { setProbeOn(!probeOn); if (probeOn) setProbe(null); }} aria-pressed={probeOn} data-testid="probe-toggle">{probeOn ? "Probing: click the part" : "Probe"}</Button>
+          {props.loadsOnResult && (props.markers ?? []).length > 0 && (
+            <Button onClick={() => setShowLoads(!showLoads)} aria-pressed={showLoads} data-testid="toggle-loads"
+              title="The study's loads (arrows: direction, length by size) and fixtures (hatched)">Show loads</Button>
+          )}
         </div>
       )}
       {simId && ch && shown && (
         <Legend channel={ch} range={shown} full={full} onRange={(r) => setRange(r)} />
       )}
     </div>
+  );
+}
+
+/** " · −Z" for an axis-aligned direction, " · (0.6, 0, −0.8)" otherwise; "" with none. */
+export function dirText(d: Marker["direction"]): string {
+  if (d === null) return "";
+  if (typeof d === "string") return ` · ${d.replace(/^-/, "−").toUpperCase()}`;
+  const n = Math.hypot(...d) || 1;
+  const u = d.map((x) => x / n);
+  const k = u.findIndex((x) => Math.abs(Math.abs(x) - 1) < 1e-6);
+  if (k >= 0) return ` · ${u[k] < 0 ? "−" : "+"}${"XYZ"[k]}`;
+  return ` · (${u.map((x) => sig3(Math.round(x * 100) / 100).toString().replace(/^-/, "−")).join(", ")})`;
+}
+
+const ROLE_TEXT: Partial<Record<Marker["role"], string>> = {
+  load: "Load: the arrow points the way it acts; longer is larger", support: "Fixed support (hatched)",
+  temperature: "Fixed temperature", heat: "Heat input", convection: "Convection", impact: "Impact face", contact: "Contact pair",
+};
+
+/** E8: what the glyphs over the result mean (only the ones on the part). */
+function MarkerLegend({ markers }: { markers: readonly Marker[] }): JSX.Element {
+  const roles = [...new Set(markers.map((m) => m.role))].filter((r) => ROLE_TEXT[r]);
+  return (
+    <ul class="sv-mlegend" data-testid="marker-legend" aria-label="What the markers mean">
+      {roles.map((r) => (
+        <li key={r} data-role={r}>
+          <svg width="22" height="14" viewBox="0 0 22 14" aria-hidden="true">
+            {r === "load" ? <><path d="M2 7h14" stroke="currentColor" stroke-width="1.5" /><path d="M14 3l6 4-6 4z" fill="currentColor" /></>
+              : r === "support" ? <><rect x="6" y="2" width="10" height="8" fill="none" stroke="currentColor" /><path d="M6 10l-3 3M11 10l-3 3M16 10l-3 3" stroke="currentColor" /></>
+                : <path d="M11 1l6 6-6 6-6-6z" fill="none" stroke="currentColor" />}
+          </svg>
+          <span>{ROLE_TEXT[r]}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
