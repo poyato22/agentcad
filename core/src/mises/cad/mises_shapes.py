@@ -1963,7 +1963,7 @@ def _mech_shapes():
 
 
 _MECH = _mech_shapes()
-for _name in _MECH.__all__:
+for _name in [*_MECH.__all__, *_MECH.HELPERS]:
     globals()[_name] = getattr(_MECH, _name)
 __all__ += list(_MECH.__all__)
 

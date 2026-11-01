@@ -41,6 +41,10 @@ def examples() -> dict:
         return plate - ms.vent_slots((0, 0, 1.5), length=30, width=2.5, count=6, pitch=5,
                                      depth=6)
 
+    # Plan 10 C2: the drivetrain / mechanism recipes, at their defaults
+    from mises.mech import shapes as mech
+    mech_args = {"timing_belt": dict(pitch_d1=12.732, pitch_d2=38.197, center=80.997)}
+    mech_examples = {n: (lambda n=n: getattr(ms, n)(**mech_args.get(n, {}))) for n in mech.__all__}
     return {
         "naca4": lambda: ms.smooth_loft([ms.airfoil_wire(ms.naca4("2412"), 100, (0, 0, 0)),
                                          ms.airfoil_wire(ms.naca4("2412"), 100, (0, 60, 0))]),
@@ -81,6 +85,7 @@ def examples() -> dict:
         "humanoid": lambda: ms.humanoid(shell=False).compound(),
         "quadruped": lambda: ms.quadruped(shell=False).compound(),
         "car_body": lambda: ms.car_body(shell=False).compound(),
+        **mech_examples,
     }
 
 

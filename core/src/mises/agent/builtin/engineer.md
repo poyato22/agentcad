@@ -141,15 +141,11 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.gear_bevel`: One gear of a 90-degree bevel pair (py_gearworks), in its own joint frame.
 - `ms.gear_rack`: Straight rack (bd_warehouse RackGear) along X, teeth pointing +Y, pitch line on y = 0,
 - `ms.worm_pair_member`: The worm or the worm wheel of a meshing pair (bd_warehouse WormGear), in its joint frame.
-- `ms.mesh_phase`: Rotation (deg) of an external gear z2, centred in direction theta from a gear z1 turned
-- `ms.ring_phase`: Rotation (deg) of an internal ring zr so it meshes a planet zp centred in direction theta
 - `ms.cycloid_disc`: Cycloidal reducer disc: pins-1 lobes (an epitrochoid offset by the pin radius), axis +Z,
 - `ms.pin_ring`: The fixed pin ring of a cycloidal reducer: a housing with `pins` axial pins on the pin
 - `ms.gt2_pulley`: GT2 (2 mm) timing pulley: PD = N*2/pi, OD = PD - 0.508, axis +Z, belt face z = 0..width.
 - `ms.htd_pulley`: HTD 3M/5M/8M timing pulley (approximate arc profile): PD = N*pitch/pi, OD = PD - 2*PLD
 - `ms.timing_belt`: A closed timing belt modelled as a band around two pulleys (pulley 1 at the origin,
-- `ms.belt_length`: Open-belt pitch length: 2*sqrt(C^2 - (r2-r1)^2) + pi*(r1+r2) + 2*(r2-r1)*asin((r2-r1)/C).
-- `ms.belt_center`: The exact centre distance for an open belt of pitch `length` (bisection).
 - `ms.shaft`: Round shaft on +Z (z = 0..length): `flat` mm D-flat depth over the whole length,
 - `ms.shaft_collar`: Set-screw shaft collar (axial retention), axis +Z, z = 0..width, radial M-screw hole
 - `ms.coupler_rigid`: Rigid shaft coupler (motor shaft d1 to driven shaft d2), axis +Z, z = 0..length, two
@@ -184,7 +180,7 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.snap_cantilever`: Cantilever snap-fit hook: a beam t x width rising +Z from a base block (z = 0..base) to
 - `ms.gripper_jaw`: Parallel-gripper jaw: a rack (teeth +Y, pitch line y = 0, along X from 0) on a carrier
 - `ms.wheel`: Wheel on +Z (z = 0..width): a tyre ring of `tread` over a rim with a hub and bore.
-- `ms.prop_mount`: Motor mount at the end of a multirotor arm: a pad for a motor of motor_d (pattern
+- `ms.prop_mount`: Motor mount at the end of a rotor arm: a pad for an outrunner motor of motor_d (pattern
 - `ms.extrusion`: Aluminium T-slot extrusion envelope (2020 default) along +X from x = 0, centred on the X
 Mechanisms (`mech_list` by function, `mech_insert` builds parts + joints + couplings + loops and returns the card, then `mech_check`):
 - belt: belt_drive_gt2, belt_drive_htd

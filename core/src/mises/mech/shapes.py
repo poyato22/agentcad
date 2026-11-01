@@ -23,10 +23,10 @@ import build123d as bd
 
 __all__ = [
     # gears
-    "gear_spur", "gear_ring", "gear_bevel", "gear_rack", "worm_pair_member", "mesh_phase",
-    "ring_phase", "cycloid_disc", "pin_ring",
+    "gear_spur", "gear_ring", "gear_bevel", "gear_rack", "worm_pair_member", "cycloid_disc",
+    "pin_ring",
     # belts
-    "gt2_pulley", "htd_pulley", "timing_belt", "belt_length", "belt_center",
+    "gt2_pulley", "htd_pulley", "timing_belt",
     # shafts, couplers, bearings, mounts
     "shaft", "shaft_collar", "coupler_rigid", "bearing", "bearing_block", "frame_plate",
     "motor_mount", "stepper_motor", "servo_body", "servo_bracket", "bldc_actuator",
@@ -38,6 +38,8 @@ __all__ = [
 ]
 
 TAU = 2 * math.pi
+#: plain-number helpers part scripts can call too (`ms.mesh_phase`, ...): not shape recipes
+HELPERS = ["mesh_phase", "ring_phase", "belt_length", "belt_center"]
 
 
 # ---------------------------------------------------------------- helpers
@@ -947,7 +949,7 @@ def wheel(d: float = 80.0, width: float = 25.0, bore: float = 6.0, hub_d: float 
 
 def prop_mount(pattern: float = 16.0, motor_d: float = 28.0, plate: float = 4.0,
                arm_w: float = 20.0, arm_l: float = 60.0, hole_d: float = 3.2):
-    """Motor mount at the end of a multirotor arm: a pad for a motor of motor_d (pattern
+    """Motor mount at the end of a rotor arm: a pad for an outrunner motor of motor_d (pattern
     pattern x pattern, M3) at the origin, plate z = -plate..0, the arm running to -X."""
     pad = _cyl(motor_d / 2 + 3, plate, (0, 0, -plate))
     arm = bd.Pos(-arm_l / 2, 0, -plate / 2) * bd.Box(arm_l, arm_w, plate)
