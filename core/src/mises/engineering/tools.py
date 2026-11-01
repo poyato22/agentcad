@@ -229,8 +229,31 @@ async def spec_get(ctx: ToolContext, args: ProjectArg) -> ToolOutput:
     _spec_seen[(ctx.run_id, pid)] = at
     s = (f"spec for {pid}: {len(spec.requirements)} requirement(s), "
          f"{len(spec.load_cases)} load case(s)")
-    return ToolOutput(summary=s, data={"project_id": pid, "spec": spec.model_dump(),
-                                       "updated_at": at})
+    data = {"project_id": pid, "spec": spec.model_dump(), "updated_at": at}
+    checks = _engineering_checks(ctx, pid)        # Plan 10 C3: the pipeline's verdicts
+    if checks is not None:
+        data["engineering_checks"] = checks
+    return ToolOutput(summary=s, data=data)
+
+
+def _engineering_checks(ctx: ToolContext, pid: str) -> dict | None:
+    """The build's engineering checks (actuator sizing, power, dynamics, link stress), as
+    engineering/pipeline.py keeps them; None when the build has no assembly here."""
+    asm_store = (getattr(ctx, "services", None) or {}).get("assembly")
+    if asm_store is None:
+        return None
+    try:
+        from . import pipeline
+        asm = asm_store.get(pid)
+        if not asm.instances:
+            return None
+        rep = pipeline.report(Path(ctx.workdir), pid, asm,
+                              store=getattr(ctx, "store", None),
+                              running=pipeline.running_checks(pid))
+        return {k: rep[k] for k in ("overall", "missing", "failing", "stale", "unchecked",
+                                    "running", "rows")}
+    except Exception:  # noqa: BLE001 - the spec never fails over its checks
+        return None
 
 
 # (run id, project) -> the spec updated_at that run last read or wrote. spec_set without

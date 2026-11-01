@@ -40,7 +40,10 @@ LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "assembly_get", "asse
               # section sweeps, so the tools it names are always offered (FW-core M-2)
               "present_view", "render_views",
               # Plan 9 G-A: the concept stage (pitch, sketch, the user's marks)
-              "pitch_options", "concept_sketch", "concept_status")
+              "pitch_options", "concept_sketch", "concept_status",
+              # Plan 10 C3: the engineering pipeline every lead runs before done
+              "actuator_size", "electronics_estimate", "power_budget", "dyn_torque",
+              "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks")
 
 LEAD_PROMPT = """\
 # You are this build's lead agent
@@ -68,6 +71,17 @@ user approves the sketch or skips it. `mixed`: your first deliverable is one `co
 - The user's marks come back as a message with the marked images: answer with a revised \
 `concept_sketch` (parent_sketch_id = the marked version) that addresses every numbered mark.
 - Later, pitch again only for a genuinely open look decision (e.g. the head), at most 2 options.
+
+## Engineering checks (anything with moving parts)
+- At the skeleton stage, before skins: `actuator_size`, `electronics_estimate` (reserve: true, \
+into the enclosure) and `power_budget`.
+- Before you report done: `dyn_torque` on a representative motion, `dyn_stability`, \
+`dyn_rom_sweep`, `dyn_to_fem` on the most loaded links, and `assembly_health` when it exists; \
+revise until they pass. Give every moving joint an actuator (an unjudged joint does not pass). \
+`dyn_to_fem` runs in the background: `job_wait` its job and read the safety factors before you \
+claim done. `engineering_checks` shows what is missing, failing or stale. State the \
+margins (torque % of stall, stability margin, link safety factors, runtime) in your final \
+message: a turn that ends with checks missing gets a warning.
 
 ## Tell the user
 - Mises shows a card whenever a part is created, an agent is spawned, or something is added to \

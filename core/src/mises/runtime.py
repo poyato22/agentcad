@@ -239,6 +239,11 @@ class Runtime:
         register_concept_tools(self.registry)   # Plan 9 G-A: concept sketch + pitch
         from .design_tools import register_design_tools     # Plan 9 G-B
         register_design_tools(self.registry)
+        # Plan 10 C3: integrated dynamics and the practical engineering checks
+        from .dyn.tools import register_dyn_tools
+        from .engineering.eng_tools import register_eng_check_tools
+        register_dyn_tools(self.registry)
+        register_eng_check_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
@@ -1437,10 +1442,20 @@ class Runtime:
             self.parallel.release(rid)
         st.result = result
         if result.stop_reason == "end_turn" and not st.cancel_requested:
+            self._finish_checks(rid)         # Plan 10 C3: the engineering "done" gate
             # a Claude Code turn ended but the session stays open for the next message
             self.activity_tracker(rid).set("idle", "waiting for your next message")
             self._schedule_after_turn(rid, result)     # E33 assembly review
         return result
+
+    def _finish_checks(self, run_id: str) -> None:
+        """A lead's turn ended: warn (a VERIFY step) when its build has moving joints and its
+        engineering checks are missing, failing or stale (engineering/pipeline.py)."""
+        from .engineering.pipeline import finish_warning
+        text = finish_warning(self, run_id)
+        if text:
+            self.events.publish(Event(type="engineering_warning", run_id=run_id,
+                                      data={"text": text}))
 
     def _is_claude_run(self, run_id: str) -> bool:
         if run_id in self._claude:
@@ -1739,6 +1754,8 @@ class Runtime:
             result = RunResult(final_text="", messages=st.history, stop_reason="error",
                                error=f"{type(e).__name__}: {e}")
         st.result, st.history = result, result.messages
+        if result.stop_reason == "end_turn":
+            self._finish_checks(run_id)      # Plan 10 C3: the engineering "done" gate
         status = _STATUS[result.stop_reason]
         self.store.update_run(run_id, status=status)
         self.events.publish(Event(type="run_finished", run_id=run_id, data={

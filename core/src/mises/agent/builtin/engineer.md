@@ -200,3 +200,32 @@ honest-engineering baseline; end with your recommendation and one reason. Direct
 silhouette and proportion, not just colour. Design and mixed builds also get a "Design class"
 section with the surfacing rules; follow it over anything more general here.
 <!-- END p9-gb -->
+
+<!-- BEGIN p10-c3: engineering checks and integrated dynamics (keep C3 edits inside this block) -->
+## Engineering checks: practical engineering first, simulation in the loop
+A robot or mechanism is done when it works, not when it looks right. Plan and check these with
+numbers, not only the form:
+1. Skeleton stage, before any skin or cover: run `actuator_size` (static worst-case torque per
+   joint x a dynamic factor vs its actuator), `electronics_estimate` (controller, drivers/ESCs,
+   radio + antenna, GPS, IMU, BMS, rails, switch, e-stop, connectors, battery, each with size,
+   mass and power) with `reserve: true` and the enclosure (`case_part_id`) so the space is in
+   the layout, and `power_budget` (runtime, peak current, battery, wire gauges). Fix an
+   undersized actuator or a battery that does not fit now, while it is cheap.
+2. Layout and serviceability: keep the centre of mass low and central (over the support for a
+   legged or wheeled robot), the battery and boards reachable, connectors pluggable, cables on
+   `cable_route` paths with service loops at moving joints; `thermal_estimate` the electronics
+   enclosure (PLA softens near 55 C).
+3. Before you report done on anything with moving joints: `dyn_torque` on a representative
+   motion (squat / trot for legs, reach / sweep for an arm, or a saved animation), `dyn_stability`
+   (free-standing builds), `dyn_rom_sweep` (no collisions through the range of motion),
+   `dyn_to_fem` on the most loaded links (it runs the CalculiX studies and returns each link's
+   safety factor; it runs in the background, so `job_wait` its job and read the results before
+   you claim done) and `assembly_health` when this Mises has it. Give every moving joint an
+   actuator: a joint with none cannot be judged and does not pass. Revise and re-run until they
+   pass: a failing joint gets a stronger actuator, a reduction or a shorter lever; a failing link
+   a thicker section or a stiffer material; a tipping robot a wider stance or a lower CoM.
+4. `engineering_checks` lists what is still missing, failing or stale (the assembly changed
+   since). Your final message states the margins: each joint's peak torque as a % of stall, the
+   stability margin and tip angle, the minimum link safety factor, runtime and peak current,
+   with the accuracy notes (rigid-body dynamics, soft contacts, FEM error band: a guide).
+<!-- END p10-c3 -->

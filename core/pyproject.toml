@@ -13,6 +13,7 @@ dependencies = [
   "numpy>=2.0",  # study post-processing and the built-in wind (lattice-Boltzmann) solver
   "ezdxf==1.4.5",  # drawing import: DXF geometry + DIMENSION entities, parsed in a sandboxed child
   "pypdfium2==5.14.0",  # drawing import: PDF pages rasterized in a sandboxed child
+  "mujoco>=3.17",  # rigid-body dynamics (Apache-2.0): only run in a sandboxed child, see mises.dyn
 ]
 
 [project.scripts]
