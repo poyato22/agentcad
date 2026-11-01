@@ -32,6 +32,8 @@ test("the immersive study shows its loads, fixtures and a legend over the result
   await expect(imm).toHaveAttribute("data-status", "done");
   const canvas = imm.getByTestId("study-canvas");
   await expect(canvas).not.toHaveAttribute("data-markers", "0");
+  // the camera frames the markers too: the fixed face's plate is never cut by the canvas edge (M2)
+  await expect(canvas).toHaveAttribute("data-markers-in-view", "true");
   const legend = imm.getByTestId("marker-legend");
   await expect(legend.locator("[data-role=load]")).toContainText("Load");
   await expect(legend.locator("[data-role=support]")).toContainText("Fixed face");

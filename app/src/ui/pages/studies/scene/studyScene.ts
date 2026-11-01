@@ -75,7 +75,7 @@ export interface StudySceneHandle {
   /** Screen position (px in the canvas) of a part point, for HTML labels. */
   project(p: V3): [number, number] | null;
   /** Test / e2e state. */
-  state(): { channel: string | null; animating: boolean; particles: number; streamlines: number; markers: number; section: boolean; frames: number };
+  state(): { channel: string | null; animating: boolean; particles: number; streamlines: number; markers: number; markersInView: boolean; section: boolean; frames: number };
   dispose(): void;
 }
 
@@ -263,10 +263,37 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
     return { min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] };
   }
 
+  /** The box the camera last framed (the markers' refit compares against it). */
+  let fitted: THREE.Box3 | null = null;
+
+  function markerBox(): THREE.Box3 | null {
+    if (markers.children.length === 0) return null;
+    markers.updateMatrixWorld(true);
+    const mb = new THREE.Box3().setFromObject(markers);
+    return mb.isEmpty() ? null : mb;
+  }
+
+  /** Every marker's box inside the camera's view (e2e: the fixed face's plate is never clipped). */
+  function markersInView(): boolean {
+    const mb = markerBox();
+    if (!mb) return false;
+    camera.updateMatrixWorld(true);
+    const v = new THREE.Vector3();
+    for (const x of [mb.min.x, mb.max.x]) for (const y of [mb.min.y, mb.max.y]) for (const z of [mb.min.z, mb.max.z]) {
+      v.set(x, y, z).project(camera);
+      if (Math.abs(v.x) > 1.0001 || Math.abs(v.y) > 1.0001) return false;
+    }
+    return true;
+  }
+
   function fit(): void {
-    const b = result ? new THREE.Box3().setFromObject(result.root) : part?.bbox ?? null;
+    const b = result ? new THREE.Box3().setFromObject(result.root) : part?.bbox?.clone() ?? null;
     if (b && !b.isEmpty()) {
       if (flow) b.expandByObject(flowGroup);
+      // P10 M2: the loads and fixtures sit on and beyond the faces; frame them with the part
+      const mb = markerBox();
+      if (mb) b.union(mb);
+      fitted = b.clone();
       fitOrtho(camera, b, width / Math.max(height, 1));
       controls.target.copy(b.getCenter(new THREE.Vector3()));
       controls.update();
@@ -440,6 +467,10 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
         line.userData.marker = "contact";
         markers.add(line);
       }
+      // a marker past what the camera framed (a fixed face's plate, an arrow's tail): frame again.
+      // Markers inside it (Show loads back on) leave the user's view alone.
+      const mb = markerBox();
+      if (mb && !(fitted?.containsBox(mb) ?? false)) fit();
       requestRender();
     },
 
@@ -578,7 +609,7 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
     state() {
       return {
         channel, animating: moving() && (animate || flow?.particles != null), particles: flow?.particles?.pu.length ?? 0,
-        streamlines: flow?.staticLines ?? 0, markers: markers.children.length, section: sectionGroup.children.length > 0, frames,
+        streamlines: flow?.staticLines ?? 0, markers: markers.children.length, markersInView: markersInView(), section: sectionGroup.children.length > 0, frames,
       };
     },
 

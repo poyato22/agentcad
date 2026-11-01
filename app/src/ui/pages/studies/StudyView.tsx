@@ -266,7 +266,7 @@ export function StudyView(props: StudyViewProps): JSX.Element {
       <div class="vp sv-vp" ref={host}>
         <canvas ref={canvas} class="vp-canvas" data-testid="study-canvas" onClick={onClick}
           style={{ cursor: props.picking || probeOn ? "crosshair" : undefined }}
-          data-markers={st?.markers ?? 0} data-particles={st?.particles ?? 0} data-streamlines={st?.streamlines ?? 0}
+          data-markers={st?.markers ?? 0} data-markers-in-view={st?.markersInView ? "true" : "false"} data-particles={st?.particles ?? 0} data-streamlines={st?.streamlines ?? 0}
           data-animating={st?.animating ? "true" : "false"} data-section={st?.section ? "true" : "false"} />
         {labels.map((l) => <span key={l.key} class="sv-mlabel" data-testid="load-label" style={{ left: `${l.x}px`, top: `${l.y}px` }}>{l.text}</span>)}
         {simId && markersOn && (props.markers ?? []).length > 0 && <MarkerLegend markers={props.markers ?? []} />}
