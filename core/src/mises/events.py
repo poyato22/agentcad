@@ -21,7 +21,9 @@ log = logging.getLogger(__name__)
 # once: "sim" (studies), "view" (renders, immersive views, critiques) and "text" (the rest).
 STREAMS = ("text", "sim", "view")
 SIM_TOOLS = frozenset({"design_review", "design_review_get", "study_run", "study_get",
-                       "job_wait"})
+                       "job_wait",
+                       # Plan 11 F6: the rocket cards (rocket_motor is a library lookup: text)
+                       "rocket_analyze", "rocket_flight"})
 VIEW_TOOLS = frozenset({"render_views", "present_view", "critique_model", "part_show",
                         "section_check", "assembly_animate",
                         # Plan 9 G-A: the concept stage's cards live in the View stream
