@@ -23,6 +23,9 @@ test("the immersive study shows its loads, fixtures and a legend over the result
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   const stat = page.locator("[data-testid=study-card][data-type=static]").first();
+  // the Simulations column of the dock (closed: a slim tab) holds the study cards
+  const simTab = page.getByRole("button", { name: /^Show simulations/ });
+  if (await simTab.count()) await simTab.click();
   await expect(stat).toHaveCount(1);
   await stat.getByTestId("open-immersive").evaluate((el) => (el as HTMLElement).click());
   const imm = page.getByTestId("immersive");
