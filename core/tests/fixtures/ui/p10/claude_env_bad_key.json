@@ -1,0 +1,9 @@
+{
+  "status": 422,
+  "body": {
+    "error": "invalid_input",
+    "message": "invalid profile: claude_code_env: Value error, 'ANTHROPIC_API_KEY' is not an allowed Claude Code environment variable (allowed: HTTPS_PROXY, HTTP_PROXY, NODE_EXTRA_CA_CERTS, NO_PROXY, SSL_CERT_DIR, SSL_CERT_FILE, http_proxy, https_proxy, no_proxy)",
+    "hint": "fix the listed fields",
+    "retryable": false
+  }
+}

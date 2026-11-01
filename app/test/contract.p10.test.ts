@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRunResultSchema, okSchema, stepSchema } from "../src/api/schemas";
+import { createRunResultSchema, okSchema, profileSchema, stepSchema } from "../src/api/schemas";
 import { loadScenario, startFakeCore, type FakeCore } from "./fake-core/server";
 import type { Json } from "./shape";
 
@@ -77,5 +77,40 @@ describe("contract: Plan 10 C1 real-core answers ↔ app schemas ↔ fake core",
     expect(edited.length).toBe(1);
     const id = (edited[0].payload as { edits: string }).edits;
     expect(steps.some((s) => String(s.id) === id)).toBe(true);
+  });
+});
+
+describe("contract: P10 FWA Profile → Claude Code → Network (claude_code_env) real core ↔ app ↔ fake core", () => {
+  const ENV = { HTTPS_PROXY: "http://alice:s3cret@proxy.corp:8080", NO_PROXY: "localhost,.corp.example" };
+
+  it("a proxy's credentials come back masked from PUT and GET, and the masked value round-trips", async () => {
+    for (const name of ["claude_env_put.json", "claude_env_get.json"]) {
+      const p = profileSchema.parse(real(name));
+      expect(p.claude_code_env, name).toEqual({ HTTPS_PROXY: "http://***@proxy.corp:8080", NO_PROXY: "localhost,.corp.example" });
+      expect(JSON.stringify(real(name))).not.toContain("s3cret");
+    }
+    const put = await fake("PUT", "/profile", { claude_code_env: ENV });
+    expect(put.status).toBe(200);
+    expect((put.json as { claude_code_env: unknown }).claude_code_env).toEqual((real("claude_env_put.json") as { claude_code_env: unknown }).claude_code_env);
+    const got = (await fake("GET", "/profile")).json as { claude_code_env: Record<string, string> };
+    expect(got.claude_code_env).toEqual((real("claude_env_get.json") as { claude_code_env: unknown }).claude_code_env);
+    // the app sends the masked value back unchanged with another edit: still the same proxy
+    const again = await fake("PUT", "/profile", { claude_code_env: { ...got.claude_code_env, NO_PROXY: "localhost" } });
+    expect(again.status).toBe(200);
+    expect((again.json as { claude_code_env: Record<string, string> }).claude_code_env.HTTPS_PROXY).toBe("http://***@proxy.corp:8080");
+    await fake("PUT", "/profile", { claude_code_env: {} });
+  });
+
+  it("refuses what the core refuses, with the core's message", async () => {
+    for (const [name, env] of [
+      ["claude_env_bad_proxy.json", { HTTPS_PROXY: "proxy.corp:8080" }],
+      ["claude_env_missing_ca.json", { NODE_EXTRA_CA_CERTS: "/nonexistent/mises-ca.pem" }],
+      ["claude_env_bad_key.json", { ANTHROPIC_API_KEY: "sk-not-allowed" }],
+    ] as const) {
+      const want = real(name) as { status: number; body: Record<string, unknown> };
+      const got = await fake("PUT", "/profile", { claude_code_env: env });
+      expect(got.status, name).toBe(want.status);
+      expect(got.json, name).toEqual(want.body);
+    }
   });
 });

@@ -13,6 +13,7 @@ import { Button } from "../common/Button";
 import { editMessage, isStalled, quietSince, seenRunningAt, sendChat, STALL_S } from "./chat";
 import { needsYou } from "../../state/selection";
 import { explainError } from "./errorText";
+import { openProfile } from "../profile/open";
 import { startErrorText } from "./startError";
 
 /** The words go back to the composer; sending them marks this row edited. */
@@ -106,7 +107,15 @@ export function ErrorCard({ item, retryText, run }: {
       {v.message && <p class="cv-err-msg text" data-error-message>{v.message}</p>}
       {v.cause && <p class="cv-err-line text"><span class="cv-err-l">Likely cause</span>{v.cause}</p>}
       {v.hint && <p class="cv-err-line text" data-error-hint><span class="cv-err-l">What to do</span>{v.hint}</p>}
-      {retryText && <div class="cv-err-actions"><RetryButton text={retryText} run={run} /></div>}
+      {(retryText || v.kind === "tls" || v.kind === "network") && (
+        <div class="cv-err-actions">
+          {retryText && <RetryButton text={retryText} run={run} />}
+          {/* the CA bundle / proxy live in Profile & settings → Claude Code → Network */}
+          {(v.kind === "tls" || v.kind === "network") && (
+            <Button variant="ghost" data-network-settings onClick={() => openProfile("claude")}>Network settings</Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

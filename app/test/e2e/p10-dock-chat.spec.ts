@@ -181,6 +181,12 @@ for (const theme of ["dark", "light"] as const) {
     await card.getByRole("button", { name: "Retry" }).click();
     await expect.poll(async () => (await fake.calls()).filter((c) => c.method === "POST" && c.path === `/projects/${BUILD}/chat`).map((c) => c.body))
       .toEqual([{ text: "add a wrist joint" }]);
+    // the way out without a terminal: Profile & settings → Claude Code → Network
+    await card.getByRole("button", { name: "Network settings" }).click();
+    const prof = page.getByRole("dialog", { name: "Profile" });
+    await expect(prof.getByRole("button", { name: "Claude Code", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(prof.getByRole("region", { name: "Network" }).getByLabel("Extra CA certificates")).toBeVisible();
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/network-settings-${theme}.png` });
   });
 }
 

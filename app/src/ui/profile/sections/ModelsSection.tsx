@@ -26,7 +26,7 @@ export function ModelsSection(p: SectionProps): JSX.Element {
 }
 
 // ---- the user's own Claude Code: status from `claude auth status`, sign-in is Anthropic's browser flow
-function ClaudeCard({ data, update }: SectionProps): JSX.Element {
+export function ClaudeCard({ data, update }: SectionProps): JSX.Element {
   const c = data.claude;
   const [phase, setPhase] = useState<"idle" | "waiting" | "timeout">("idle");
   const poll = useRef<{ stop: () => void } | null>(null);

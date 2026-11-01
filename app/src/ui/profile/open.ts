@@ -2,7 +2,7 @@
 // "connect a model" notice and the new-run dialog's "Sign in in Profile" open it.
 import { signal, type Signal } from "@preact/signals";
 
-export type ProfileSectionId = "profile" | "models" | "onshape" | "agents" | "data" | "system" | "setup" | "developer" | "about";
+export type ProfileSectionId = "profile" | "models" | "claude" | "onshape" | "agents" | "data" | "system" | "setup" | "developer" | "about";
 
 export const profileOpen: Signal<boolean> = signal<boolean>(false);
 /** The section the panel opens at. */

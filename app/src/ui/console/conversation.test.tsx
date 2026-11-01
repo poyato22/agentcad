@@ -18,6 +18,7 @@ import { consoleView, resetConsoleView, VIEW_KEY } from "./view";
 import { activeBuildId } from "../../state/builds";
 import { resetChat } from "./chat";
 import { resetMessageActions } from "./MessageActions";
+import { closeProfile, profileOpen, profileSection } from "../profile/open";
 
 const REAL: Step[] = (JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/steps.json"), "utf8")) as unknown[]).map((s) => stepSchema.parse(s));
 const RID = REAL[0].run_id;
@@ -436,11 +437,16 @@ describe("one chat per build (P10 E24)", () => {
     expect(err.getAttribute("data-error-kind")).toBe("tls");
     expect(err.querySelector("[data-error-message]")?.textContent).toBe(ssl);
     expect(err.querySelector("[data-error-hint]")?.textContent).toContain("NODE_EXTRA_CA_CERTS");
+    expect(err.querySelector("[data-error-hint]")?.textContent).toContain("Claude Code → Network");
     expect(err.querySelector("em, strong")).toBeNull();
     // the echoed reply is plain text too: the code stays whole
     expect(document.querySelector("[data-plain-error]")?.textContent).toContain("UNABLE_TO_GET_ISSUER_CERT_LOCALLY");
     fireEvent.click(within(err).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "add a wrist joint"));
+    // the way out: Profile & settings → Claude Code → Network (the CA bundle / proxy)
+    fireEvent.click(within(err).getByRole("button", { name: "Network settings" }));
+    expect([profileOpen.value, profileSection.value]).toEqual([true, "claude"]);
+    closeProfile();
   });
 
   it("a queued message can be cancelled; a core without the route hides Cancel", async () => {

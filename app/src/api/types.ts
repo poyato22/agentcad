@@ -326,6 +326,10 @@ export interface Profile {
   suggested_sites?: SuggestedSite[];
   /** Web fetches (sites searched + pages opened) one agent run may make (1-1000; core default 60). */
   browser_fetches_per_run?: number;
+  /** P10 E3: extra environment for Claude Code — NODE_EXTRA_CA_CERTS / SSL_CERT_* (absolute
+   *  paths), HTTPS_PROXY / HTTP_PROXY (proxy URLs; credentials come back masked as `***@`, and the
+   *  masked value sent back keeps them) and NO_PROXY. Validated by the core. Optional: older cores. */
+  claude_code_env?: Record<string, string>;
   setup_completed_at: number | null;
 }
 

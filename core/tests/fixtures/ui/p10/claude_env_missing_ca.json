@@ -1,0 +1,9 @@
+{
+  "status": 422,
+  "body": {
+    "error": "invalid_input",
+    "message": "invalid profile: claude_code_env: no such file or folder for NODE_EXTRA_CA_CERTS",
+    "hint": "fix the listed fields",
+    "retryable": false
+  }
+}

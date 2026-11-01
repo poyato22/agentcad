@@ -73,6 +73,8 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 const PROFILE_PATCH_KEYS: ReadonlySet<string> = new Set<string>([
   "display_name", "default_material", "default_agent", "default_model", "onshape_calls_year_cap", "onshape_calls_run_cap",
   "max_parallel_agents", "local_endpoints", "theme", "hidden_agents", "viewer_background", "suggested_sites", "browser_fetches_per_run",
+  // P10 E3: Profile → Claude Code → Network (the core masks proxy credentials and keeps them when the mask comes back)
+  "claude_code_env",
 ] satisfies (keyof ProfilePatch)[]);
 
 /** For routes whose answer the UI doesn't use (it refetches status instead): any 2xx JSON body. */

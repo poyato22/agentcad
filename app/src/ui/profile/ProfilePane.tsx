@@ -1,4 +1,4 @@
-// Profile panel: a right-hand sheet with its sections (Profile, Models, Onshape, Printers, Agents &
+// Profile panel: a right-hand sheet with its sections (Profile, Models, Claude Code, Onshape, Printers, Agents &
 // budgets, Browsing, Data, System, Setup, Developer, About). App mounts <ProfilePane/> once; the top-bar Profile button opens it
 // (ui/profile/open.ts), as do the "connect a model" notice and the new-run dialog.
 // Every section reads and writes the core routes directly; secrets only ever go out (password
@@ -10,6 +10,7 @@ import { Button } from "../common/Button";
 import { useFocusTrap } from "../common/focusTrap";
 import { describeError, type ProfileData, type SectionProps } from "./common";
 import { AgentsSection } from "./sections/AgentsSection";
+import { ClaudeCodeSection } from "./sections/ClaudeCodeSection";
 import { DeveloperSection } from "./sections/DeveloperSection";
 import { AboutSection, DataSection, SetupSection, SystemSection } from "./sections/MiscSections";
 import { ModelsSection } from "./sections/ModelsSection";
@@ -22,6 +23,8 @@ import "./profile.css";
 export const SECTIONS = [
   { id: "profile", label: "Profile" },
   { id: "models", label: "Models" },
+  // P10 E3: the user's Claude Code and its Network settings (CA bundle, proxy)
+  { id: "claude", label: "Claude Code" },
   { id: "onshape", label: "Onshape" },
   { id: "printers", label: "Printers" },
   { id: "agents", label: "Agents & budgets" },
@@ -101,6 +104,7 @@ function ProfilePaneBody({ onClose, initial }: { onClose: () => void; initial: S
           {!error && !props && <div class="faint">loading…</div>}
           {props && section === "profile" && <ProfileSection {...props} />}
           {props && section === "models" && <ModelsSection {...props} />}
+          {props && section === "claude" && <ClaudeCodeSection {...props} />}
           {props && section === "onshape" && <OnshapeSection {...props} />}
           {props && section === "printers" && <PrintersSection />}
           {props && section === "agents" && <AgentsSection {...props} />}

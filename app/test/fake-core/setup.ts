@@ -10,6 +10,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SuggestedSite } from "../../src/api/browser";
 import { asBody, HttpError, mises, type Body, type Route, type Scenario } from "./server";
+import { maskClaudeEnv, putClaudeEnv } from "./claudeEnv";
 
 /** Same list as core VENDORS ∪ {"onshape"} (GET /keys order). */
 export const KEY_VENDORS = ["anthropic", "openai", "gemini", "openrouter", "ollama", "lmstudio", "onshape"];
@@ -78,7 +79,8 @@ const PLAN5_PROFILE_DEFAULTS = {
   claude_code_env: {},
   suggested_sites: DEFAULT_SUGGESTED_SITES, browser_fetches_per_run: DEFAULT_BROWSER_FETCHES,
 };
-const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...PLAN5_PROFILE_DEFAULTS, ...p, printers: [] });
+// a proxy URL's credentials never leave the core (core profile_api._shown)
+const withVersion = (p: Profile) => ({ schema_version: PROFILE_SCHEMA_VERSION, ...PLAN5_PROFILE_DEFAULTS, ...p, printers: [], claude_code_env: maskClaudeEnv(p.claude_code_env ?? {}) });
 
 const EMPTY_CONTEXT = { selected_part_id: null, selected_run_id: null, picks: [] };
 
@@ -213,6 +215,8 @@ const PROFILE_FIELDS: Record<string, (v: unknown) => boolean> = {
   // Plan 7 R3: the curated browse list; each entry needs name/domain/search_url strings
   suggested_sites: validSites,
   browser_fetches_per_run: int(1, 1000),
+  // P10 E3: checked by ./claudeEnv in the PUT handler
+  claude_code_env: () => true,
   local_endpoints: (v) => typeof v === "object" && v !== null && !Array.isArray(v)
     && Object.values(v).every((x) => typeof x === "string" && loopback(x)),
   setup_completed_at: (v) => v === null || typeof v === "number",
@@ -262,6 +266,12 @@ export function setupRoutes(get: () => FakeSetup, parts: () => readonly PartSumm
           if (!ok) { errs.push(`${k}: Extra inputs are not permitted`); continue; }
           if (k === "schema_version") {     // a field of the core's Profile (an int >= 1); always saved as the current one
             if (!ok(v)) errs.push(`${k}: Input should be valid`);
+            continue;
+          }
+          if (k === "claude_code_env") {         // P10 E3 (./claudeEnv: allowlist, shapes, CA paths, masked proxies)
+            const r = putClaudeEnv(v, st.profile.claude_code_env ?? {});
+            if ("error" in r) throw invalidProfile(r.error);
+            next[k] = r.env;
             continue;
           }
           if (k === "setup_completed_at") {

@@ -116,7 +116,7 @@ describe("ProfilePane shell", () => {
     await pane();
     const nav = await screen.findByRole("navigation", { name: "Profile sections" });
     const names = within(nav).getAllByRole("button").map((b) => b.textContent);
-    expect(names).toEqual(["Profile", "Models", "Onshape", "Printers", "Agents & budgets", "Browsing", "Data", "System", "Setup", "Developer", "About"]);
+    expect(names).toEqual(["Profile", "Models", "Claude Code", "Onshape", "Printers", "Agents & budgets", "Browsing", "Data", "System", "Setup", "Developer", "About"]);
     expect(within(nav).getByRole("button", { name: "Profile" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(within(nav).getByRole("button", { name: "Onshape" }));
     expect(within(nav).getByRole("button", { name: "Onshape" }).getAttribute("aria-current")).toBe("page");
@@ -183,6 +183,45 @@ describe("Profile section", () => {
     type("Default material", "PETG");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect((await screen.findByRole("alert")).textContent).toContain("invalid profile: nope");
+  });
+});
+
+describe("Claude Code section: Network (P10 E3)", () => {
+  const ENV = { HTTPS_PROXY: "http://***@proxy.corp:8080", NO_PROXY: "localhost", SSL_CERT_FILE: "/etc/ssl/cert.pem" };
+
+  it("shows the saved values with the proxy's credentials masked, and the Claude Code status above", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, claude_code_env: ENV });
+    await openSection("Claude Code");
+    expect(screen.getByRole("region", { name: "Your Claude Code" }).textContent).toContain("signed in");
+    const net = screen.getByRole("region", { name: "Network" });
+    expect(field("HTTPS proxy").value).toBe("http://***@proxy.corp:8080");
+    expect(field("No proxy for").value).toBe("localhost");
+    expect(field("Extra CA certificates").value).toBe("");
+    expect(net.textContent).toContain("SSL_CERT_FILE");                       // set elsewhere: kept
+    expect((within(net).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("saves the whole env: changed values, the masked proxy as it came, cleared ones dropped, others kept", async () => {
+    client.getProfile.mockResolvedValue({ ...profile, claude_code_env: ENV });
+    await openSection("Claude Code");
+    type("Extra CA certificates", "  /Users/me/proxy-ca.pem ");
+    type("No proxy for", "");
+    fireEvent.click(within(screen.getByRole("region", { name: "Network" })).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.updateProfile).toHaveBeenCalledTimes(1));
+    expect(client.updateProfile).toHaveBeenCalledWith({ claude_code_env: {
+      HTTPS_PROXY: "http://***@proxy.corp:8080", SSL_CERT_FILE: "/etc/ssl/cert.pem", NODE_EXTRA_CA_CERTS: "/Users/me/proxy-ca.pem",
+    } });
+    expect(await screen.findByText(/Claude Code uses it from its next start/)).toBeTruthy();
+  });
+
+  it("shows the core's refusal as it is (the values are checked by the core)", async () => {
+    const { CoreError } = await import("../../api/client");
+    client.updateProfile.mockRejectedValue(new CoreError("invalid_input",
+      "invalid profile: claude_code_env: no such file or folder for NODE_EXTRA_CA_CERTS", { status: 422, hint: "fix the listed fields" }));
+    await openSection("Claude Code");
+    type("Extra CA certificates", "/nonexistent/ca.pem");
+    fireEvent.click(within(screen.getByRole("region", { name: "Network" })).getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("no such file or folder for NODE_EXTRA_CA_CERTS");
   });
 });
 

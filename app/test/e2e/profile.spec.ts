@@ -1,6 +1,7 @@
 // Profile panel against the fake core ("profile" scenario: setup finished, Claude Code signed in,
 // Anthropic key in the Keychain, OpenAI key from the environment, Onshape keys saved, Ollama set).
 // The panel opens from the app's top-bar Profile button (the display name's initials).
+import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
@@ -159,6 +160,37 @@ test("claude_code_card_signs_out_then_in_with_a_blue_waiting_light", async ({ pa
   await expect(page.locator(".led-blue")).toHaveCount(1); // needs the human
   await expect(card).toContainText("signed in", { timeout: 10_000 });
   await expect(page.locator(".led-blue")).toHaveCount(0);
+});
+
+test("claude_code_network_saves_a_ca_file_and_a_proxy_whose_password_never_comes_back", async ({ page, fake }) => {
+  const PROXY_SECRET = "pr0xy-E2E-pw";
+  const ca = resolve("package.json");                                       // any existing absolute file
+  await open(page, "Claude Code");
+  const net = panel(page).getByRole("region", { name: "Network" });
+  await expect(panel(page).getByRole("region", { name: "Your Claude Code" })).toContainText("signed in");
+  // the core checks each value: a proxy that isn't a URL is refused with its message
+  await field(page, "HTTPS proxy").fill("proxy.corp:8080");
+  await net.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(net.getByRole("alert")).toContainText("HTTPS_PROXY must be a proxy URL");
+  await field(page, "HTTPS proxy").fill(`http://alice:${PROXY_SECRET}@proxy.corp:8080`);
+  await field(page, "Extra CA certificates").fill(ca);
+  await field(page, "No proxy for").fill("localhost,.corp.example");
+  await net.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(net.getByRole("status")).toContainText("next start");
+  await expect(field(page, "HTTPS proxy")).toHaveValue("http://***@proxy.corp:8080");
+  await noSecretsAnywhere(page, [PROXY_SECRET]);
+  // reopened: the masked value shows; saving another field keeps the stored password
+  await page.reload();
+  await openPanel(page);
+  await nav(page, "Claude Code").click();
+  await expect(field(page, "Extra CA certificates")).toHaveValue(ca);
+  await field(page, "No proxy for").fill("localhost");
+  await net.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(net.getByRole("status")).toBeVisible();
+  const puts = (await fake.calls()).filter((c) => c.method === "PUT" && c.path === "/profile").map((c) => c.body as { claude_code_env?: Record<string, string> });
+  expect(puts.at(-1)?.claude_code_env).toEqual({ HTTPS_PROXY: "http://***@proxy.corp:8080", NODE_EXTRA_CA_CERTS: ca, NO_PROXY: "localhost" });
+  expect(JSON.stringify(await getJson(fake, "/profile"))).not.toContain(PROXY_SECRET);
+  await noSecretsAnywhere(page, [PROXY_SECRET]);
 });
 
 test("onshape_keys_test_usage_and_caps", async ({ page, fake }) => {

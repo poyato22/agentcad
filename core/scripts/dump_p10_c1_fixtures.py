@@ -11,8 +11,15 @@ routes:
   message_edit_steps.json          GET /runs/{id}/steps after POST /runs/{id}/message {edits}
   error_step_tls_steps.json        GET /runs/{id}/steps of a Claude Code run whose turn failed with
                                    a TLS error: the error step carries kind / cause / hint
+  claude_env_put.json / _get.json  PUT /profile {claude_code_env} with a proxy that has
+                                   credentials, then GET /profile: masked both ways (P10 FWA,
+                                   Profile → Claude Code → Network)
+  claude_env_bad_proxy.json,       the 422 answers for a proxy that isn't a URL, a CA path that
+  claude_env_missing_ca.json,      doesn't exist, and a variable that isn't allowed
+  claude_env_bad_key.json
 
     uv run python scripts/dump_p10_c1_fixtures.py --out tests/fixtures/ui/p10
+    uv run python scripts/dump_p10_c1_fixtures.py --out tests/fixtures/ui/p10 --only claude-env
 """
 import argparse
 import asyncio
@@ -24,7 +31,23 @@ import time
 from pathlib import Path
 
 
-async def dump(out: Path) -> None:
+def dump_claude_env(c, h, write) -> None:
+    """Profile → Claude Code → Network: the env the app edits, masked and validated by the core."""
+    env = {"HTTPS_PROXY": "http://alice:s3cret@proxy.corp:8080", "NO_PROXY": "localhost,.corp.example"}
+    r = c.put("/profile", headers=h, json={"claude_code_env": env})
+    r.raise_for_status()
+    assert "s3cret" not in r.text
+    write("claude_env_put.json", r.json())
+    write("claude_env_get.json", c.get("/profile", headers=h).json())
+    for name, bad in (("claude_env_bad_proxy.json", {"HTTPS_PROXY": "proxy.corp:8080"}),
+                      ("claude_env_missing_ca.json", {"NODE_EXTRA_CA_CERTS": "/nonexistent/mises-ca.pem"}),
+                      ("claude_env_bad_key.json", {"ANTHROPIC_API_KEY": "sk-not-allowed"})):
+        r = c.put("/profile", headers=h, json={"claude_code_env": bad})
+        assert r.status_code == 422, (name, r.status_code, r.text)
+        write(name, {"status": r.status_code, "body": r.json()})
+
+
+async def dump(out: Path, only: str = "all") -> None:
     import mises.runtime as runtime_mod
     from fastapi.testclient import TestClient
     from mises.claude_code import ClaudeCodeSession
@@ -56,6 +79,11 @@ async def dump(out: Path) -> None:
         def ok(r):
             r.raise_for_status()
             return r.json()
+
+        if only == "claude-env":
+            dump_claude_env(c, h, write)
+            print(f"wrote the Claude Code env fixtures to {out}")
+            return
 
         def wait(rid):
             for _ in range(400):
@@ -106,15 +134,17 @@ async def dump(out: Path) -> None:
                       "result": "API Error: Connection error. (cause: unable to get local "
                                 "issuer certificate, code UNABLE_TO_GET_ISSUER_CERT_LOCALLY)"})
         write("error_step_tls_steps.json", ok(c.get(f"/runs/{rid}/steps", headers=h)))
+        dump_claude_env(c, h, write)
     print(f"wrote p10 C1 fixtures to {out} (project={pid!r}, lead={lead})")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--only", choices=["all", "claude-env"], default="all")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
-    asyncio.run(dump(a.out))
+    asyncio.run(dump(a.out, a.only))
 
 
 if __name__ == "__main__":

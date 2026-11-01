@@ -23,12 +23,12 @@ const FALLBACK: Partial<Record<ErrorKind, { title: string; cause: string; hint: 
   tls: {
     title: "Claude Code couldn't make a secure connection to Anthropic",
     cause: "Something between this Mac and Anthropic (a VPN, proxy or antivirus that inspects HTTPS) shows a certificate Claude Code doesn't trust.",
-    hint: "Turn the VPN or proxy off and retry. If you need it, quit Mises and start it from a terminal with NODE_EXTRA_CA_CERTS set to your proxy's CA file, for example: NODE_EXTRA_CA_CERTS=~/proxy-ca.pem open -a Mises",
+    hint: "Set your VPN or proxy's CA file as NODE_EXTRA_CA_CERTS in Profile & settings → Claude Code → Network, then retry. Or turn the VPN or proxy off.",
   },
   network: {
     title: "Claude Code couldn't reach Anthropic",
     cause: "There is no network route to Anthropic: offline, DNS, a firewall, or a proxy Mises doesn't know about.",
-    hint: "Check the connection (and HTTPS_PROXY if you use a proxy), then retry.",
+    hint: "Check the connection, then retry. Behind a proxy, set HTTPS_PROXY in Profile & settings → Claude Code → Network.",
   },
 };
 

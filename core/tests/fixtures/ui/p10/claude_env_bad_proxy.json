@@ -1,0 +1,9 @@
+{
+  "status": 422,
+  "body": {
+    "error": "invalid_input",
+    "message": "invalid profile: claude_code_env: Value error, HTTPS_PROXY must be a proxy URL like http://proxy.example:8080 (http, https, socks5 or socks5h)",
+    "hint": "fix the listed fields",
+    "retryable": false
+  }
+}
