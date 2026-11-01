@@ -287,8 +287,11 @@ async def test_animate_emits_event_and_returns_key_poses(ctx):
          "loop": True, "keyframes": 3}))
     ev = sub.queue.get_nowait()
     assert ev.type == "assembly_animate"
-    assert ev.data == {"project_id": "p", "joint_id": jid, "from": 0, "to": 90,
-                       "duration_s": 3, "loop": True, "loops": asm_tools.MAX_LOOPS}
+    # E5: the motion is auto-saved, so the event carries its animation_id
+    assert {k: v for k, v in ev.data.items() if k != "animation_id"} == {
+        "project_id": "p", "joint_id": jid, "from": 0, "to": 90,
+        "duration_s": 3, "loop": True, "loops": asm_tools.MAX_LOOPS}
+    assert ev.data["animation_id"] == r.data["animation_id"]
     poses = r.data["poses"]
     # only the moving instance's transforms come back
     assert all(set(p["transforms"]) == {b} for p in poses)

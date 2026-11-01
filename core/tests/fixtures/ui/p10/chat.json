@@ -1,0 +1,12 @@
+{
+  "routed": {
+    "agent": "engineer",
+    "reason": "system build",
+    "confidence": 0.85
+  },
+  "new_lead": true,
+  "queued": false,
+  "notes": [],
+  "role": "lead",
+  "run_id": "009d40579ca0"
+}

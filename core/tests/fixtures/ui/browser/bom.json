@@ -1,5 +1,5 @@
 {
-  "project_id": "f478fede9a5b",
+  "project_id": "b0c17fedc0a4",
   "material": "PLA",
   "items": [
     {
@@ -39,7 +39,99 @@
       "geometry": null
     },
     {
-      "id": "bom_e699e99d74ca",
+      "id": "auto_micro_servo_towerpro_sg92r",
+      "kind": "bought",
+      "part_id": "micro_servo_towerpro_sg92r",
+      "catalog_id": "url_7651991da5c5d4f4",
+      "name": "Micro servo - TowerPro SG92R",
+      "qty": 1,
+      "unit_cost": 5.95,
+      "currency": "USD",
+      "vendor": "TowerPro",
+      "url": "https://www.adafruit.com/product/169",
+      "specs": [
+        {
+          "key": "dimensions",
+          "value": "23 x 12.2 x 29",
+          "unit": "mm"
+        },
+        {
+          "key": "weight",
+          "value": 9.0,
+          "unit": "g"
+        },
+        {
+          "key": "stall_torque",
+          "value": "2.5 kg-cm",
+          "unit": null
+        },
+        {
+          "key": "voltage",
+          "value": "4.8 V - 6 V",
+          "unit": null
+        },
+        {
+          "key": "micro_servo_towerpro_sg92r",
+          "value": "ID 169 : Adafruit",
+          "unit": null
+        },
+        {
+          "key": "mass",
+          "value": 9.0,
+          "unit": "g"
+        }
+      ],
+      "notes": "",
+      "source": "auto",
+      "estimate": false,
+      "estimate_note": null,
+      "line_total": 5.95,
+      "geometry_part_id": "micro_servo_towerpro_sg92r",
+      "geometry": "envelope"
+    },
+    {
+      "id": "auto_servo_mg996r_standard",
+      "kind": "bought",
+      "part_id": "servo_mg996r_standard",
+      "catalog_id": "servo_mg996r_standard",
+      "name": "MG996R standard servo",
+      "qty": 1,
+      "unit_cost": null,
+      "currency": null,
+      "vendor": null,
+      "url": null,
+      "specs": [
+        {
+          "key": "body",
+          "value": "40.7 x 19.7 x 42.9",
+          "unit": "mm"
+        },
+        {
+          "key": "mass",
+          "value": 55,
+          "unit": "g"
+        },
+        {
+          "key": "stall_torque",
+          "value": 1.079,
+          "unit": "N·m"
+        },
+        {
+          "key": "tab_hole_spacing",
+          "value": 49.5,
+          "unit": "mm"
+        }
+      ],
+      "notes": "",
+      "source": "auto",
+      "estimate": false,
+      "estimate_note": null,
+      "line_total": null,
+      "geometry_part_id": "servo_mg996r_standard",
+      "geometry": "envelope"
+    },
+    {
+      "id": "bom_89ccd9aa0b4d",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -65,7 +157,7 @@
       "geometry": null
     },
     {
-      "id": "bom_0702773b9346",
+      "id": "bom_7090df45dbcb",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -85,7 +177,7 @@
       "geometry": null
     },
     {
-      "id": "bom_bcdcf60d73b2",
+      "id": "bom_e901843ab03f",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -105,7 +197,7 @@
       "geometry": null
     },
     {
-      "id": "bom_68dba657d09d",
+      "id": "bom_6e505226ad09",
       "kind": "bought",
       "part_id": null,
       "catalog_id": null,
@@ -127,7 +219,7 @@
   ],
   "totals": {
     "by_currency": {
-      "USD": 35.97,
+      "USD": 41.92,
       "EUR": 2.4,
       "unknown": 3.0
     },
@@ -135,7 +227,7 @@
       "USD": 0.27
     },
     "bought": {
-      "USD": 35.7,
+      "USD": 41.65,
       "EUR": 2.4,
       "unknown": 3.0
     },
@@ -149,6 +241,13 @@
         "kind": "bought",
         "currency": "USD",
         "total": 35.7,
+        "count": 1
+      },
+      {
+        "vendor": "TowerPro",
+        "kind": "bought",
+        "currency": "USD",
+        "total": 5.95,
         "count": 1
       },
       {
@@ -173,8 +272,8 @@
         "count": 1
       }
     ],
-    "unpriced": 1,
-    "rows": 5,
-    "qty": 30
+    "unpriced": 2,
+    "rows": 7,
+    "qty": 32
   }
 }

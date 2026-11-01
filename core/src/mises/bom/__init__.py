@@ -360,11 +360,17 @@ def view(store: Store, bom: BomStore, home: Path, project_id: str, *, catalog=No
     `counts` (instance_counts) sets the automatic rows' quantities."""
     stored = bom.rows(project_id)
     covered = {r["part_id"] for r in stored if r.get("part_id")}
+    # a stored bought row for a catalog item supersedes that item's auto row, so a part an agent
+    # inserted (E15) and a curated row for the same item show once, not twice
+    covered_cat = {r["catalog_id"] for r in stored if r.get("catalog_id")}
     tree = {p.id: p for p in store.list_part_rows(project_id)}
     rows = []
     for p in tree.values():
         if p.kind in ("part", "catalog") and p.id not in covered:
-            rows.append(_auto_row(p, home, catalog, material, counts))
+            auto = _auto_row(p, home, catalog, material, counts)
+            if auto.get("catalog_id") and auto["catalog_id"] in covered_cat:
+                continue
+            rows.append(auto)
     for r in stored:
         if r.get("hidden"):
             continue

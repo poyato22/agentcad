@@ -193,6 +193,21 @@ class NewExternalRun(BaseModel):
 
 class Text(BaseModel):
     text: str
+    # E9: when this message edits an earlier one, the edited user step's id; the new turn
+    # references it so the app can mark the old message as edited
+    edits: str | None = None
+
+
+class ImageIn(BaseModel):
+    media_type: str = Field(pattern=r"^image/(png|jpeg|webp|gif)$")
+    data_b64: str = Field(min_length=1, max_length=20_000_000)
+
+
+class ChatBody(BaseModel):
+    """E24: one message to the build's lead (the only way the app talks to a build)."""
+    text: str
+    images: list[ImageIn] = Field(default_factory=list, max_length=8)
+    edits: str | None = None
 
 
 class Resume(BaseModel):
@@ -226,14 +241,25 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     ui_router = build_ui_router(runtime)
 
+    async def _stall_watch():
+        """E9: flag a running turn that has gone quiet for STALL_S, so the app can offer Retry."""
+        while True:
+            await asyncio.sleep(20)
+            try:
+                runtime.scan_stalls()
+            except Exception:  # noqa: BLE001 - a watchdog must never crash the server
+                log.debug("stall scan failed", exc_info=True)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         # warm 2D drawings in the background as parts change (U6)
         runtime.drawing_pregen.start()
+        stall_task = asyncio.create_task(_stall_watch())
         try:
             async with manager.run():
                 yield
         finally:
+            stall_task.cancel()
             await runtime.drawing_pregen.aclose()
             # background work of the UI routes (OpenRouter refresh, model downloads) stops here
             await ui_router.aclose()
@@ -407,11 +433,47 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         return [finite_json(s.model_dump(mode="json"))
                 for s in runtime.store.steps(run_id, after_id=after_id)]
 
+    @app.post("/projects/{project_id}/chat")
+    async def chat(project_id: str, body: ChatBody):
+        """E24: one chat per build. The message always goes to the build's lead (created on the
+        default model when there is none); the lead delegates on its own. No run selection, no
+        model choice."""
+        pid = _projects.check_project(runtime.store, project_id)
+        prof = load_profile(runtime.home)
+        images = [(i.media_type, i.data_b64) for i in body.images] or None
+        log = {"text": body.text, "edits": body.edits} if body.edits else None
+        out = await _lead.submit(runtime, body.text, project_id=pid,
+                                 default_agent=prof.default_agent, images=images, log=log)
+        return {**out, "routed": out["routed"].model_dump()}
+
     @app.post("/runs/{run_id}/message")
     async def message(run_id: str, body: Text):
         _run(run_id)
-        await runtime.send(run_id, body.text)
+        log = {"text": body.text, "edits": body.edits} if body.edits else None
+        await runtime.send(run_id, body.text, log=log)
         return {"ok": True}
+
+    @app.delete("/runs/{run_id}/queue/{message_id}")
+    async def cancel_queued(run_id: str, message_id: str):
+        """E9: cancel a message still waiting in the lead's queue (not yet delivered)."""
+        _run(run_id)
+        removed = _lead.cancel_queued(runtime, run_id, message_id)
+        if not removed:
+            raise MisesError(ErrorCode.NOT_FOUND,
+                             f"no queued message {message_id!r} to cancel",
+                             hint="it was already delivered or cancelled")
+        return {"ok": True}
+
+    @app.post("/runs/{run_id}/queued/{message_id}/cancel")
+    async def cancel_queued_post(run_id: str, message_id: str):
+        """E9: the app's form of the queued-message cancel (same as the DELETE route)."""
+        return await cancel_queued(run_id, message_id)
+
+    @app.post("/runs/{run_id}/retry")
+    async def retry(run_id: str):
+        """E9: re-send the run's last user turn after an error or a stall."""
+        _run(run_id)
+        return await runtime.retry_last(run_id)
 
     @app.post("/runs/{run_id}/resume")
     async def resume(run_id: str, body: Resume | None = None):

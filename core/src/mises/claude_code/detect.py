@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -21,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..acp_host.session import agent_environment
+
+_log = logging.getLogger(__name__)
 
 VERSION_TIMEOUT_S = 10
 STATUS_TIMEOUT_S = 15
@@ -44,12 +47,30 @@ _TOKENISH = re.compile(
 MCP_TOOL_TIMEOUT_MS = int((8 * 3600 + 600) * 1000)
 
 
+def _profile_claude_env() -> dict[str, str]:
+    """The user's configured extra environment for Claude Code (E3: CA bundle / proxy). A
+    GUI-launched core does not inherit the shell's exports, so these come from the profile.
+    Read defensively: a missing or unreadable profile forwards nothing."""
+    try:
+        from ..platform import data_home
+        from ..profile import load_profile, missing_claude_ca_paths
+        env = dict(load_profile(data_home()).claude_code_env)
+    except Exception:  # noqa: BLE001 - never block starting claude
+        _log.warning("the profile could not be read: its Claude Code environment is not applied")
+        return {}
+    gone = missing_claude_ca_paths(env)
+    if gone:            # M1: names only, never values
+        _log.warning("Claude Code environment: %s not applied (the path no longer exists)",
+                     ", ".join(gone))
+    return {k: v for k, v in env.items() if k not in gone}
+
+
 def claude_environment() -> dict[str, str]:
     """The environment every `claude` Mises starts gets (status, login and runs alike, so the
     status shown matches what a run sees): the acp agent allowlist (HOME, PATH, locale,
     proxies...) plus CLAUDE_CONFIG_DIR when the user set it. Never synthesized: setting it
     changes which Keychain entry Claude Code uses. No API keys or tokens are passed."""
-    env = agent_environment()
+    env = agent_environment(_profile_claude_env())
     if os.environ.get("CLAUDE_CONFIG_DIR"):
         env["CLAUDE_CONFIG_DIR"] = os.environ["CLAUDE_CONFIG_DIR"]
     # Claude Code's own MCP client must not time a Mises tool out before the Gate does: a design

@@ -475,6 +475,8 @@ async def mech_check(ctx: ToolContext, args: CheckArgs) -> ToolOutput:
                           "; ".join(f"{e['loop_id']}: {e['reason']}" for e in loops)
                           if loops else "every loop closes at the current pose"))
     results += design_checks(asm, jf)
+    if rec is not None:
+        results.append(await _health_check(ctx, pid, rec))
     if args.sweep and rec is not None:
         registry = getattr(ctx, "registry", None) or (getattr(ctx, "services", {}) or {}).get(
             "registry")
@@ -489,6 +491,34 @@ async def mech_check(ctx: ToolContext, args: CheckArgs) -> ToolOutput:
                               f"{n['pass']} pass" + (f" (group {args.group})" if args.group
                                                      else " (all joints)"),
                       data={"results": results, "counts": n}, step_kind=StepKind.MEASURE)
+
+
+async def _health_check(ctx: ToolContext, pid: str, rec: dict) -> dict:
+    """C1's assembly health (E33) at the current pose, for this group's instances: real
+    overlaps (designed contacts up to CONTACT_TOL_MM3 excused) and parts nothing holds."""
+    try:
+        from ..assembly.review import assembly_report
+    except ImportError:          # a core without C1: the ROM sweep still checks interference
+        return _check("assembly_health", "warn", "assembly_health is not available")
+    from ..assembly import tools as atools
+    try:
+        rep = await assembly_report(atools._store(ctx), Path(ctx.workdir) / "parts", pid)
+    except MisesError as e:
+        return _check("assembly_health", "warn", f"health not run ({e.message})")
+    group = set(rec["instances"].values())
+    contacts = {frozenset(c) for c in rec.get("contacts", [])}
+    bad = [o for o in rep.get("overlaps", [])
+           if {o.get("a_id"), o.get("b_id")} & group
+           and not (frozenset((o.get("a_id"), o.get("b_id"))) in contacts
+                    and float(o.get("volume_mm3") or 0) <= CONTACT_TOL_MM3)]
+    floating = [f for f in rep.get("floating", []) if f.get("instance_id") in group]
+    if bad or floating:
+        return _check("assembly_health", "fail",
+                      f"{len(bad)} overlap(s), {len(floating)} floating part(s) in this "
+                      f"mechanism ({rep.get('overlap_method', 'bbox')})", overlaps=bad[:20],
+                      floating=floating[:20])
+    return _check("assembly_health", "pass", "no overlap or floating part at this pose "
+                  f"({rep.get('overlap_method', 'bbox')})")
 
 
 def _has(registry, name: str) -> bool:

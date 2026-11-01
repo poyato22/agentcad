@@ -272,7 +272,8 @@ async def test_agent_message_waits_for_the_users_approval_of_the_exact_text(rt, 
     rt.store.update_run(lead, role="lead")
     sent = []
 
-    async def fake_send(run_id, text, *, log=None):
+    async def fake_send(run_id, text, *, log=None, user_turn=True):
+        assert user_turn is False         # an agent's message is not a user turn (C1 I2)
         sent.append((run_id, text, log))
     monkeypatch.setattr(rt, "send", fake_send)
     # rejected: never reaches the lead

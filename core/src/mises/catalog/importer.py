@@ -726,9 +726,10 @@ def item_id_for(url: str) -> str:
 
 
 async def import_url(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
-                     resolve: Resolver = _system_resolve, strip_query: bool = False) -> dict:
+                     resolve: Resolver = _system_resolve, strip_query: bool = False,
+                     redirect_ok: RedirectCheck | None = None) -> dict:
     return extract(await fetch(url, transport=transport, resolve=resolve,
-                               strip_query=strip_query))
+                               strip_query=strip_query, redirect_ok=redirect_ok))
 
 
 # ---- untrusted data for agents

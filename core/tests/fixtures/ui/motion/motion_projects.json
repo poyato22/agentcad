@@ -1,13 +1,14 @@
 [
   {
-    "id": "16c880ed9e83",
+    "id": "5a43aab3bcc4",
     "name": "Default",
-    "created_at": 1793431165.0312471,
-    "updated_at": 1793431165.0312471,
-    "last_edited_at": 1793431167.7552614,
+    "created_at": 1793523031.576052,
+    "updated_at": 1793523031.576052,
+    "last_edited_at": 1793523036.9361567,
     "trashed_at": null,
     "part_count": 1,
     "run_count": 1,
-    "onshape": null
+    "onshape": null,
+    "mass_g": 5.7458
   }
 ]

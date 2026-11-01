@@ -77,8 +77,13 @@ describe("contract: real core browser/BOM answers ↔ app schemas ↔ fake core"
 
   it("part_show's real result is ids only, and its card_id resolves to a card", () => {
     const r = partShowResultSchema.parse(real("part_show_result.json"));
-    expect(Object.keys(real("part_show_result.json") as object).sort()).toEqual(["card", "card_id", "catalog_id", "snapshot_id", "untrusted_page_data"]);
+    // P10 E15: plus where the part landed — the build part and its parts-list row (the
+    // card's "In build" / "In parts list" chips)
+    expect(Object.keys(real("part_show_result.json") as object).sort()).toEqual(
+      ["bom_id", "card", "card_id", "catalog_id", "item_id", "part_id", "snapshot_id", "untrusted_page_data"]);
     expect(partCardSchema.parse(real("browser_card.json")).id).toBe(r.card_id);
+    expect(r.part_id).toBeTruthy();
+    expect(r.bom_id).toBe(`auto_${r.part_id}`);
   });
 
   it("POST / PATCH answers and the extra-field refusal match the real core", async () => {

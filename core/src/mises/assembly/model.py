@@ -527,15 +527,18 @@ class AssemblyStore:
     # ---- named animations (Plan 9 G-D): an agent's motion, kept so a view card can replay it
     def save_animation(self, project_id: str, name: str, spec: dict) -> dict:
         """Store `spec` ({steps, loops, duration_s}) under `name` in the build; saving the same
-        name again replaces it (same id). Returns {id, name, **spec}."""
+        name again replaces it (same id) and moves it to newest (E5: ordered by recency, so Play
+        picks the last motion the agent saved). Returns {id, name, **spec}."""
         body = {k: v for k, v in spec.items() if k not in ("id", "name")}
         with self._lock:
             row = self._db.execute("SELECT id FROM assembly_animations WHERE project_id=? AND"
                                    " name=?", (project_id, name)).fetchone()
             aid = row["id"] if row else _new_id()
             if row:
-                self._db.execute("UPDATE assembly_animations SET spec=? WHERE project_id=? AND"
-                                 " id=?", (json.dumps(body), project_id, aid))
+                self._db.execute("UPDATE assembly_animations SET spec=?, ord=? WHERE project_id=?"
+                                 " AND id=?", (json.dumps(body),
+                                               self._next_ord("assembly_animations", project_id),
+                                               project_id, aid))
             else:
                 self._db.execute("INSERT INTO assembly_animations VALUES (?,?,?,?,?)",
                                  (project_id, aid, name, json.dumps(body),

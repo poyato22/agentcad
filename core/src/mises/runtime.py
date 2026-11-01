@@ -60,7 +60,7 @@ from .parallel import Limits, ParallelLimiter
 from .platform import data_home, keychain_get, register_sandbox_home
 from .print.tools import register_print_tools
 from .profile import load_profile
-from .providers.registry import DEFAULT_MODEL, VENDORS, resolve
+from .providers.registry import DEFAULT_MODEL, VENDORS, has_key, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
 from . import budget as budget_mod
@@ -143,6 +143,10 @@ def is_vision_model(model_ref: str) -> bool:
 
 
 USER = "local"
+
+# E34: the Claude Code alias default_model_ref / the no-key fallback pick when they route a run
+# to the user's Claude Code (signed in, no Anthropic key)
+CLAUDE_DEFAULT_ALIAS = "sonnet"
 
 LOGIN_TIMEOUT_S = 600.0            # a `claude auth login` left open in the browser is stopped
 # GET /models and GET /setup reuse a `claude auth status` answer this young (the app asks both on
@@ -297,6 +301,12 @@ class Runtime:
         # Claude Code runs this process drives; the MCP endpoint (url, MCP-only token) of the
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
+        self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
+        # E33: root run id -> the build whose assembly its turn changed; the render waiting for
+        # its next tool result; the turn-end review tasks (awaited by tests)
+        self.assembly_touched: dict[str, str] = {}
+        self.pending_assembly_images: dict[str, list] = {}
+        self._after_turn_tasks: set[asyncio.Task] = set()
         self._external_slots: dict[str, tuple[asyncio.Future[bool] | None, dict]] = {}
         self.mcp_endpoint: tuple[str, str] | None = None
         self._mcp_autostart: Callable[[], Awaitable[None]] | None = None
@@ -677,9 +687,9 @@ class Runtime:
         return Limits(total)
 
     def parallel_limit(self, ref: str | None = None) -> int:
-        """How many runs on `ref` (default: the profile's default model) can work at once."""
+        """How many runs on `ref` (default: the build's default model) can work at once."""
         prof = self.profile()
-        ref = ref or prof.default_model or DEFAULT_MODEL
+        ref = ref or self.default_model_ref(prof=prof)
         lim = self._limits_for(ref)
         return min(lim.total, lim.group_cap) if lim.group is not None else lim.total
 
@@ -687,7 +697,7 @@ class Runtime:
         """GET /status `parallel`: {limit, auto, reason} for `ref` (default: the profile's
         default model)."""
         prof = self.profile()
-        ref = ref or prof.default_model or DEFAULT_MODEL
+        ref = ref or self.default_model_ref(prof=prof)
         limit = self.parallel_limit(ref)
         auto = prof.max_parallel_agents == "auto"
         if auto:
@@ -828,17 +838,40 @@ class Runtime:
         if caps is None:
             caps = Caps(onshape_calls_run=prof.onshape_calls_run_cap,
                         onshape_calls_year=prof.onshape_calls_year_cap)
-        ref = self.model_ref_for(defn, model_ref, prof)
+        # E34: warm the Claude Code sign-in cache so default_model_ref can read it without a
+        # network call when the build has no key configured
+        if model_ref is None:
+            with contextlib.suppress(Exception):
+                await self.claude_status_cached()
+        ref = self.model_ref_for(defn, model_ref, prof, project_id=project_id)
         alias = model_alias(ref)
+        fallback_from: str | None = None
+        provider = model = None
+        if alias is None:
+            try:
+                provider, model = self._resolve_provider(ref, prof)
+            except MisesError as e:
+                # E34 single-point defence: an unresolvable IMPLICIT default (no API key) +
+                # Claude Code signed in routes to the user's Claude Code with a visible note. An
+                # explicit model_ref, an agent's pinned model or a non-Anthropic profile default
+                # is the user's choice and is never overridden (I3): its key error stands.
+                fb = (await self._claude_fallback_for(e)
+                      if self._implicit_default(defn, model_ref, prof) else None)
+                if fb is None:
+                    raise
+                fallback_from, ref, alias = ref, fb, model_alias(fb)
         if alias is not None:
-            return await self._start_claude_run(agent, prompt, alias, edit_scope=edit_scope,
-                                                read_scope=read_scope, caps=caps,
-                                                parent_id=parent_id,
-                                                allowed_classes=allowed_classes,
-                                                sketch_id=sketch_id, project_id=project_id,
-                                                meta=meta, log=log, design_words=words,
-                                                first_context=first_context, images=images)
-        provider, model = self._resolve_provider(ref, prof)
+            rid = await self._start_claude_run(agent, prompt, alias, edit_scope=edit_scope,
+                                               read_scope=read_scope, caps=caps,
+                                               parent_id=parent_id,
+                                               allowed_classes=allowed_classes,
+                                               sketch_id=sketch_id, project_id=project_id,
+                                               meta=meta, log=log, design_words=words,
+                                               first_context=first_context, images=images)
+            if fallback_from is not None:
+                self._note_model_fallback(rid, fallback_from, ref)
+            return rid
+        assert provider is not None
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
         run = self.store.create_run(agent, provider.name, model, prompt, parent_id=parent_id,
@@ -981,15 +1014,94 @@ class Runtime:
             blocks += [ImageBlock(media_type=m, data_b64=d) for m, d in images]
         return blocks, {"text": prompt, "context": ctx, "images": len(blocks) - 1}
 
-    def model_ref_for(self, defn, model_ref: str | None = None, prof=None) -> str:
-        """model_ref, else the definition's model (unless "inherit"), else the profile's
-        default model, else DEFAULT_MODEL."""
+    def model_ref_for(self, defn, model_ref: str | None = None, prof=None,
+                      project_id: str | None = None) -> str:
+        """model_ref, else the definition's model (unless "inherit"), else the build's default
+        model (default_model_ref: the build's lead model, the profile default, or the user's
+        Claude Code when no key is set)."""
         if model_ref:
             return model_ref
         if defn is not None and defn.model and defn.model != "inherit":
             return defn.model
+        return self.default_model_ref(project_id, prof=prof)
+
+    def _claude_signed_in_cached(self) -> bool:
+        """Whether a cached `claude auth status` says signed in (E34, no network call). The
+        hot paths warm the cache (claude_status_cached) before calling the sync resolvers."""
+        c = self._claude_status_cache
+        return bool(c is not None and c[1][1].signed_in)
+
+    def _lead_model_ref(self, project_id: str | None) -> str | None:
+        """The build's current lead model as a ref (E34): its live session/loop ref, else its
+        stored provider/model when that still names a real model. None when there is no lead."""
+        if not project_id:
+            return None
+        from .orchestrator.lead import find_lead
+        try:
+            lead = find_lead(self.store, project_id)
+        except Exception:  # noqa: BLE001 - a routing hint must never raise
+            return None
+        if lead is None:
+            return None
+        st = self._claude.get(lead.id)
+        if st is not None and st.ref:
+            return st.ref
+        rst = self._runs.get(lead.id)
+        if rst is not None and getattr(rst, "ref", None):
+            return rst.ref
+        ref = f"{lead.provider}/{lead.model}"
+        if lead.provider == CLAUDE_CODE:
+            return ref
+        try:
+            self.check_model_ref(ref)
+        except MisesError:
+            return None
+        return ref
+
+    def default_model_ref(self, project_id: str | None = None, *, prof=None) -> str:
+        """The model a run of this build should use when nothing pins one (E34): the build's
+        lead model, then the profile default, then the user's Claude Code when it is signed in
+        and no Anthropic key is set, then the Anthropic default."""
         prof = prof if prof is not None else self.profile()
-        return prof.default_model or DEFAULT_MODEL
+        lead_ref = self._lead_model_ref(project_id)
+        if lead_ref:
+            return lead_ref
+        if prof.default_model:
+            return prof.default_model
+        if not has_key("anthropic") and self._claude_signed_in_cached():
+            return f"{CLAUDE_CODE}/{CLAUDE_DEFAULT_ALIAS}"
+        return DEFAULT_MODEL
+
+    @staticmethod
+    def _implicit_default(defn, model_ref: str | None, prof) -> bool:
+        """The run's model came from the default path, not a choice (E34 I3): no explicit
+        model_ref, no pinned agent model, and the profile default (if any) is Anthropic's."""
+        from .providers.registry import ref_vendor
+        if model_ref:
+            return False
+        if defn is not None and defn.model and defn.model != "inherit":
+            return False
+        return not prof.default_model or ref_vendor(prof.default_model) == "anthropic"
+
+    async def _claude_fallback_for(self, e: MisesError) -> str | None:
+        """The Claude Code ref to use after a provider could not be resolved for lack of an API
+        key, when the user's Claude Code is signed in (E34 single-point defence); else None."""
+        if e.code != ErrorCode.DENIED or "no API key" not in (e.message or ""):
+            return None
+        with contextlib.suppress(Exception):
+            await self.claude_status_cached()
+        return (f"{CLAUDE_CODE}/{CLAUDE_DEFAULT_ALIAS}" if self._claude_signed_in_cached()
+                else None)
+
+    def _note_model_fallback(self, run_id: str, frm: str, to: str) -> None:
+        """A visible note that a run routed to Claude Code because its chosen model had no key
+        (E34 single-point defence)."""
+        from .providers.registry import ref_vendor
+        vendor = ref_vendor(frm) or frm
+        note = f"no API key for {vendor}; using your Claude Code instead"
+        with contextlib.suppress(Exception):
+            self.store.append_step(run_id, StepKind.DECISION,
+                                   {"model_fallback": {"from": frm, "to": to, "reason": note}})
 
     def _note_shape_complexity(self, run_id: str, prompt: str) -> dict:
         """Estimate how shape-heavy the request is (G-R6), store it on the run and announce it,
@@ -1201,7 +1313,11 @@ class Runtime:
         if st is not None and is_vision_model(st.ref):
             return st.loop.provider, st.loop.model, None
         prof = self.profile()
-        fallback = prof.default_model or DEFAULT_MODEL
+        try:
+            project_id = self.store.get_run(run_id).project_id
+        except KeyError:
+            project_id = None
+        fallback = self.default_model_ref(project_id, prof=prof)
         if is_vision_model(fallback) and model_alias(fallback) is None:
             try:
                 provider, model = self._resolve_provider(fallback, prof)
@@ -1328,19 +1444,33 @@ class Runtime:
             self.parallel.release(rid)
         st.result = result
         if result.stop_reason == "end_turn" and not st.cancel_requested:
-            self._finish_checks(rid)         # Plan 10 C3: the engineering "done" gate
+            # Plan 10 C3 engineering gate + C1 E33 assembly review: one warning step
+            self._finish_checks(rid, result)
             # a Claude Code turn ended but the session stays open for the next message
             self.activity_tracker(rid).set("idle", "waiting for your next message")
         return result
 
-    def _finish_checks(self, run_id: str) -> None:
-        """A lead's turn ended: warn (a VERIFY step) when its build has moving joints and its
-        engineering checks are missing, failing or stale (engineering/pipeline.py)."""
-        from .engineering.pipeline import finish_warning
-        text = finish_warning(self, run_id)
-        if text:
-            self.events.publish(Event(type="engineering_warning", run_id=run_id,
-                                      data={"text": text}))
+    def _finish_checks(self, run_id: str, result: RunResult | None = None) -> None:
+        """A turn ended (end_turn): the finish checks, as ONE warning step. When the turn
+        changed the assembly, the E33 review runs in the background (render, OCCT health) and
+        writes the combined step itself; otherwise the C3 engineering gate warns now (a VERIFY
+        step) when the build has moving joints and its checks are missing, failing or stale."""
+        if result is not None and self._schedule_after_turn(run_id, result):
+            return
+        from .engineering.pipeline import finish_report
+        got = finish_report(self, run_id)
+        if got is not None:
+            self._turn_warning(run_id, *got)
+
+    def _turn_warning(self, run_id: str, text: str, payload: dict,
+                      health: dict | None = None) -> None:
+        """The single finish-check step of a turn (VERIFY, kind engineering_checks) and its
+        engineering_warning event; `health` adds the E33 assembly findings to both."""
+        body = {**payload, "warning": text, **({"assembly_health": health} if health else {})}
+        with contextlib.suppress(Exception):
+            self.store.append_step(run_id, StepKind.VERIFY, body)
+        self.events.publish(Event(type="engineering_warning", run_id=run_id, data={
+            "text": text, **({"assembly_health": health} if health else {})}))
 
     def _is_claude_run(self, run_id: str) -> bool:
         if run_id in self._claude:
@@ -1640,7 +1770,8 @@ class Runtime:
                                error=f"{type(e).__name__}: {e}")
         st.result, st.history = result, result.messages
         if result.stop_reason == "end_turn":
-            self._finish_checks(run_id)      # Plan 10 C3: the engineering "done" gate
+            # Plan 10 C3 engineering gate + C1 E33 assembly review: one warning step
+            self._finish_checks(run_id, result)
         status = _STATUS[result.stop_reason]
         self.store.update_run(run_id, status=status)
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
@@ -1669,11 +1800,14 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         busy = self.run_busy(run_id)
+        harness = bool(log and (CLASSIFY in log or "system_note" in log))
         words, log = _user_words(text, log), _public_log(log)
         self._sending.add(run_id)
         try:
             if not busy and user_turn:
-                self.new_user_turn(run_id)
+                # a sub-agent's fresh budget window is only for the user's own words: a log that
+                # marks harness text (_classify) or a system note never opens one (E20 I2)
+                self.new_user_turn(run_id, sub_window=not harness)
                 if words.strip():      # only the user's own words move the class (G-B I3)
                     self._raise_design_class(run_id, words)
             elif user_turn:     # joins a running turn: still the user, so notes may wake it
@@ -1687,7 +1821,7 @@ class Runtime:
         finally:
             self._sending.discard(run_id)
 
-    def new_user_turn(self, run_id: str) -> None:
+    def new_user_turn(self, run_id: str, *, sub_window: bool = True) -> None:
         """The one hook for "a new user turn begins on this run" (a message to an idle run, or
         a queued message the lead's drainer delivers): everything scoped to a user turn starts
         afresh here.
@@ -1706,6 +1840,32 @@ class Runtime:
             return
         if run.role == "lead":
             budget_mod.start_turn(self.store, run_id)
+        elif run.parent_id is not None and sub_window:
+            # E20: a direct user message to a sub-agent is its own user turn, so it gets a
+            # fresh dollar budget (its last turn, or a lead turn, may have spent the family cap)
+            self._open_sub_window(run_id)
+
+    def _open_sub_window(self, run_id: str) -> None:
+        """A direct user message to a sub-agent opens a fresh dollar window for it (E20): raise
+        its own per-run cap past what it has spent, and reset the root family window when the
+        root is a lead, so a user driving a sub directly is never blocked by a spent cap."""
+        from .types import Caps
+        try:
+            run = self.store.get_run(run_id)
+            pol = self.store.current_policy(run_id)
+        except KeyError:
+            return
+        fresh = run.usd + Caps().usd_run
+        if pol.caps.usd_run < fresh:
+            self.store.create_policy(run_id, list(pol.edit_scope), list(pol.read_scope),
+                                     pol.caps.model_copy(update={"usd_run": fresh}),
+                                     pol.allowed_classes)
+        try:
+            root, _family = self.store.run_family(run_id)
+            if root != run_id and self.store.get_run(root).role == "lead":
+                budget_mod.start_turn(self.store, root)
+        except KeyError:
+            pass
 
     def _raise_design_class(self, run_id: str, text: str) -> None:
         """A follow-up message may change the class (design_intensity.follow_up): it rises on
@@ -1786,6 +1946,151 @@ class Runtime:
     def is_live(self, run_id: str) -> bool:
         """True if this process drives the run (internal loop or external)."""
         return run_id in self._runs or run_id in self._external or run_id in self._claude
+
+    # ---- E33: the lead sees the whole assembly after a turn that changed it
+    def mark_assembly_changed(self, run_id: str, project_id: str) -> None:
+        """An assembly-changing tool (or auto-place) ran in `run_id`'s turn: its root agent
+        (the lead, for a sub-agent's change) reviews the assembly when its turn ends."""
+        try:
+            root, _family = self.store.run_family(run_id)
+            run = self.store.get_run(root)
+        except KeyError:
+            return
+        if run.provider in ("ui", "acp") or run.archived:
+            return
+        self.assembly_touched[root] = project_id
+
+    def take_assembly_images(self, run_id: str) -> list:
+        """The whole-assembly render waiting for this run's next tool result (Gate)."""
+        return self.pending_assembly_images.pop(run_id, [])
+
+    def _schedule_after_turn(self, run_id: str, result: RunResult) -> bool:
+        """Start the E33 review of a root turn that changed the assembly; True when started
+        (it then writes the turn's finish-check step)."""
+        if result.stop_reason != "end_turn" or run_id not in self.assembly_touched:
+            return False
+        try:
+            if self.store.get_run(run_id).parent_id is not None:
+                return False            # a sub-agent's changes are reviewed by its root
+            loop = asyncio.get_running_loop()
+        except (KeyError, RuntimeError):
+            return False
+        task = loop.create_task(self._after_turn(run_id, result.final_text))
+        self._after_turn_tasks.add(task)
+        task.add_done_callback(self._after_turn_tasks.discard)
+        return True
+
+    async def _after_turn(self, run_id: str, final_text: str | None) -> None:
+        """E33 turn-end review of a turn that changed the assembly: the health report with real
+        interference volumes and a whole-assembly render (problem parts tinted). When the agent
+        reported the work done while the health has errors, a visible warning step and a system
+        note (with the render) tell it to fix them — the user is never blocked. Otherwise the
+        render rides along with the agent's next tool result. Never raises."""
+        pid = self.assembly_touched.pop(run_id, None)
+        if pid is None:
+            return
+        from .assembly import review
+        from .engineering.pipeline import finish_report
+        try:
+            report = await review.assembly_report(self.assembly_store, self.home / "parts", pid)
+            review.record_health(self, pid, report)     # C3's pipeline sees a fresh verdict
+            images = await review.overview_images(self.home, self.assembly_store, pid, report)
+        except Exception:  # noqa: BLE001 - a review must never break the run
+            log.warning("assembly review after %s's turn failed", run_id, exc_info=True)
+            report, images = None, []
+        bad = report is not None and not report["ok"] and review.claims_done(final_text)
+        info = ({"project_id": pid, "summary": report["summary"],
+                 "overlaps": report["overlaps"], "stray": report["stray"],
+                 "floating": report["floating"], "images": len(images)} if bad else None)
+        eng = finish_report(self, run_id)              # the C3 gate, after the fresh health
+        if eng is not None or info is not None:
+            text, payload = eng or ("", {"kind": "engineering_checks", "project_id": pid})
+            if info is not None:
+                text = (text + " " if text else "") + (
+                    f"You reported done, but the assembly is not clean ({report['summary']}).")
+            self._turn_warning(run_id, text, payload, info)
+        if not bad:
+            if images:
+                self.pending_assembly_images[run_id] = images
+            return
+        from .orchestrator.lead import deliver_note
+        await deliver_note(self, run_id, review.fix_note(report),
+                           {"kind": "assembly_health", "summary": report["summary"]},
+                           images=[(i.media_type, i.data_b64) for i in images] or None)
+
+    #: stored user-step fields a retry sends back with the text (M3)
+    RETRY_LOG_KEYS = ("text", "feedback", "edits")
+
+    def _last_user_turn(self, run_id: str) -> tuple[str, dict | None] | None:
+        """The run's most recent USER-origin message (E9 retry): skips system notes, agent
+        messages (a studies agent's report), concept picks and harness text. (text, the stored
+        log to resend) or None."""
+        try:
+            steps = self.store.steps(run_id, [StepKind.MESSAGE])
+        except Exception:  # noqa: BLE001
+            return None
+        for s in reversed(steps):
+            pl = s.payload
+            if pl.get("role") != "user" or not str(pl.get("text") or "").strip():
+                continue
+            if "system_note" in pl or "from_agent" in pl or CLASSIFY in pl or \
+                    any(k.startswith("concept") for k in pl):
+                continue
+            log = {k: pl[k] for k in self.RETRY_LOG_KEYS if k in pl}
+            return str(pl["text"]), (log if set(log) - {"text"} else None)
+        return None
+
+    async def retry_last(self, run_id: str) -> dict:
+        """E9: re-send the run's last user turn after an error or a stall. A Claude Code run
+        resumes its session; a native run continues in place."""
+        try:
+            self.store.get_run(run_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        if self.run_busy(run_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
+                             hint="wait for it to finish or cancel it")
+        turn = self._last_user_turn(run_id)
+        if turn is None:
+            raise MisesError(ErrorCode.INVALID_INPUT, "this run has no message to retry",
+                             hint="send a new message instead")
+        text, log = turn
+        await (self.send(run_id, text, log=log) if log else self.send(run_id, text))
+        return {"ok": True, "run_id": run_id}
+
+    #: a running turn with no activity for this long is reported as stalled (E9)
+    STALL_S = 90.0
+
+    def scan_stalls(self, *, now: float | None = None) -> list[str]:
+        """Publish a `run_stalled` event for each run this process drives whose turn has made no
+        activity for STALL_S and is not waiting on the user (a question or an approval). Each
+        run is reported once until it becomes active again. Returns the newly-stalled ids."""
+        now = time.time() if now is None else now
+        newly: list[str] = []
+        live = set(self._runs) | set(self._claude)
+        for rid in list(live):
+            if not self.run_busy(rid):
+                self._stalled.discard(rid)
+                continue
+            try:
+                run = self.store.get_run(rid)
+            except KeyError:
+                self._stalled.discard(rid)
+                continue
+            if run.status != "running" or self.pending_questions(rid) \
+                    or self.store.pending_approvals(rid):
+                continue
+            idle = now - float(run.last_activity_at or run.created_at or now)
+            if idle < self.STALL_S:
+                self._stalled.discard(rid)
+                continue
+            if rid in self._stalled:
+                continue
+            self._stalled.add(rid)
+            newly.append(rid)
+            self.events.publish(Event(type="run_stalled", run_id=rid,
+                                      data={"run_id": rid, "idle_s": round(idle, 1)}))
+        return newly
 
     def is_cancelling(self, run_id: str) -> bool:
         """True if cancel was requested on an internal run and it has not been resumed since."""

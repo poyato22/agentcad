@@ -26,6 +26,9 @@ LONG_TOOL_TIMEOUT_S = 6 * 3600
 # sub-agents a run's family may start per user message (profile max_spawns_per_turn): a
 # fan-out guard, since each child gets its own fetch and Onshape headroom within the family's
 DEFAULT_SPAWNS_PER_TURN = 8
+# E20: the least a child's dollar cap is floored to when the family budget is nearly spent, so
+# a spawned sub-agent can still do useful work (the family sum still holds the tree to the root)
+CHILD_USD_FLOOR = 1.0
 # Tools that delegate to other agents. A worker subagent (designer, verifier, …) must not get
 # these, or it could orchestrate past the depth limit's intent; only the top-level run delegates.
 DELEGATION_TOOLS = frozenset({"agent_spawn", "agent_wait", "agent_result", "orchestrator_run",
@@ -151,9 +154,12 @@ def child_policy(runtime: Runtime, parent_run_id: str, agent: str,
     usd_left = budget.remaining_usd(runtime.store, parent_run_id)
     if (err := budget.usd_exhausted(runtime.store, parent_run_id)) is not None:
         raise err
+    # E20: floor the child's dollar cap so a nearly-spent family still lets a child do real
+    # work; the family sum (budget.py) still holds the whole tree to the root's cap
+    usd_cap = min(parent.caps.usd_run, max(CHILD_USD_FLOOR, usd_left))
     caps = parent.caps.model_copy(update={"onshape_calls_run": min(parent.caps.onshape_calls_run,
                                                                    remaining),
-                                          "usd_run": min(parent.caps.usd_run, usd_left)})
+                                          "usd_run": usd_cap})
     return {"edit_scope": tuple(_intersect(parent.edit_scope, edit_scope)),
             "read_scope": tuple(parent.read_scope), "caps": caps,
             "allowed_classes": classes, "parent_id": parent_run_id,
@@ -242,7 +248,8 @@ class Orchestrator:
             if attempt == 0:
                 await rt.send(pid, "The plan was rejected:\n- " + "\n- ".join(problems)
                               + "\nSubmit a corrected plan with orchestrator_submit_plan.",
-                              log={"_classify": None})      # the harness's words, not the user's
+                              log={"_classify": None},      # the harness's words, not the user's
+                              user_turn=False)              # E20 I2: never a fresh budget
         raise MisesError(ErrorCode.INVALID_INPUT, "planner produced an invalid plan: "
                          + "; ".join(problems))
 

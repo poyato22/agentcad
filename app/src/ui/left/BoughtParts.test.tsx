@@ -35,7 +35,7 @@ describe("Bought parts (E14)", () => {
   it("a row a build part draws opens that part's 3D model", () => {
     buildBom.value = { ...REAL, items: REAL.items.map((r) => (r.name === "Micro servo SG92R" ? { ...r, geometry_part_id: "servo_1", geometry: "builtin" } : r)) };
     const { getAllByTestId, getByTestId } = render(<BoughtParts />);
-    fireEvent.click(getAllByTestId("bought-row").find((b) => b.textContent?.includes("Micro servo"))!);
+    fireEvent.click(getAllByTestId("bought-row").find((b) => b.textContent?.includes("Micro servo SG92R"))!);
     fireEvent.click(getByTestId("bought-model"));
     expect(openPartId.value).toBe("servo_1");
   });

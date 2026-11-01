@@ -91,6 +91,30 @@ def _from_card(ctx: ToolContext, card_id: str, project: str) -> dict:
             "catalog_id": card.get("catalog_id")}
 
 
+def add_bought_from_card(ctx: ToolContext, card: dict, project: str, *,
+                         source: str = "agent") -> dict:
+    """E15: add (or update, idempotently by url/catalog_id) a bought BOM row from a part card,
+    so a shop part an agent shows lands in the parts list without the user pressing a button.
+    Publishes bom_changed. Returns the row."""
+    bom = _bom(ctx)
+    fields = {k: v for k, v in {
+        "name": card.get("name") or "part", "kind": "bought", "unit_cost": card.get("price"),
+        "currency": card.get("currency"), "vendor": card.get("vendor"),
+        "url": card.get("url"), "specs": card.get("specs") or [],
+        "catalog_id": card.get("catalog_id")}.items() if v is not None}
+    data = BomItemIn.model_validate(fields).model_dump()
+    old = bom.find(project, part_id=data["part_id"], catalog_id=data["catalog_id"],
+                   url=data["url"])
+    if old is not None:
+        keep = {k: v for k, v in data.items() if k in fields or k == "qty"}
+        row = bom.put(project, {**old, **keep, "source": source})
+    else:
+        row = add_row(bom, project, data, source)
+    ctx.events.publish(Event(type="bom_changed", run_id=getattr(ctx, "run_id", None),
+                             data={"project_id": project, "item_id": row["id"]}))
+    return row
+
+
 @tool("bom_add", safety=SafetyClass.LOCAL_MUTATE,
       description="Add a part to the build's parts list (BOM): name, qty, unit cost, currency,"
                   " vendor, product URL, key specs. Start from a part card with card_id. The"

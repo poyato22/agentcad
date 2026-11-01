@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS browser_snapshots (
   id TEXT PRIMARY KEY, run_id TEXT, project_id TEXT, data TEXT, created_at REAL);
 CREATE INDEX IF NOT EXISTS browser_snapshots_run ON browser_snapshots(run_id, created_at);
 CREATE TABLE IF NOT EXISTS browser_budget (run_id TEXT PRIMARY KEY, used INTEGER);
+CREATE TABLE IF NOT EXISTS browser_domain_fetches (
+  run_id TEXT, domain TEXT, n INTEGER, PRIMARY KEY (run_id, domain));
 """
 
 # what a page that refuses robots says instead of its content
@@ -253,6 +255,21 @@ class SnapshotStore:
             db.execute("INSERT OR REPLACE INTO browser_budget VALUES (?,?)", (run_id, used))
         return used
 
+    def domain_counts(self, run_id: str, domain: str) -> tuple[int, int]:
+        """E31: (pages fetched from `domain`, pages fetched from any non-suggested host) by run
+        `run_id`'s family this turn. Cleared each user turn with the fetch budget."""
+        row = self.store._one("SELECT n FROM browser_domain_fetches WHERE run_id=? AND domain=?",
+                              (run_id, domain))
+        total = self.store._one("SELECT COALESCE(SUM(n), 0) FROM browser_domain_fetches"
+                                " WHERE run_id=?", (run_id,))
+        return (int(row[0]) if row else 0), int(total[0] if total else 0)
+
+    def count_domain(self, run_id: str, domain: str) -> None:
+        """Count one fetch from a non-suggested host (after the fetch budget accepted it)."""
+        with self.store._tx() as db:
+            db.execute("INSERT INTO browser_domain_fetches VALUES (?,?,1) ON CONFLICT(run_id,"
+                       " domain) DO UPDATE SET n = n + 1", (run_id, domain))
+
     def ids_for_run(self, run_id: str) -> list[str]:
         return [r[0] for r in self.store._all("SELECT id FROM browser_snapshots WHERE run_id=?",
                                               (run_id,))]
@@ -261,3 +278,4 @@ class SnapshotStore:
         with self.store._tx() as db:
             db.execute("DELETE FROM browser_snapshots WHERE run_id=?", (run_id,))
             db.execute("DELETE FROM browser_budget WHERE run_id=?", (run_id,))
+            db.execute("DELETE FROM browser_domain_fetches WHERE run_id=?", (run_id,))

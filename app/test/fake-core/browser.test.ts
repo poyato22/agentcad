@@ -66,8 +66,9 @@ describe("fake core: parts list (R5)", () => {
   it("totals per currency, never summed across currencies", async () => {
     await startDumped();
     const t = (await req("GET", `/projects/${PROJ}/bom`)).json.totals;
-    expect(t.by_currency).toEqual({ USD: 35.97, EUR: 2.4, unknown: 3 });
-    expect(t.unpriced).toBe(1);
+  // P10 E15: the dumped part_show inserts the servo, so its auto row adds $5.95
+    expect(t.by_currency).toEqual({ USD: 41.92, EUR: 2.4, unknown: 3 });
+    expect(t.unpriced).toBe(2);
     expect(t.has_estimates).toBe(true);
   });
 
@@ -128,6 +129,6 @@ describe("fake core: parts list (R5)", () => {
     const csv = (await req("GET", `/projects/${PROJ}/bom.csv`)).text;
     expect(csv).toContain(`"'=HYPERLINK(""https://evil.example"")"`);
     const totals = csv.split("\r\n").filter((l) => l.startsWith("total,"));
-    expect(totals).toEqual(["total,,,,USD,35.97,yes,,,,,,,", "total,,,,EUR,2.40,,,,,,,,", "total,,,,unknown,3.00,,,,,,,,"]);
+    expect(totals).toEqual(["total,,,,USD,41.92,yes,,,,,,,", "total,,,,EUR,2.40,,,,,,,,", "total,,,,unknown,3.00,,,,,,,,"]);
   });
 });

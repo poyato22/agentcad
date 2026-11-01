@@ -61,7 +61,9 @@ async def test_three_two_dollar_requests_on_one_lead_all_run(home):
     assert run.usd == pytest.approx(6.0) and run.status == "done"   # $6 over a $5 cap
 
 
-async def test_a_lead_that_spent_its_cap_in_one_message_is_replaced(home):
+async def test_a_lead_that_spent_its_cap_is_continued_not_replaced(home):
+    """E20: the dollar cap alone no longer retires a lead; the next message resets its window
+    (budget.start_turn) and the same lead keeps the thread."""
     box = []
     prov = Costly(box, 5.01, [text("one"), text("two")])
     rt = Runtime(home, provider_resolver=lambda ref: (prov, "m"))
@@ -71,9 +73,11 @@ async def test_a_lead_that_spent_its_cap_in_one_message_is_replaced(home):
     await rt.wait(first)
     assert budget.usd_exhausted(rt.store, first) is not None
     out = await lead_mod.submit(rt, "now add a camera mount", project_id=pid)
-    assert out["new_lead"] is True and out["run_id"] != first
-    assert rt.store.get_run(first).archived is True
+    assert out["new_lead"] is False and out["run_id"] == first   # same lead, not replaced
+    assert rt.store.get_run(first).archived is False
     await rt.wait(out["run_id"])
+    # the second message was delivered to the same lead and ran (its window reset let it start)
+    assert rt.store.get_run(first).usd == pytest.approx(10.02)
 
 
 async def test_a_failed_lead_is_replaced(home):

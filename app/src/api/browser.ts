@@ -96,6 +96,8 @@ export const partCardSchema: z.ZodType<PartCard> = z.object({
 /** `part_show`'s result data: ids only (the card's text is page data, fetched by id). */
 export const partShowResultSchema = z.object({
   card_id: z.string(), catalog_id: nstr.default(null), snapshot_id: nstr.default(null),
+  // P10 E15 (core C1): the part is put in the build / the parts list by itself
+  part_id: nstr.default(null), item_id: nstr.default(null), bom_id: nstr.default(null),
 });
 
 // ---- parts list / BOM (R5)

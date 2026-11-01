@@ -1,11 +1,14 @@
 {
-  "card_id": "card_27b48d943bc8c305",
+  "card_id": "card_a58d94d6682294fc",
   "catalog_id": "url_7651991da5c5d4f4",
-  "snapshot_id": "snap_11059a8e77c80d93",
+  "snapshot_id": "snap_87492a3d8a9fd409",
   "card": {
-    "card_id": "card_27b48d943bc8c305",
+    "card_id": "card_a58d94d6682294fc",
     "catalog_id": "url_7651991da5c5d4f4",
-    "snapshot_id": "snap_11059a8e77c80d93"
+    "snapshot_id": "snap_87492a3d8a9fd409"
   },
-  "untrusted_page_data": "<untrusted_page domain=\"www.adafruit.com\" nonce=\"def9ddcc622615c2\">\n{\"name\": \"Micro servo - TowerPro SG92R\", \"price\": 5.95, \"currency\": \"USD\", \"vendor\": \"TowerPro\", \"url\": \"https://www.adafruit.com/product/169\", \"specs\": [{\"key\": \"dimensions\", \"value\": \"23 x 12.2 x 29\", \"unit\": \"mm\"}, {\"key\": \"weight\", \"value\": 9.0, \"unit\": \"g\"}, {\"key\": \"stall_torque\", \"value\": \"2.5 kg-cm\", \"unit\": null}, {\"key\": \"voltage\", \"value\": \"4.8 V - 6 V\", \"unit\": null}, {\"key\": \"micro_servo_towerpro_sg92r\", \"value\": \"ID 169 : Adafruit\", \"unit\": null}]}\n</untrusted_page nonce=\"def9ddcc622615c2\">"
+  "part_id": "micro_servo_towerpro_sg92r",
+  "item_id": null,
+  "bom_id": "auto_micro_servo_towerpro_sg92r",
+  "untrusted_page_data": "<untrusted_page domain=\"www.adafruit.com\" nonce=\"81c363da60c00503\">\n{\"name\": \"Micro servo - TowerPro SG92R\", \"price\": 5.95, \"currency\": \"USD\", \"vendor\": \"TowerPro\", \"url\": \"https://www.adafruit.com/product/169\", \"specs\": [{\"key\": \"dimensions\", \"value\": \"23 x 12.2 x 29\", \"unit\": \"mm\"}, {\"key\": \"weight\", \"value\": 9.0, \"unit\": \"g\"}, {\"key\": \"stall_torque\", \"value\": \"2.5 kg-cm\", \"unit\": null}, {\"key\": \"voltage\", \"value\": \"4.8 V - 6 V\", \"unit\": null}, {\"key\": \"micro_servo_towerpro_sg92r\", \"value\": \"ID 169 : Adafruit\", \"unit\": null}]}\n</untrusted_page nonce=\"81c363da60c00503\">"
 }

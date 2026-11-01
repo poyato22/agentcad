@@ -91,7 +91,9 @@ def test_rows_name_the_part_that_draws_them(env):
     loose = bom_mod.add_row(env.bom, env.project, BomItemIn(name="Zip ties").model_dump(), "user")
     by = {i["id"]: i for i in v(env)["items"]}
     assert by["auto_bracket"]["geometry_part_id"] == "bracket"
-    assert by["auto_servo_1"]["geometry_part_id"] == "servo_1"
+    # P10 E15 (C1): the agent's stored row for the same catalog item supersedes the inserted
+    # part's auto row (listed once, never counted twice); it still names the part that draws it
+    assert "auto_servo_1" not in by
     assert by[agent["id"]]["geometry_part_id"] == "servo_1"
     assert by[agent["id"]]["geometry"] == env.catalog.get("servo_mg996r_standard")["geometry"]
     assert by[loose["id"]]["geometry_part_id"] is None and by[loose["id"]]["geometry"] is None

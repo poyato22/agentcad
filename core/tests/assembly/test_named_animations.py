@@ -57,10 +57,12 @@ async def test_animate_with_a_name_saves_it_and_says_its_id(ctx):
     assert saved["name"] == "lid swing" and saved["loops"] == 2 and saved["duration_s"] == 3
     assert saved["steps"] == [{"joint_id": jid, "from": 0, "to": 90, "duration_s": 3}]
     assert r.data["animation"]["animation_id"] == aid and aid in r.summary
-    # unnamed: nothing stored
+    # E5: unnamed motions are auto-saved too (so Play survives reload), under a default name
     r2 = await assembly_animate.handler(ctx, AnimateArgs(project_id="p", joint_id=jid, to=10))
-    assert "animation_id" not in r2.data
-    assert len(ctx.services["assembly"].list_animations("p")) == 1
+    assert "animation_id" in r2.data
+    auto = ctx.services["assembly"].get_animation("p", r2.data["animation_id"])
+    assert auto["name"] == f"{jid} motion"
+    assert len(ctx.services["assembly"].list_animations("p")) == 2
 
 
 async def test_animate_present_returns_a_view_card(ctx, monkeypatch):

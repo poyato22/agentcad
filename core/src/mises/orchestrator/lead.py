@@ -34,7 +34,7 @@ TASK_TITLE_CHARS = 60
 #: tools the lead always has, whatever its routed agent's own list says
 LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "assembly_get", "assembly_add_part",
               "assembly_add_instance", "assembly_add_joint", "assembly_move", "assembly_drive",
-              "assembly_animate", "assembly_check", "assembly_remove", "mirror_part_list",
+              "assembly_animate", "assembly_check", "assembly_health", "assembly_remove", "mirror_part_list",
               "ui_ask_user", "ui_note", "part_delete",
               # LEAD_PROMPT tells every lead (including a routed sim lead) to present motion and
               # section sweeps, so the tools it names are always offered (FW-core M-2)
@@ -108,9 +108,11 @@ piece: create it with `place: false`. Delete a part you no longer need with `par
 - When you build a system, bring every part into the assembly with `assembly_add_part`: the \
 first part is grounded; join each other part where it really connects (fixed, or revolute / \
 slider where it moves). Move parts with `assembly_move`; a joint-attached part moves only \
-along its joint.
-- When the assembly has joints, show the motion with `assembly_animate`, and run \
-`assembly_check` with `sweep` over the same range to catch interference.
+along its joint. Every assembly change returns an `assembly_health` report; before you report \
+done it must be clean (no overlaps, no stray parts beside the model, no floating parts).
+- Any build with moving joints must end with a saved animation of the motion: call \
+`assembly_animate` (give it a `name`) before you report, and run `assembly_check` with `sweep` \
+over the same range to catch interference.
 """
 
 
@@ -142,6 +144,25 @@ def task_title(task: str | None, prompt: str) -> str:
     return cut.rstrip(",;:") + "…"
 
 
+def _last_assistant_text(rt: Runtime, run_id: str) -> str | None:
+    """The retired lead's last assistant message, so the new lead starts with its thread's
+    gist (E20 forced-retire)."""
+    try:
+        steps = rt.store.steps(run_id, [StepKind.MESSAGE])
+    except Exception:  # noqa: BLE001
+        return None
+    for s in reversed(steps):
+        if s.payload.get("role") == "assistant" and str(s.payload.get("text") or "").strip():
+            return str(s.payload["text"]).strip()[:4000]
+    return None
+
+
+def _retire_context(rt: Runtime, lead: AgentRun) -> dict | None:
+    """A first_context block for the replacement lead carrying the retired lead's last word."""
+    text = _last_assistant_text(rt, lead.id)
+    return {"previous_lead": text} if text else None
+
+
 def find_lead(store, project_id: str) -> AgentRun | None:
     """The build's newest lead run (archived ones are retired)."""
     for r in store.list_runs(100_000, project_id=project_id):
@@ -159,12 +180,16 @@ def _reachable(rt: Runtime, run: AgentRun) -> bool:
 
 
 def _spent(rt: Runtime, lead: AgentRun) -> bool:
-    """An idle lead that failed, or whose last message used up its dollar cap: a new message
-    would only fail again, so submit replaces it. A busy lead keeps its queue."""
+    """A lead so broken that a new message could only fail again, so submit replaces it (E20).
+    A busy lead keeps its queue. A Claude Code lead is never spent: its session resumes and its
+    dollar window resets on the next message. The dollar cap alone never retires a lead either
+    (new_user_turn -> budget.start_turn opens a fresh window on the next message); only a native
+    run left `failed`, with no turn to resume, is replaced."""
     if rt.lead_queues.get(lead.id) or rt.run_busy(lead.id):
         return False
-    from .. import budget
-    return lead.status == "failed" or budget.usd_exhausted(rt.store, lead.id) is not None
+    if rt._is_claude_run(lead.id):
+        return False
+    return lead.status == "failed"
 
 
 def _covers(wide, narrow) -> bool:
@@ -231,6 +256,22 @@ def queued_messages(rt: Runtime, run_id: str) -> list[dict]:
     """The lead's waiting messages, oldest first (message_id, text, position)."""
     return [{"message_id": m["message_id"], "text": m["shown"], "position": i + 1}
             for i, m in enumerate(rt.lead_queues.get(run_id) or [])]
+
+
+def cancel_queued(rt: Runtime, run_id: str, message_id: str) -> bool:
+    """E9: drop a message still waiting in the lead's queue (not yet delivered). Returns True
+    when one was removed, False when the id is unknown or already delivered."""
+    q = rt.lead_queues.get(run_id)
+    if not q:
+        return False
+    for i, m in enumerate(q):
+        if m["message_id"] == message_id:
+            q.pop(i)
+            _drop(rt, run_id, m, "cancelled")
+            if not q:
+                rt.lead_queues.pop(run_id, None)
+            return True
+    return False
 
 
 def _enqueue(rt: Runtime, lead_id: str, text: str, log: dict | None, routed: Routed,
@@ -301,7 +342,8 @@ def _merge(meta: dict, more: dict) -> dict:
     return {"kind": "sim_finished", "items": items}
 
 
-def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict) -> dict | None:
+def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict,
+                  images: list[tuple[str, str]] | None = None) -> dict | None:
     """A system note counts toward QUEUE_MAX but never raises 429. Notes waiting for the same
     turn are coalesced into one message; at the cap the oldest waiting note makes room, and a
     queue full of user messages drops the new note instead."""
@@ -309,6 +351,8 @@ def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict) -> dict | Non
     waiting = next((m for m in q if m.get("note")), None)
     if waiting is not None:                       # one message for every note of this turn
         waiting["text"] = waiting["shown"] = waiting["text"] + "\n" + text
+        if images:
+            waiting["images"] = [*(waiting.get("images") or []), *images]
         waiting["log"] = {"text": waiting["text"],
                           "system_note": _merge(waiting["log"]["system_note"],
                                                 log["system_note"])}
@@ -326,7 +370,8 @@ def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict) -> dict | Non
         _drop(rt, lead_id, {"message_id": mid}, "the lead's queue is full")
         return None
     mid = "msg_" + secrets.token_hex(6)
-    q.append({"message_id": mid, "text": text, "log": log, "shown": text, "note": True})
+    q.append({"message_id": mid, "text": text, "log": log, "shown": text, "note": True,
+              **({"images": images} if images else {})})
     rt.store.append_step(lead_id, StepKind.DECISION, {"queued_message": {
         "message_id": mid, "text": text, "position": len(q), "routed": None,
         "system_note": log.get("system_note")}})
@@ -353,7 +398,8 @@ def _hold_reason(rt: Runtime, owner_id: str) -> str | None:
 
 
 async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict, *,
-                       defer: bool = False) -> dict | None:
+                       defer: bool = False,
+                       images: list[tuple[str, str]] | None = None) -> dict | None:
     """A short system note (e.g. "Study ... finished: ...") to the agent that owns `run_id`
     (note_owner): sent now when it is idle (it reacts in a turn that is NOT a new user turn:
     the budget window and the critique loop of the user's message go on), queued and
@@ -374,7 +420,7 @@ async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict, *,
             text, meta = t + "\n" + text, _merge(m, meta)
         log = {"text": text, "system_note": meta}
         if rt.lead_queues.get(owner.id) or rt.run_busy(owner.id):
-            return _enqueue_note(rt, owner.id, text, log)
+            return _enqueue_note(rt, owner.id, text, log, images)
         why = _hold_reason(rt, owner.id)
         if why is not None:
             _park(rt, owner.id, text, meta, why)
@@ -382,13 +428,16 @@ async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict, *,
         rt.note_turns[owner.id] = rt.note_turns.get(owner.id, 0) + 1
         sent = False
         try:
-            await rt.send(owner.id, text, log=log, user_turn=False)
+            if images:
+                await rt.send(owner.id, text, log=log, user_turn=False, images=images)
+            else:
+                await rt.send(owner.id, text, log=log, user_turn=False)
             sent = True
             return {"run_id": owner.id, "sent": True}
         except MisesError as e:
             if not (e.code == ErrorCode.INVALID_INPUT and "still working" in e.message):
                 raise
-            return _enqueue_note(rt, owner.id, text, log)
+            return _enqueue_note(rt, owner.id, text, log, images)
         finally:
             if not sent:
                 rt.note_turns[owner.id] = max(0, rt.note_turns.get(owner.id, 1) - 1)
@@ -510,14 +559,20 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                     raise
                 out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images))
             return out
+        first_context = None
         if lead is not None:
-            # a lead this process cannot talk to any more, or one that failed or spent its
-            # whole budget on its last message: retire it (archived) and start a fresh one
+            # a lead this process cannot talk to any more, or one that failed: retire it
+            # (archived) and start a fresh one that inherits its model and the gist of its
+            # thread (E20), so the user does not lose the agent they were talking to
             rt.store.update_run(lead.id, archived=True)
+            if model_ref is None:
+                model_ref = f"{lead.provider}/{lead.model}"
+            first_context = _retire_context(rt, lead)
         rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref,
                                  edit_scope=edit_scope, read_scope=read_scope,
                                  project_id=project_id, role=LEAD, routed=routed.model_dump(),
-                                 log=log, **({"images": images} if images else {}))
+                                 log=log, first_context=first_context,
+                                 **({"images": images} if images else {}))
         out.update(run_id=rid, new_lead=True)
         return out
 

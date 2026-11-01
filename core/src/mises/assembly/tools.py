@@ -75,6 +75,29 @@ def _solve(ctx: ToolContext, project_id: str) -> tuple:
 
 def _changed(ctx: ToolContext, project_id: str) -> None:
     ctx.events.publish(Event(type="assembly_changed", data={"project_id": project_id}))
+    mark_changed(ctx, project_id)
+
+
+def mark_changed(ctx: ToolContext, project_id: str) -> None:
+    """E33: remember that this turn changed the build's assembly, so the lead gets a
+    whole-assembly render and a finish check when its turn ends (Runtime._after_turn)."""
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    fn = getattr(rt, "mark_assembly_changed", None)
+    run_id = getattr(ctx, "run_id", None)
+    if fn is not None and run_id:
+        try:
+            fn(run_id, project_id)
+        except Exception:  # noqa: BLE001 - bookkeeping never fails the edit
+            pass
+
+
+async def _health(ctx: ToolContext, project_id: str) -> tuple[dict, list[str]]:
+    """E33: the assembly health (overlaps with real OCCT volumes for bbox-overlapping pairs,
+    stray, floating, extents), plus warning lines. A missing bbox just skips that part."""
+    from .health import warnings_from
+    from .review import assembly_report
+    report = await assembly_report(_store(ctx), _parts_root(ctx), project_id)
+    return report, warnings_from(report)
 
 
 def _asm_data(asm, res: SolveResult) -> dict:
@@ -335,23 +358,52 @@ async def assembly_check(ctx: ToolContext, args: CheckArgs) -> ToolOutput:
     sweep = getattr(args, "sweep", None)
     if sweep is not None:
         return await _check_sweep(ctx, _resolve_build(ctx, args.project_id), sweep)
-    asm, res = _solve(ctx, _resolve_build(ctx, args.project_id))
+    pid = _resolve_build(ctx, args.project_id)
+    asm, res = _solve(ctx, pid)
     interferences: list[dict] = []
+    checked = True
     try:
         geo = await run_geometry(_parts_root(ctx), asm, res, want="interference")
         interferences = geo.interferences
     except MisesError as e:
-        if e.code != ErrorCode.NOT_FOUND:  # NOT_FOUND = no built parts yet; report dof only
+        if e.code != ErrorCode.NOT_FOUND:
             raise
+        checked = False       # no built parts: do NOT report "0 interferences" (E33)
     n = len(interferences)
-    summary = f"{n} interference(s), {res.dof_remaining} dof left"
+    warnings: list[str] = []
+    if not checked:
+        # fail loudly rather than imply the assembly is clear
+        summary = f"interference NOT checked: {'no instances' if not asm.instances else 'no built parts in the assembly — build them first'}"
+        if asm.instances:
+            warnings.append("build the parts before trusting this check: nothing was compared")
+    else:
+        summary = f"{n} interference(s)"
+    summary += f", {res.dof_remaining} dof left"
     if res.overconstrained:
         groups = "; ".join(", ".join(g) for g in res.overconstrained)
         summary += f"; over-constrained (fixed instances joined by joints): {groups}"
+    # the health view too, so the agent also sees stray/floating parts it must fix (E33); the
+    # OCCT interferences just computed are its overlaps (no second worker run)
+    from .health import finalize, warnings_from
+    from .review import bbox_report
+    report = bbox_report(_store(ctx), _parts_root(ctx), pid)[0]
+    if checked:
+        ids = {i.name: i.id for i in asm.instances}
+        report = finalize({**report, "overlap_method": "occt", "overlaps": [
+            {"a": h.get("a"), "b": h.get("b"), "a_id": ids.get(h.get("a"), h.get("a")),
+             "b_id": ids.get(h.get("b"), h.get("b")),
+             "volume_mm3": round(float(h.get("volume_mm3") or 0.0), 3)}
+            for h in interferences]})
+    hwarns = warnings_from(report)
+    if not report["ok"]:
+        summary += f"; {report['summary']}"
+        warnings += hwarns
     return ToolOutput(summary=summary,
-                      data={"interferences": interferences, "dof_remaining": res.dof_remaining,
-                            "overconstrained": res.overconstrained},
-                      step_kind=StepKind.MEASURE)
+                      data={"interferences": interferences, "checked": checked,
+                            "dof_remaining": res.dof_remaining,
+                            "overconstrained": res.overconstrained,
+                            "assembly_health": report},
+                      warnings=warnings, step_kind=StepKind.MEASURE)
 
 
 async def _check_sweep(ctx: ToolContext, pid: str, sweep: SweepArgs) -> ToolOutput:
@@ -565,12 +617,15 @@ async def assembly_add_part(ctx: ToolContext, args: AddPartArgs) -> ToolOutput:
         store.add_instance(pid, inst)
     store.add_joint(pid, joint)
     _changed(ctx, pid)
+    report, warns = await _health(ctx, pid)
     return ToolOutput(summary=f"added {args.part_id} as instance {inst.name} ({inst.id}), "
-                              f"{joint.kind} joint {joint.id} to {target.name} ({target.id})",
+                              f"{joint.kind} joint {joint.id} to {target.name} ({target.id})"
+                              + ("" if report["ok"] else f"; {report['summary']}"),
                       data={"project_id": pid, "instance": inst.model_dump(),
                             "joint": {**joint.model_dump(), "target": target.id},
-                            "world_transform": motion.round_mat(res.transforms[inst.id])},
-                      step_kind=StepKind.DIFF)
+                            "world_transform": motion.round_mat(res.transforms[inst.id]),
+                            "assembly_health": report},
+                      warnings=warns, step_kind=StepKind.DIFF)
 
 
 class Rotate(BaseModel):
@@ -627,10 +682,13 @@ async def assembly_move(ctx: ToolContext, args: MoveArgs) -> ToolOutput:
         store.update_instance(pid, inst.id, transform=new_t)
         asm2, res2 = _solve(ctx, pid)
         _changed(ctx, pid)
-        return ToolOutput(summary=f"moved free instance {inst.name} ({inst.id})",
+        report, warns = await _health(ctx, pid)
+        return ToolOutput(summary=f"moved free instance {inst.name} ({inst.id})"
+                                  + ("" if report["ok"] else f"; {report['summary']}"),
                           data={"instance_id": inst.id, "joint_id": None,
-                                "world_transform": motion.round_mat(res2.transforms[inst.id])},
-                          step_kind=StepKind.DIFF)
+                                "world_transform": motion.round_mat(res2.transforms[inst.id]),
+                                "assembly_health": report},
+                          warnings=warns, step_kind=StepKind.DIFF)
     joint, value, warnings = motion.joint_move(asm, inst.id, res.transforms,
                                                translate_by=args.translate, rotate=rot,
                                                relative=args.relative, resolve_face=resolver)
@@ -641,11 +699,14 @@ async def assembly_move(ctx: ToolContext, args: MoveArgs) -> ToolOutput:
     store.update_joint(pid, joint.id, value=applied)
     asm2, res2 = _solve(ctx, pid)
     _changed(ctx, pid)
+    report, warns = await _health(ctx, pid)
     return ToolOutput(summary=f"moved {inst.name} ({inst.id}) along {joint.kind} joint "
-                              f"{joint.id}: value {applied}",
+                              f"{joint.id}: value {applied}"
+                              + ("" if report["ok"] else f"; {report['summary']}"),
                       data={"instance_id": inst.id, "joint_id": joint.id, "value": applied,
-                            "world_transform": motion.round_mat(res2.transforms[inst.id])},
-                      warnings=warnings, step_kind=StepKind.DIFF)
+                            "world_transform": motion.round_mat(res2.transforms[inst.id]),
+                            "assembly_health": report},
+                      warnings=warnings + warns, step_kind=StepKind.DIFF)
 
 
 MAX_LOOPS = 10               # a looping animation plays at most this many times
@@ -705,9 +766,10 @@ class AnimateArgs(BaseModel):
 @tool("assembly_animate", safety=SafetyClass.READ, scope_arg="project_id",
       description="Show a joint's motion to the user: the app plays the joint (or a sequence of "
                   "joints, one after another) from `from` to `to` over duration_s, optionally "
-                  "looping. The joints keep their values. Pass `name` to save the motion (its "
-                  "animation_id goes to present_view kind 'animation'), or `present` to show it "
-                  "as a view card right away. Returns the solved poses at key frames; check "
+                  "looping. The joints keep their values. The motion is always saved so the user "
+                  "can replay it (Play / present_view kind 'animation'); pass `name` to title it, "
+                  "or `present` to show it as a view card right away. Returns the solved poses at "
+                  "key frames; check "
                   "interference across the same range with assembly_check sweep.")
 async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
     pid = _build_of(ctx, args.project_id)
@@ -755,17 +817,20 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
         event = {"project_id": pid, "sequence": plan, "loop": loops > 1, "loops": loops}
     else:
         event = {"project_id": pid, **plan[0], "loop": loops > 1, "loops": loops}
-    name = args.name or ("Motion" if args.present else None)
+    # E5: every motion is saved so Play and present_view can replay it after a reload (survives
+    # reload), auto-named when the agent gave no name. A READ-only run (e.g. a verifier policy)
+    # may not persist build state, so it only previews; if it explicitly asked to save
+    # (name/present), that is refused, not silently ignored.
+    explicit = bool(args.name or args.present)
+    name = args.name or _auto_animation_name(plan)
+    policy = getattr(ctx, "policy", None)
+    can_save = policy is None or SafetyClass.LOCAL_MUTATE in policy.allowed_classes
     saved = None
-    if name:
-        # saving (or presenting) a named animation persists build state that cards and Play read
-        # back, so a READ-only run (e.g. a verifier policy) may not do it (FW-core M-1). The tool
-        # is classed READ for the common replay; the save is the mutation and is gated here.
-        policy = getattr(ctx, "policy", None)
-        if policy is not None and SafetyClass.LOCAL_MUTATE not in policy.allowed_classes:
-            raise MisesError(ErrorCode.OUT_OF_SCOPE, "saving an animation changes the build; "
-                             "this run may only read", hint="animate without name/present to "
-                             "preview, or run with edit permission")
+    if explicit and not can_save:
+        raise MisesError(ErrorCode.OUT_OF_SCOPE, "saving an animation changes the build; "
+                         "this run may only read", hint="animate without name/present to "
+                         "preview, or run with edit permission")
+    if can_save:
         saved = _store(ctx).save_animation(pid, name, {"steps": plan, "loops": loops,
                                                        "duration_s": round(t0, 4)})
         event["animation_id"] = saved["id"]
@@ -799,6 +864,13 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
                       data=data, warnings=warnings, step_kind=StepKind.MEASURE)
 
 
+def _auto_animation_name(plan: list[dict]) -> str:
+    """A default name for a motion the agent did not name (E5), e.g. "<joint> motion"."""
+    if len(plan) == 1:
+        return f"{plan[0]['joint_id']} motion"
+    return f"{len(plan)} joints motion"
+
+
 def animation_plan(asm, steps) -> list[dict]:
     """The steps of a motion as played: [{joint_id, from, to, duration_s}], each value clamped
     to its joint's limits; a step with no `from` starts where the motion left that joint (else
@@ -816,8 +888,39 @@ def animation_plan(asm, steps) -> list[dict]:
     return plan
 
 
+class HealthArgs(BaseModel):
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
+    render: bool = Field(default=True, description="Attach a whole-assembly render (problem "
+                         "parts tinted: red overlap, orange stray, amber no joint).")
+
+
+@tool("assembly_health", safety=SafetyClass.READ, scope_arg="project_id", timeout_s=300,
+      description="Check the whole assembly the way the user will see it: overlapping parts "
+                  "(real interference volume), stray parts left far from the rest, parts no "
+                  "joint holds, and the overall extents, plus a whole-assembly render with the "
+                  "problem parts tinted. It must be clean before you report done; its verdict "
+                  "is the engineering pipeline's assembly_health check.")
+async def assembly_health(ctx: ToolContext, args: HealthArgs) -> ToolOutput:
+    from .health import warnings_from
+    from .review import assembly_report, overview_images, record_health
+    pid = _build_of(ctx, args.project_id)
+    report = await assembly_report(_store(ctx), _parts_root(ctx), pid)
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    if rt is not None and hasattr(rt, "assembly_store"):
+        record_health(rt, pid, report)
+    images = []
+    if args.render:
+        home = Path(getattr(rt, "home", None) or Path(ctx.workdir))
+        images = await overview_images(home, _store(ctx), pid, report)
+    return ToolOutput(summary=report["summary"] + (f"; {len(images)} render(s) attached — look"
+                                                   " at them" if images else ""),
+                      data={"project_id": pid, "assembly_health": report},
+                      warnings=warnings_from(report), images=images,
+                      step_kind=StepKind.MEASURE)
+
+
 def register_assembly_tools(registry: ToolRegistry) -> None:
     for t in (assembly_get, assembly_add_instance, assembly_add_joint, assembly_drive,
               assembly_remove, assembly_check, assembly_add_part, assembly_move,
-              assembly_animate, assembly_add_loop):
+              assembly_animate, assembly_add_loop, assembly_health):
         registry.register(t)

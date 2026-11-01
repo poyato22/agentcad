@@ -71,7 +71,8 @@ describe("PartCardSlot", () => {
   });
 
   it("is display-only (P10 E15): no Add to parts list / Insert, nothing is sent from the card", async () => {
-    render(<PartCardSlot call={call(RESULT)} />);
+    // an older core's result (no part_id / bom_id): the real dump's result now names both
+    render(<PartCardSlot call={call({ ...RESULT, part_id: null, item_id: null, bom_id: null })} />);
     await screen.findByText(CARD.name);
     expect(screen.queryByRole("button", { name: /parts list|^Insert/ })).toBeNull();
     expect(client.bomAdd).not.toHaveBeenCalled();
