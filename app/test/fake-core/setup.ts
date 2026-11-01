@@ -71,6 +71,8 @@ const PLAN5_PROFILE_DEFAULTS = {
   viewer_background: { mode: "theme", colors: [] },
   // the lead's per-turn spawn cap and the wind study's container limits (core profile defaults)
   max_spawns_per_turn: 8, wind_max_memory_mb: 4096, wind_max_cpus: 8, wind_max_timeout_s: 3600.0,
+  // G3: dollar caps off by default (never on Claude Code); G8: the Think level a build starts from
+  dollar_caps: false, default_effort: "auto",
   // Plan 8 G1: the render-critique loop's ceilings (core profile defaults)
   critique_max_rounds: 3, critique_time_budget_s: 300.0, critique_max_image_tokens: 12_000,
   // Plan 9 G-B: the optional design-intensity classifier model (unset: keyword prior only)

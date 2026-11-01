@@ -16,9 +16,9 @@
   },
   "setup_completed_at": null,
   "printers": [],
-  "active_project_id": "66d130bcdbba",
+  "active_project_id": "4d9442c48356",
   "open_project_ids": [
-    "66d130bcdbba"
+    "4d9442c48356"
   ],
   "hidden_agents": [],
   "catalog_allowed_domains": [],
@@ -212,10 +212,57 @@
         "electronics"
       ],
       "suggested": true
+    },
+    {
+      "name": "ThrustCurve",
+      "domain": "thrustcurve.org",
+      "search_url": null,
+      "categories": [
+        "rocketry"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "American Rocketry Challenge",
+      "domain": "rocketrychallenge.org",
+      "search_url": null,
+      "categories": [
+        "rocketry"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "Apogee Components",
+      "domain": "apogeerockets.com",
+      "search_url": null,
+      "categories": [
+        "rocketry"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "RocketReviews",
+      "domain": "rocketreviews.com",
+      "search_url": null,
+      "categories": [
+        "rocketry"
+      ],
+      "suggested": true
+    },
+    {
+      "name": "National Association of Rocketry",
+      "domain": "nar.org",
+      "search_url": null,
+      "categories": [
+        "rocketry"
+      ],
+      "suggested": true
     }
   ],
   "browser_fetches_per_run": 60,
   "max_spawns_per_turn": 8,
+  "dollar_caps": false,
+  "default_effort": "auto",
   "wind_max_memory_mb": 4096,
   "wind_max_cpus": 8,
   "wind_max_timeout_s": 3600.0,
