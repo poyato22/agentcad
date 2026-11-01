@@ -132,7 +132,7 @@ const PartRow = memo(function PartRow(p: RowProps): JSX.Element {
             </button>
           )}
         <span class="row-hint num" data-testid="row-mass" title={p.massNote ?? undefined}>{p.mass}</span>
-        <button type="button" class="tree-more" tabIndex={-1} aria-haspopup="menu" aria-expanded={p.menuOpen} aria-label={`Actions for ${p.name}`}
+        <button type="button" class="tree-more" data-menu-anchor="" tabIndex={-1} aria-haspopup="menu" aria-expanded={p.menuOpen} aria-label={`Actions for ${p.name}`}
           title="Actions (right-click the row)" onClick={(e) => c.current.menu(e, p.id)}>⋯</button>
       </div>
     </li>

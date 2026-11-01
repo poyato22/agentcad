@@ -121,6 +121,18 @@ test.describe("inside a build", () => {
     await expect(page.getByRole("dialog", { name: "Profile" })).toHaveCount(0);
   });
 
+  test("E7_the_part_tree_actions_button_closes_its_own_menu", async ({ page }) => {
+    const more = page.locator("[data-part] .tree-more").first();
+    await more.click({ force: true });                          // shown on hover; the click is real
+    await expect(page.getByTestId("part-menu")).toHaveCount(1);
+    await expect(more).toHaveAttribute("aria-expanded", "true");
+    await more.click({ force: true });
+    await expect(page.getByTestId("part-menu")).toHaveCount(0);
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await more.click({ force: true });                          // and opens it again
+    await expect(page.getByTestId("part-menu")).toHaveCount(1);
+  });
+
   test("E13_a_spawned_agent_s_thread_has_back_to_lead_and_esc", async ({ page, fake }) => {
     const SUB = "sub0nav1";
     const base = BASE.runs[0];

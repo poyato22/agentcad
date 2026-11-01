@@ -188,8 +188,8 @@ export function pickDefault(groups: readonly ModelGroup[], preferred: string | n
   return all.find((c) => c.usable)?.ref ?? null;
 }
 
-/** The model a new run starts on, shared by ⌘N's dialog and the console's inline composer (I6:
- *  they used to disagree): the agent's own model when one is picked, else the profile default the user
+/** The model a new run starts on (the dock's one chat, console/chat.ts; P10 E24 removed the ⌘N
+ *  dialog that used to share it): the agent's own model when one is picked, else the profile default the user
  *  chose (even when it can't run now: the form says why and offers Sign in), else the best usable model. */
 export function newRunModel(cat: { models: ModelsInfo | null; local?: GroupOpts["local"]; profileDefault: string | null }, agentModel?: string | null): string | null {
   if (!cat.models) return null;

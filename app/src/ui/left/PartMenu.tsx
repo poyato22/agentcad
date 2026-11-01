@@ -43,7 +43,12 @@ export function PartMenu({ items, label, at, onClose }: PartMenuProps): JSX.Elem
   }, [at.x, at.y]);
 
   useEffect(() => {
-    const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(false); };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      // a row's ⋯ button toggles the menu itself (E7): closing here would let its click reopen it
+      if (!t || ref.current?.contains(t) || t.closest?.("[data-menu-anchor]")) return;
+      onClose(false);
+    };
     const onScroll = (e: Event) => { if (!ref.current?.contains(e.target as Node)) onClose(false); };
     const onBlur = () => onClose(false);
     document.addEventListener("pointerdown", onDown, true);
