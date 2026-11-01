@@ -777,8 +777,39 @@ def animation_plan(asm, steps) -> list[dict]:
     return plan
 
 
+class HealthArgs(BaseModel):
+    project_id: str | None = Field(default=None, description="Default: this run's build.")
+    render: bool = Field(default=True, description="Attach a whole-assembly render (problem "
+                         "parts tinted: red overlap, orange stray, amber no joint).")
+
+
+@tool("assembly_health", safety=SafetyClass.READ, scope_arg="project_id", timeout_s=300,
+      description="Check the whole assembly the way the user will see it: overlapping parts "
+                  "(real interference volume), stray parts left far from the rest, parts no "
+                  "joint holds, and the overall extents, plus a whole-assembly render with the "
+                  "problem parts tinted. It must be clean before you report done; its verdict "
+                  "is the engineering pipeline's assembly_health check.")
+async def assembly_health(ctx: ToolContext, args: HealthArgs) -> ToolOutput:
+    from .health import warnings_from
+    from .review import assembly_report, overview_images, record_health
+    pid = _build_of(ctx, args.project_id)
+    report = await assembly_report(_store(ctx), _parts_root(ctx), pid)
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    if rt is not None and hasattr(rt, "assembly_store"):
+        record_health(rt, pid, report)
+    images = []
+    if args.render:
+        home = Path(getattr(rt, "home", None) or Path(ctx.workdir))
+        images = await overview_images(home, _store(ctx), pid, report)
+    return ToolOutput(summary=report["summary"] + (f"; {len(images)} render(s) attached — look"
+                                                   " at them" if images else ""),
+                      data={"project_id": pid, "assembly_health": report},
+                      warnings=warnings_from(report), images=images,
+                      step_kind=StepKind.MEASURE)
+
+
 def register_assembly_tools(registry: ToolRegistry) -> None:
     for t in (assembly_get, assembly_add_instance, assembly_add_joint, assembly_drive,
               assembly_remove, assembly_check, assembly_add_part, assembly_move,
-              assembly_animate):
+              assembly_animate, assembly_health):
         registry.register(t)

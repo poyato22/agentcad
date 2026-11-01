@@ -78,6 +78,22 @@ async def assembly_report(asm_store, root: Path, project_id: str, *,
     return finalize({**rep, "overlaps": real, "overlap_method": "occt"})
 
 
+def record_health(rt, project_id: str, report: dict) -> None:
+    """Write the health verdict into C3's engineering pipeline (check `assembly_health`), with
+    the assembly signature it saw, so the done gate reads it and a later change makes it stale.
+    Never raises."""
+    try:
+        from ..engineering import pipeline
+        asm = rt.assembly_store.get(project_id)
+        pipeline.record(rt.home, project_id, "assembly_health",
+                        status="pass" if report["ok"] else "fail", summary=report["summary"],
+                        sig=pipeline.signature(asm, rt.home, store=rt.store,
+                                               project_id=project_id),
+                        extra={"overlap_method": report.get("overlap_method")})
+    except Exception:  # noqa: BLE001
+        log.debug("could not record assembly_health for %s", project_id, exc_info=True)
+
+
 def _tints(report: dict) -> tuple[dict[str, tuple], list[str]]:
     tint: dict[str, tuple] = {}
     notes: list[str] = []

@@ -216,9 +216,24 @@ def finish_warning(runtime, run_id: str, final_text: str | None = None) -> str |
     """A lead's turn ended (end_turn): when its build has moving joints and the pipeline is
     not clear, append a VERIFY step with the warning (shown with the agent's final message).
     Returns the warning text, else None. Never raises."""
+    got = finish_report(runtime, run_id)
+    if got is None:
+        return None
+    text, payload = got
+    try:
+        from ..types import StepKind
+        runtime.store.append_step(run_id, StepKind.VERIFY, payload)
+    except Exception:  # noqa: BLE001 - a check never breaks a turn
+        return None
+    return text
+
+
+def finish_report(runtime, run_id: str) -> tuple[str, dict] | None:
+    """The finish check's (warning text, VERIFY step payload) for a lead's ended turn, without
+    writing it (C1's turn-end assembly review merges it with the assembly health into ONE
+    step). None when the build is clear or has no moving joints. Never raises."""
     try:
         from ..orchestrator.lead import LEAD
-        from ..types import StepKind
         run = runtime.store.get_run(run_id)
         pid = getattr(run, "project_id", None)
         if getattr(run, "role", None) != LEAD or not pid:
@@ -232,11 +247,10 @@ def finish_warning(runtime, run_id: str, final_text: str | None = None) -> str |
         text = done_text(rep)
         if text is None:
             return None
-        runtime.store.append_step(run_id, StepKind.VERIFY, {
+        return text, {
             "kind": "engineering_checks", "warning": text, "missing": rep["missing"],
             "failing": rep["failing"], "stale": rep["stale"], "running": rep["running"],
-            "unchecked": rep["unchecked"], "project_id": pid})
-        return text
+            "unchecked": rep["unchecked"], "project_id": pid}
     except Exception:  # noqa: BLE001 - a check never breaks a turn
         return None
 

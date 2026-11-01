@@ -123,6 +123,11 @@ BAD = {"ok": False, "summary": "assembly health: 1 overlapping pair(s)", "stray"
                                      "volume_mm3": 30.0}], "overlap_method": "occt"}
 
 
+def _warnings(rt, run_id):
+    return [s.payload for s in rt.store.steps(run_id, [StepKind.VERIFY])
+            if s.payload.get("kind") == "engineering_checks"]
+
+
 def _patch(monkeypatch, report):
     async def rep(*a, **k):
         return report
@@ -146,9 +151,9 @@ async def test_done_claim_with_bad_health_warns_and_notes_the_lead(rt, monkeypat
     monkeypatch.setattr(lead_mod, "deliver_note", fake_note)
     rt.mark_assembly_changed(lead, pid)
     await rt._after_turn(lead, "Done: the arm is complete.")
-    warn = [s for s in rt.store.steps(lead, [StepKind.DECISION])
-            if "assembly_health_warning" in s.payload]
-    assert warn and warn[0].payload["assembly_health_warning"]["overlaps"]
+    warn = _warnings(rt, lead)
+    assert len(warn) == 1 and warn[0]["assembly_health"]["overlaps"]
+    assert "not clean" in warn[0]["warning"]
     assert sent["run_id"] == lead and "not clean" in sent["text"] and sent["images"]
     assert rt.store.get_run(lead).status != "failed"          # the user is never blocked
 
@@ -159,8 +164,7 @@ async def test_no_done_claim_hands_render_to_next_tool_result(rt, monkeypatch):
     _patch(monkeypatch, BAD)
     rt.mark_assembly_changed(run.id, pid)
     await rt._after_turn(run.id, "I moved the arm; next I will mate it.")
-    assert not [s for s in rt.store.steps(run.id, [StepKind.DECISION])
-                if "assembly_health_warning" in s.payload]
+    assert _warnings(rt, run.id) == []
     out = rt.gate._with_assembly_render(run.id, ToolOutput(summary="x"))
     assert len(out.images) == 1 and "render" in out.warnings[-1]
     assert rt.gate._with_assembly_render(run.id, ToolOutput(summary="y")).images == []
@@ -172,8 +176,7 @@ async def test_clean_health_never_warns(rt, monkeypatch):
     _patch(monkeypatch, {**BAD, "ok": True, "overlaps": [], "summary": "assembly health: clean"})
     rt.mark_assembly_changed(run.id, pid)
     await rt._after_turn(run.id, "Done, complete.")
-    assert not [s for s in rt.store.steps(run.id, [StepKind.DECISION])
-                if "assembly_health_warning" in s.payload]
+    assert _warnings(rt, run.id) == []
 
 
 async def test_turn_end_schedules_review_only_for_a_changed_root(rt, monkeypatch):
@@ -199,3 +202,68 @@ async def test_turn_end_schedules_review_only_for_a_changed_root(rt, monkeypatch
 def test_claims_done():
     assert review.claims_done("All set — the gripper is built.")
     assert not review.claims_done("I moved the base; mating the arm next.")
+
+
+async def test_c3_gate_and_assembly_health_make_one_warning_step(rt, monkeypatch):
+    # a lead whose build has a moving joint (C3's checks not run) AND reports done with an
+    # overlap: ONE combined VERIFY step, carrying both the engineering text and the health
+    from mises.orchestrator import lead as lead_mod
+    pid = rt.active_project_id()
+    lead = (await lead_mod.submit(rt, "Build an arm", project_id=pid))["run_id"]
+    await rt.wait(lead)
+    for t in list(rt._after_turn_tasks):
+        await t
+    asm = rt.assembly_store
+    a = asm.add_instance(pid, Instance(part_id="base", name="base", fixed=True))
+    b = asm.add_instance(pid, Instance(part_id="arm", name="arm"))
+    asm.add_joint(pid, Joint(kind="revolute", a=JointRef(instance_id=a.id, frame=Z),
+                             b=JointRef(instance_id=b.id, frame=Z)))
+    _patch(monkeypatch, BAD)
+
+    async def fake_note(*a, **k):
+        return None
+    monkeypatch.setattr(lead_mod, "deliver_note", fake_note)
+    before = len(_warnings(rt, lead))
+    rt.mark_assembly_changed(lead, pid)
+    await rt._after_turn(lead, "Done: the arm is complete.")
+    new = _warnings(rt, lead)[before:]
+    assert len(new) == 1
+    assert "Engineering checks are not clear" in new[0]["warning"]
+    assert "assembly is not clean" in new[0]["warning"] and new[0]["assembly_health"]
+    # the fresh health verdict went into C3's pipeline
+    from mises.engineering import pipeline
+    assert pipeline.load(rt.home, pid)["assembly_health"]["status"] == "fail"
+
+
+async def test_turn_without_assembly_change_keeps_the_c3_step_alone(rt, monkeypatch):
+    from mises.orchestrator import lead as lead_mod
+    pid = rt.active_project_id()
+    lead = (await lead_mod.submit(rt, "Build an arm", project_id=pid))["run_id"]
+    await rt.wait(lead)
+    asm = rt.assembly_store
+    a = asm.add_instance(pid, Instance(part_id="base", name="base", fixed=True))
+    b = asm.add_instance(pid, Instance(part_id="arm", name="arm"))
+    asm.add_joint(pid, Joint(kind="revolute", a=JointRef(instance_id=a.id, frame=Z),
+                             b=JointRef(instance_id=b.id, frame=Z)))
+    before = len(_warnings(rt, lead))
+    rt._finish_checks(lead, RunResult(final_text="Done", messages=[], stop_reason="end_turn"))
+    new = _warnings(rt, lead)[before:]
+    assert len(new) == 1 and "assembly_health" not in new[0]
+
+
+async def test_assembly_health_tool_reports_and_flags(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from mises.assembly.tools import HealthArgs, assembly_health
+    from mises.events import EventBus
+    store, root, _ = _build(tmp_path, [0, 3, 6, 900])      # an overlap candidate and a stray
+
+    async def occt(*a, **k):
+        return GeometryResult(interferences=[{"a": "box0", "b": "box1", "volume_mm3": 8.0}])
+    monkeypatch.setattr(review, "run_geometry", occt)
+    ctx = SimpleNamespace(workdir=tmp_path, events=EventBus(), services={"assembly": store},
+                          run_id=None)
+    out = await assembly_health.handler(ctx, HealthArgs(project_id="p", render=False))
+    rep = out.data["assembly_health"]
+    assert not rep["ok"] and rep["overlap_method"] == "occt"
+    assert [s["instance"] for s in rep["stray"]] == ["box3"]
+    assert any("overlaps" in w for w in out.warnings) and any("box3" in w for w in out.warnings)

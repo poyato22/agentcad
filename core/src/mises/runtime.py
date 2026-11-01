@@ -1442,20 +1442,33 @@ class Runtime:
             self.parallel.release(rid)
         st.result = result
         if result.stop_reason == "end_turn" and not st.cancel_requested:
-            self._finish_checks(rid)         # Plan 10 C3: the engineering "done" gate
+            # Plan 10 C3 engineering gate + C1 E33 assembly review: one warning step
+            self._finish_checks(rid, result)
             # a Claude Code turn ended but the session stays open for the next message
             self.activity_tracker(rid).set("idle", "waiting for your next message")
-            self._schedule_after_turn(rid, result)     # E33 assembly review
         return result
 
-    def _finish_checks(self, run_id: str) -> None:
-        """A lead's turn ended: warn (a VERIFY step) when its build has moving joints and its
-        engineering checks are missing, failing or stale (engineering/pipeline.py)."""
-        from .engineering.pipeline import finish_warning
-        text = finish_warning(self, run_id)
-        if text:
-            self.events.publish(Event(type="engineering_warning", run_id=run_id,
-                                      data={"text": text}))
+    def _finish_checks(self, run_id: str, result: RunResult | None = None) -> None:
+        """A turn ended (end_turn): the finish checks, as ONE warning step. When the turn
+        changed the assembly, the E33 review runs in the background (render, OCCT health) and
+        writes the combined step itself; otherwise the C3 engineering gate warns now (a VERIFY
+        step) when the build has moving joints and its checks are missing, failing or stale."""
+        if result is not None and self._schedule_after_turn(run_id, result):
+            return
+        from .engineering.pipeline import finish_report
+        got = finish_report(self, run_id)
+        if got is not None:
+            self._turn_warning(run_id, *got)
+
+    def _turn_warning(self, run_id: str, text: str, payload: dict,
+                      health: dict | None = None) -> None:
+        """The single finish-check step of a turn (VERIFY, kind engineering_checks) and its
+        engineering_warning event; `health` adds the E33 assembly findings to both."""
+        body = {**payload, "warning": text, **({"assembly_health": health} if health else {})}
+        with contextlib.suppress(Exception):
+            self.store.append_step(run_id, StepKind.VERIFY, body)
+        self.events.publish(Event(type="engineering_warning", run_id=run_id, data={
+            "text": text, **({"assembly_health": health} if health else {})}))
 
     def _is_claude_run(self, run_id: str) -> bool:
         if run_id in self._claude:
@@ -1755,14 +1768,14 @@ class Runtime:
                                error=f"{type(e).__name__}: {e}")
         st.result, st.history = result, result.messages
         if result.stop_reason == "end_turn":
-            self._finish_checks(run_id)      # Plan 10 C3: the engineering "done" gate
+            # Plan 10 C3 engineering gate + C1 E33 assembly review: one warning step
+            self._finish_checks(run_id, result)
         status = _STATUS[result.stop_reason]
         self.store.update_run(run_id, status=status)
         self.events.publish(Event(type="run_finished", run_id=run_id, data={
             "status": status, "stop_reason": result.stop_reason, "error": result.error,
             "final_text": result.final_text}))
         self._end_activity(run_id)
-        self._schedule_after_turn(run_id, result)      # E33 assembly review
         return result
 
     def _state(self, run_id: str) -> _RunState:
@@ -1949,18 +1962,21 @@ class Runtime:
         """The whole-assembly render waiting for this run's next tool result (Gate)."""
         return self.pending_assembly_images.pop(run_id, [])
 
-    def _schedule_after_turn(self, run_id: str, result: RunResult) -> None:
+    def _schedule_after_turn(self, run_id: str, result: RunResult) -> bool:
+        """Start the E33 review of a root turn that changed the assembly; True when started
+        (it then writes the turn's finish-check step)."""
         if result.stop_reason != "end_turn" or run_id not in self.assembly_touched:
-            return
+            return False
         try:
             if self.store.get_run(run_id).parent_id is not None:
-                return                  # a sub-agent's changes are reviewed by its root
+                return False            # a sub-agent's changes are reviewed by its root
             loop = asyncio.get_running_loop()
         except (KeyError, RuntimeError):
-            return
+            return False
         task = loop.create_task(self._after_turn(run_id, result.final_text))
         self._after_turn_tasks.add(task)
         task.add_done_callback(self._after_turn_tasks.discard)
+        return True
 
     async def _after_turn(self, run_id: str, final_text: str | None) -> None:
         """E33 turn-end review of a turn that changed the assembly: the health report with real
@@ -1972,23 +1988,29 @@ class Runtime:
         if pid is None:
             return
         from .assembly import review
+        from .engineering.pipeline import finish_report
         try:
             report = await review.assembly_report(self.assembly_store, self.home / "parts", pid)
+            review.record_health(self, pid, report)     # C3's pipeline sees a fresh verdict
             images = await review.overview_images(self.home, self.assembly_store, pid, report)
         except Exception:  # noqa: BLE001 - a review must never break the run
             log.warning("assembly review after %s's turn failed", run_id, exc_info=True)
-            return
-        if report["ok"] or not review.claims_done(final_text):
+            report, images = None, []
+        bad = report is not None and not report["ok"] and review.claims_done(final_text)
+        info = ({"project_id": pid, "summary": report["summary"],
+                 "overlaps": report["overlaps"], "stray": report["stray"],
+                 "floating": report["floating"], "images": len(images)} if bad else None)
+        eng = finish_report(self, run_id)              # the C3 gate, after the fresh health
+        if eng is not None or info is not None:
+            text, payload = eng or ("", {"kind": "engineering_checks", "project_id": pid})
+            if info is not None:
+                text = (text + " " if text else "") + (
+                    f"You reported done, but the assembly is not clean ({report['summary']}).")
+            self._turn_warning(run_id, text, payload, info)
+        if not bad:
             if images:
                 self.pending_assembly_images[run_id] = images
             return
-        info = {"project_id": pid, "summary": report["summary"],
-                "overlaps": report["overlaps"], "stray": report["stray"],
-                "floating": report["floating"], "images": len(images)}
-        with contextlib.suppress(Exception):
-            self.store.append_step(run_id, StepKind.DECISION, {"assembly_health_warning": info})
-        self.events.publish(Event(type="assembly_health_warning", run_id=run_id,
-                                  data={"run_id": run_id, **info}))
         from .orchestrator.lead import deliver_note
         await deliver_note(self, run_id, review.fix_note(report),
                            {"kind": "assembly_health", "summary": report["summary"]},
