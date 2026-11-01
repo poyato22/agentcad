@@ -149,12 +149,9 @@ describe("DrawingDrop", () => {
     await screen.findByRole("progressbar");
   });
 
-  it("an_empty_build_offers_a_keyboard_path_and_a_full_one_does_not", () => {
-    const { unmount } = render(<div><DrawingDrop variant="overlay" /></div>);
-    expect(screen.getByRole("button", { name: "Choose a drawing…" })).toBeTruthy();
-    unmount();
-    parts.value = [{ part_id: "lid", vars: {}, metrics: null, mtime: 1 }];
+  it("the overlay adds no loose hint: an empty build's keyboard path is the assembly's block (G6)", () => {
     render(<div><DrawingDrop variant="overlay" /></div>);
     expect(screen.queryByRole("button", { name: "Choose a drawing…" })).toBeNull();
+    expect(screen.queryByText(/drop a drawing to make a part/)).toBeNull();
   });
 });

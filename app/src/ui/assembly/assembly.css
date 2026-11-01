@@ -78,6 +78,16 @@
 }
 /* P10 FWA: balanced lines, never one word per line (the model keeps 520 px: ui/shell/room) */
 .asm-empty { font-family: var(--font-ui); font-size: 12.5px; letter-spacing: 0; text-transform: none; text-wrap: balance; }
+/* G6: an empty build: one compact, centred block (title, one line, a quiet button, a faint
+   caption) on a subtle backdrop so the sheet's grid never runs through the words */
+.asm-start {
+  pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 360px;
+  padding: 18px 22px 16px; border-radius: 12px; font-family: var(--font-ui); text-align: center; text-wrap: balance;
+  background: color-mix(in srgb, var(--vp, var(--paper)) 88%, transparent); backdrop-filter: blur(3px);
+}
+.asm-start-title { margin: 0; font: 600 15px/1.25 var(--font-ui); color: var(--ink); }
+.asm-start-line { margin: 0 0 4px; font-size: 12.5px; line-height: 1.45; color: var(--dim); }
+.asm-start-drop { margin: 0; font-size: 11.5px; color: var(--faint); }
 
 /* interference tag: hangs off the overlap, red (fail) */
 .asm-tag {

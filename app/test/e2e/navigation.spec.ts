@@ -164,7 +164,8 @@ test("E37_the_empty_assembly_note_is_centred_between_the_floating_surfaces", asy
   await home(page).getByRole("button", { name: "New build" }).click();
   await page.getByRole("textbox", { name: "New build name" }).fill("Empty rig");
   await page.keyboard.press("Enter");
-  const note = page.getByText("Nothing in this assembly yet", { exact: false });
+  // G6: one centred block: a title, one line, a quiet button and a faint caption
+  const note = page.getByTestId("assembly-empty");
   await expect(note).toBeVisible();
   // never under the dock or the parts surface, and centred in the gap between them (±8 px); the
   // insets follow a resize within a frame or two, so poll
@@ -176,6 +177,16 @@ test("E37_the_empty_assembly_note_is_centred_between_the_floating_surfaces", asy
     return n.x + n.width <= dock.x && n.x >= left.x + left.width && Math.abs(n.x + n.width / 2 - mid) < 8;
   }, { timeout: 3000 }).toBe(true);
   await check();
+  await expect(note.getByRole("heading", { name: "Start your build" })).toBeVisible();
+  await expect(note).toContainText("Describe what you want in the chat — parts appear here as the agent builds them.");
+  await expect(note.getByRole("button", { name: "Import a drawing" })).toBeVisible();
+  await expect(note).toContainText("or drop a PDF, image or DXF anywhere");
+  for (const scheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(200);
+    await page.locator("[data-region=viewer]").screenshot({ path: `test-results/g6-empty-${scheme}.png` });
+  }
+  await page.emulateMedia({ colorScheme: "dark" });
   // the dock dragged wider: the note follows
   const edge = page.getByRole("separator", { name: "Resize the agent dock" });
   await edge.focus();

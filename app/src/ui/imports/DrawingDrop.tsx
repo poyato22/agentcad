@@ -4,8 +4,8 @@
 //   · variant "tile" (Home): an always-visible drop target with a "Choose a file…" button, and the
 //     import cards under it.
 //   · variant "overlay" (inside a build's viewer): the whole viewer becomes the drop target while
-//     a file is dragged over it. The cards float in its corner. An empty build also shows a small
-//     "Choose a drawing…" line under the viewer's empty state (the keyboard path).
+//     a file is dragged over it. The cards float in its corner. An empty build's keyboard path is
+//     the assembly's empty block ("Import a drawing", G6).
 //   · variant "home" (Plan 9 review m1): the whole Home page is the drop target, with no hint and
 //     no cards of its own (Home lists them); Home's header has <ImportDrawingButton /> for the
 //     keyboard path.
@@ -13,7 +13,6 @@
 // Only drags that carry files are taken; part / tab drags inside the app pass through untouched.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { parts } from "../../state/store";
 import { Button } from "../common/Button";
 import { ImportCard } from "./ImportCard";
 import { importEntries, startImport } from "./state";
@@ -110,12 +109,7 @@ function Overlay({ projectId, page = false }: { projectId: string | null; page?:
   }, [projectId]);
   return (
     <div ref={anchor} class={page ? "imp-overlay-anchor imp-overlay-page" : "imp-overlay-anchor"}>
-      {!page && !over && parts.value.length === 0 && (
-        <div class="imp-empty-hint">
-          <span class="faint">or drop a drawing to make a part</span>
-          <ChooseFile projectId={projectId} label="Choose a drawing…" />
-        </div>
-      )}
+      {/* G6: an empty build's keyboard path is the assembly's own "Import a drawing" block */}
       {over && (
         <div class="imp-drop imp-drop-overlay" data-drawing-drop="overlay" aria-hidden="true">
           <p class="imp-drop-title">Drop a drawing to make a part</p>

@@ -39,6 +39,7 @@ import { NO_INSETS, viewInsets } from "../shell/insets";
 import { pushUndo } from "../../state/undo";
 import type { Mat4 } from "../../api/assembly";
 import { asmTool, useAssemblyTools } from "./tools";
+import { ImportDrawingButton } from "../imports";
 import type { SceneMark } from "./scene";
 import "./assembly.css";
 
@@ -495,7 +496,9 @@ export function AssemblyView(): JSX.Element {
   // any change on the page (a hover, a pick, a pin, a mode) re-places the marks on the next frame
   useEffect(() => { sceneRef.current?.setMarks(() => marksRef.current()); });
   const moved = assemblyModes.value.explode > 0 || (assemblyModes.value.layout ?? 0) > 0;
-  useEffect(() => { sceneRef.current?.setOriginShown(!moved); }, [moved]);
+  // G6: an empty assembly hides the origin triad (it ran through the empty-state text)
+  const hasParts = (data?.instances.length ?? 0) > 0;
+  useEffect(() => { sceneRef.current?.setOriginShown(!moved && hasParts); }, [moved, hasParts]);
 
   const sel = ctl.instance(ctl.selected.value);
   const selMob = sel ? ctl.mobilityOf(sel.id) : null;
@@ -538,7 +541,17 @@ export function AssemblyView(): JSX.Element {
         {!imm && tools.overlay}
         {note && !imm && <div class="asm-note" role="status" data-testid="assembly-note">{note}</div>}
         {ctl.loading.value && !data && <div class="vp-empty asm-empty">Loading the assembly…</div>}
-        {data && count === 0 && <div class="vp-empty asm-empty">Nothing in this assembly yet. Parts an agent builds land here by themselves.</div>}
+        {data && count === 0 && !imm && (
+          // G6: one centred block in the part of the sheet the floating surfaces leave
+          <div class="vp-empty asm-start-wrap">
+            <div class="asm-start" data-testid="assembly-empty">
+              <h2 class="asm-start-title">Start your build</h2>
+              <p class="asm-start-line">Describe what you want in the chat — parts appear here as the agent builds them.</p>
+              <ImportDrawingButton projectId={ctl.projectId.value} label="Import a drawing" />
+              <p class="asm-start-drop">or drop a PDF, image or DXF anywhere</p>
+            </div>
+          </div>
+        )}
         {noGl && <div class="vp-empty asm-empty">3D view unavailable on this Mac.</div>}
         {sel && !imm && (
           <div class="asm-caption" data-testid="assembly-selection" role="status">

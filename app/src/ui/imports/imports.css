@@ -17,11 +17,6 @@
 .imp-overlay-page { position: fixed; }
 .imp-overlay-page .imp-drop-overlay { border-radius: var(--r-surface); }
 .imp-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.imp-empty-hint {
-  position: absolute; left: 50%; top: calc(50% + 22px); transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; font-size: var(--fs-small); pointer-events: auto;
-  white-space: nowrap;
-}
 
 .imp-stack { display: flex; flex-direction: column; gap: 8px; }
 .imp-stack-float {
