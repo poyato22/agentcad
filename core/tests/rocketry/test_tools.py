@@ -153,6 +153,17 @@ async def test_unreachable_target_says_change_the_motor(ctx):
     assert not t["reachable"] and "change the motor" in t["note"]
 
 
+def test_every_lead_is_told_to_fly_rocket_builds():
+    from mises.agent.definitions import AgentDefinition
+    from mises.orchestrator.lead import lead_definition
+    lead = lead_definition(AgentDefinition(name="designer", description="d", body="# Role",
+                                           tools=["mirror_part_create"]))
+    assert {"rocket_analyze", "rocket_flight", "rocket_motor"} <= set(lead.tools)
+    body = lead.body
+    assert "CURRENT rules" in body and "rocketrychallenge.org" in body
+    assert "static margin (cal), apogee" in body and body.count("## Rocket builds") == 1
+
+
 def test_flight_args_need_a_motor():
     with pytest.raises(ValueError):
         rt.FlightArgs(project_id="rkt")

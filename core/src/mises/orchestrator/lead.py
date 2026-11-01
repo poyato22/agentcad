@@ -45,7 +45,32 @@ LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "assembly_get", "asse
               "mech_list", "mech_insert", "mech_check", "assembly_add_loop", "material_pick",
               # Plan 10 C3: the engineering pipeline every lead runs before done
               "actuator_size", "electronics_estimate", "power_budget", "dyn_torque",
-              "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks")
+              "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks",
+              # Plan 11 F6: rocketry (LEAD_ROCKETRY tells every lead to run them on a rocket)
+              "rocket_analyze", "rocket_flight", "rocket_motor")
+
+#: Plan 11 F6: any rocket build is flown and checked, not guessed (in every lead's prompt)
+LEAD_ROCKETRY = """## Rocket builds (model rockets, ARC / TARC, egg lofters)
+- Competition rules change every year: before you design, fetch the CURRENT rules (web_search / \
+web_open rocketrychallenge.org or the event's site) for the target altitude, the flight-time \
+window, the payload (e.g. raw eggs), motor limits (total impulse, class) and liftoff mass. Put \
+them in the spec; never design to last year's numbers or placeholders.
+- Lay the skeleton out with the rocket names so the tools read the shape: body_od, nose_len, \
+nose_base_z (nose up +z, body from z = 0), fin_count, fin_root, fin_tip, fin_span, fin_sweep, \
+fin_t, fin_root_start (fin trailing edge z), optional boattail_len / boattail_aft_od; or pass \
+`geometry`.
+- Fins are sized by analysis, not guesswork: run `rocket_analyze` (Barrowman CP, CG from the \
+parts, static margin, fin flutter) with the planned motor, and `rocket_flight` (apogee, time to \
+apogee, flight time with the chute, max speed, payload g, descent rate) on the candidate \
+motors with the target apogee / time window (tune_mass gives the ballast). Re-weigh stand-in \
+parts with mass_overrides_g (a raw egg is ~57-60 g; a chute, cord and wadding are not solid \
+plastic). Iterate fins, ballast, motor and chute until the margin is 1-2 cal (never < 1), \
+flutter >= 1.5x max speed, the apogee and time are on target and the descent suits the payload.
+- A curve Mises lacks: `rocket_motor` fetch, or web_open its .eng on thrustcurve.org and save it.
+- Every rocket report states the static margin (cal), apogee (ft and m), time to apogee, flight \
+time and descent rate against the targets, on the named motor.
+
+"""
 
 LEAD_PROMPT = """\
 # You are this build's lead agent
@@ -74,7 +99,7 @@ user approves the sketch or skips it. `mixed`: your first deliverable is one `co
 `concept_sketch` (parent_sketch_id = the marked version) that addresses every numbered mark.
 - Later, pitch again only for a genuinely open look decision (e.g. the head), at most 2 options.
 
-{engineering}## Tell the user
+{engineering}{rocketry}## Tell the user
 - Mises shows a card whenever a part is created, an agent is spawned, or something is added to \
 the assembly or the parts list. Still say it in one short line ("Spawned designer: Design motor \
 mount.").
@@ -131,7 +156,8 @@ def lead_definition(defn: AgentDefinition) -> AgentDefinition:
     has_assembly = "assembly_animate" in defn.body and "assembly_check" in defn.body
     has_engineering = all(m in defn.body for m in ENGINEERING_MARKERS)
     lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY,
-                              engineering="" if has_engineering else LEAD_ENGINEERING)
+                              engineering="" if has_engineering else LEAD_ENGINEERING,
+                              rocketry="" if "rocket_analyze" in defn.body else LEAD_ROCKETRY)
     return defn.model_copy(update={"tools": tools,
                                    "body": defn.body.rstrip() + "\n\n" + lead})
 
