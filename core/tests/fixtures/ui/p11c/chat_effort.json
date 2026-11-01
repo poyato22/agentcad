@@ -1,0 +1,12 @@
+{
+  "routed": {
+    "agent": "designer",
+    "reason": "single part",
+    "confidence": 0.75
+  },
+  "new_lead": true,
+  "queued": false,
+  "notes": [],
+  "role": "lead",
+  "run_id": "b0d3adb3c527"
+}

@@ -161,6 +161,18 @@ async def skip(rt: Runtime, project_id: str) -> dict:
     return {"concept": rec, "sent": sent}
 
 
+def _mark_chosen(store: ConceptStore, project: str, pitch: dict, names: list) -> None:
+    """Plan 11 F8: the chosen options' concepts are marked chosen on the tried list."""
+    try:
+        from ..ideation import IdeationStore
+        by = {o["name"]: (o.get("concept") or o["name"]) for o in pitch["options"]}
+        ideas = getattr(store, "_ideation", None) or IdeationStore(store)
+        store._ideation = ideas
+        ideas.mark_tried(project, [by.get(n, n) for n in names if n], "chosen")
+    except Exception:  # noqa: BLE001 - a memory aid, never a reason to fail the pick
+        pass
+
+
 def _chosen_label(body: ChooseIn) -> str:
     if body.option:
         return body.option
@@ -182,6 +194,7 @@ async def choose(rt: Runtime, pitch_id: str, body: ChooseIn) -> dict:
               "comment": body.comment, "label": label}
     store.put_pitch({**pitch, "chosen": chosen})
     project = pitch["project_id"]
+    _mark_chosen(store, project, pitch, [body.option, *(m.option for m in body.mix)])
     rec = store.get(project)
     rec = store.update(project, chosen_option=label,
                        **({} if rec["status"] in ("approved", "skipped")

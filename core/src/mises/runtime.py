@@ -33,6 +33,8 @@ from .bom.tools import register_bom_tools
 from .concept import ConceptStore
 from .concept.gate import check_call as concept_check_call
 from .concept.tools import register_concept_tools
+from .ideation.gate import check_call as ideation_check_call
+from .ideation.tools import register_ideation_tools
 from .browser import images as browser_images
 from .browser.snapshot import SnapshotStore
 from .browser.tools import CardStore, register_browser_tools
@@ -209,6 +211,7 @@ class _ClaudeRun:
     started_data: dict = field(default_factory=dict)
     restore: str | None = None    # follow-up turns: the status to go back to once a slot frees
     first_context: dict | None = None   # start_run(first_context=...): data for the first prompt
+    effort: str | None = None     # Plan 11 F8: the next turn's effort level (None: unchanged)
 
 
 class Runtime:
@@ -244,6 +247,7 @@ class Runtime:
         register_topopt_tools(self.registry)  # Plan 9 D14: generative design
         register_studies_agent_tools(self.registry)  # Plan 9 U-D: the studies agent
         register_concept_tools(self.registry)   # Plan 9 G-A: concept sketch + pitch
+        register_ideation_tools(self.registry)  # Plan 11 F8: divergent ideation, egg drop
         from .design_tools import register_design_tools     # Plan 9 G-B
         register_design_tools(self.registry)
         from .mech.tools import register_mech_tools          # Plan 10 C2: mechanisms
@@ -270,7 +274,7 @@ class Runtime:
                           "bom": self.bom, "concept": self.concepts,
                           # checks every call passes before approval and its handler (G-A's
                           # concept gate); each raises MisesError to refuse the call
-                          "call_checks": [concept_check_call]}
+                          "call_checks": [concept_check_call, ideation_check_call]}
         adapter = self._onshape_adapter(keychain_get("mises", "onshape"))
         if adapter is not None:
             services["onshape"] = adapter
@@ -300,6 +304,8 @@ class Runtime:
         # along with the next one (orchestrator/lead.py deliver_note)
         self.note_turns: dict[str, int] = {}
         self.note_hold: set[str] = set()
+        # Plan 11 F8: the effort level decided for a run's next turn (send -> _send)
+        self._pending_effort: dict[str, str] = {}
         self.deferred_notes: dict[str, list] = {}
         # question id -> its question_asked payload (+ run_id, asked_at), so a reloaded app can
         # recover the open question cards (GET /runs/{id}/pending; QA C-2)
@@ -829,14 +835,17 @@ class Runtime:
                         role: str | None = None, title: str | None = None,
                         routed: dict | None = None, log: dict | None = None,
                         first_context: dict | None = None,
-                        images: list[tuple[str, str]] | None = None) -> str:
+                        images: list[tuple[str, str]] | None = None,
+                        effort: str | None = None) -> str:
         """`sketch_id` (from POST /sketches): copy that sketch into the run's workdir and give
         it to the agent as data (plus its images for vision-capable providers).
         Plan 7 U3c: `role` "lead" (the build's main agent: its definition gets the lead prompt
         and tools) or "sub" (a spawned sub-agent, `title` its task), `routed` the router's
         choice; all three are stored on the run.
         `first_context` / `images` (e.g. a drawing import): a data block and (media_type,
-        base64) images for the first prompt; images reach vision-capable providers only."""
+        base64) images for the first prompt; images reach vision-capable providers only.
+        `effort` (Plan 11 F8): the Think choice (auto/normal/hard/max, or a level); None is
+        auto."""
         defn = self.definitions.get(agent)
         if defn is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown agent: {agent}",
@@ -880,7 +889,8 @@ class Runtime:
                                                allowed_classes=allowed_classes,
                                                sketch_id=sketch_id, project_id=project_id,
                                                meta=meta, log=log, design_words=words,
-                                               first_context=first_context, images=images)
+                                               first_context=first_context, images=images,
+                                               effort=effort)
             if fallback_from is not None:
                 self._note_model_fallback(rid, fallback_from, ref)
             return rid
@@ -899,6 +909,8 @@ class Runtime:
         if parent_id is None and words.strip():   # a sub-agent inherits; only the user's
             self._design_model_rubric(run.id, words, prof)  # own request is rated
         defn = self._design_rules_for(defn, role, design)
+        if parent_id is None:
+            self._note_challenge(run.id, words)
         classes = set(SafetyClass) if allowed_classes is None else set(allowed_classes)
         self.store.create_policy(run.id, list(edit_scope), list(read_scope), caps,
                                  [c for c in SafetyClass if c in classes])
@@ -908,6 +920,7 @@ class Runtime:
                          config=LoopConfig(withheld_tools=self._withheld_tools(ref, parent_id)),
                          activity=self.activity_tracker(run.id))
         st = self._runs[run.id] = _RunState(loop=loop, ref=ref)
+        loop.effort = self._decide_effort(run.id, words, effort, provider.name, model)
         started = {"agent": agent, "provider": provider.name, "model": model,
                    "parent_id": parent_id, "shape_complexity": shape,
                    "design_class": design, **meta}
@@ -1363,7 +1376,8 @@ class Runtime:
                                 meta: dict | None = None, log: dict | None = None,
                                 design_words: str | None = None,
                                 first_context: dict | None = None,
-                                images: list[tuple[str, str]] | None = None) -> str:
+                                images: list[tuple[str, str]] | None = None,
+                                effort: str | None = None) -> str:
         url, token = await self._mcp()
         info, auth = await self._claude_ready()
         ref = f"{CLAUDE_CODE}/{alias}"
@@ -1379,7 +1393,10 @@ class Runtime:
         self._note_design_class(rid, words, parent_id)
         if parent_id is None and words.strip():
             self._design_model_rubric(rid, words, self.profile())
+        if parent_id is None:
+            self._note_challenge(rid, words)
         st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
+        st.effort = self._decide_effort(rid, words, effort, CLAUDE_CODE, alias)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
         text = prompt
         try:
@@ -1406,9 +1423,21 @@ class Runtime:
 
     async def _spawn_claude(self, rid: str, st: _ClaudeRun, alias: str, info, auth, url: str,
                             token: str, *, resume: str | None) -> None:
+        start_effort = st.effort
+        if start_effort is not None:
+            # Plan 11 F8: --effort only for a CLI that lists it; otherwise the first prompt
+            # applies the level over the control protocol (recorded; never fails the turn)
+            from . import effort as effort_mod
+            from .claude_code.detect import claude_environment
+            if not await effort_mod.cli_supports_effort(info.path, claude_environment()):
+                start_effort = None
+                self.store.append_step(rid, StepKind.DECISION, {
+                    "claude_code": "effort_flag_unsupported",
+                    "note": "this Claude Code does not list --effort; the level is applied "
+                            "per turn instead"})
         s = st.session = ClaudeCodeSession(self, rid, model_alias=alias, info=info, mcp_url=url,
                                            mcp_token=token, resume_session_id=resume,
-                                           config_dir=auth.config_dir)
+                                           config_dir=auth.config_dir, effort=start_effort)
         try:
             await s.start()          # a failure is recorded on the run (error step) and raised
         except BaseException:
@@ -1449,7 +1478,18 @@ class Runtime:
             context = self._claude_context(rid) if first else None
             if first and st.first_context is not None:
                 context = {**(context or {}), **st.first_context}
-            final = await st.session.prompt(text, context=context, images=images, log=log)
+            level, st.effort = st.effort, None
+            try:
+                final = await st.session.prompt(text, context=context, images=images, log=log,
+                                                effort=level)
+            except MisesError:
+                # Plan 11 F8: a CLI that refused --effort at start is retried once without it;
+                # the level then goes over the control protocol. Effort never fails a run.
+                if not (first and st.session.effort_rejected()):
+                    raise
+                await self._respawn_without_effort(rid, st)
+                final = await st.session.prompt(text, context=context, images=images, log=log,
+                                                effort=level)
             result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
@@ -1463,6 +1503,19 @@ class Runtime:
             # a Claude Code turn ended but the session stays open for the next message
             self.activity_tracker(rid).set("idle", "waiting for your next message")
         return result
+
+    async def _respawn_without_effort(self, rid: str, st: _ClaudeRun) -> None:
+        old = st.session
+        self.store.append_step(rid, StepKind.DECISION, {
+            "claude_code": "effort_flag_rejected", "retry": "without --effort",
+            "stderr_tail": old.stderr_tail if old is not None else ""})
+        if old is not None:
+            await old.close()
+        url, token = await self._mcp()
+        info, auth = await self._claude_ready()
+        st.effort = None
+        await self._spawn_claude(rid, st, self.store.get_run(rid).model, info, auth, url, token,
+                                 resume=None)
 
     def _finish_checks(self, run_id: str, result: RunResult | None = None) -> None:
         """A turn ended (end_turn): the finish checks, as ONE warning step. When the turn
@@ -1540,6 +1593,7 @@ class Runtime:
             await self.resume_run(run_id)
             st = self._claude[run_id]
         st.cancel_requested = False
+        st.effort = self._pending_effort.pop(run_id, None)
         if not st.ref:
             st.ref = f"{CLAUDE_CODE}/{self.store.get_run(run_id).model}"
         # the session marks the run running when its turn begins (reopen_external_run), so
@@ -1805,12 +1859,14 @@ class Runtime:
 
     async def send(self, run_id: str, text: str, *, log: dict | None = None,
                    images: list[tuple[str, str]] | None = None,
-                   user_turn: bool = True) -> None:
+                   user_turn: bool = True, effort: str | None = None) -> None:
         """`log` overrides the stored user step's fields (e.g. a feedback pin's note instead of
         the wrapped message the model reads). `images` ((media_type, base64) pairs, e.g. a
         concept sketch with the user's marks drawn on it) go with the message to a model that
         can see images. `user_turn=False` (a system note): the turn it starts is not a new
-        user turn, so the user message's budget window goes on."""
+        user turn, so the user message's budget window goes on. `effort` (Plan 11 F8): the
+        user's Think choice for this message; a new user turn always gets a decision (auto
+        when None), a system note keeps the run's level."""
         if run_id in self._deleting:
             raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is being deleted")
         if run_id in self._sending:
@@ -1827,6 +1883,8 @@ class Runtime:
                 self.new_user_turn(run_id, sub_window=not harness)
                 if words.strip():      # only the user's own words move the class (G-B I3)
                     self._raise_design_class(run_id, words)
+                    self._note_challenge(run_id, words)
+                self._pending_effort[run_id] = self._turn_effort(run_id, words or text, effort)
             elif user_turn:     # joins a running turn: still the user, so notes may wake it
                 self.note_turns.pop(run_id, None)
                 self.note_hold.discard(run_id)
@@ -1885,6 +1943,55 @@ class Runtime:
         except KeyError:
             pass
 
+    def _note_challenge(self, run_id: str, words: str) -> None:
+        """Plan 11 F8: the user's own words may mark the build an open-ended challenge (or
+        turn that off); only a top-level run's (a lead's) messages count. Never fatal."""
+        from . import ideation
+        try:
+            run = self.store.get_run(run_id)
+            if run.parent_id is None and words.strip():
+                ideation.note_challenge(self.store, run.project_id, words)
+        except Exception:  # noqa: BLE001 - a process hint must never break a run
+            log.debug("could not note the challenge flag for %s", run_id, exc_info=True)
+
+    def _decide_effort(self, run_id: str, words: str, choice: str | None, provider: str,
+                       model: str) -> str | None:
+        """Plan 11 F8: decide and record this turn's effort level (DECISION step + `effort`
+        event, with what the runtime is sent). Never fatal: None leaves the runtime default."""
+        from . import effort as effort_mod
+        try:
+            d = effort_mod.decide(self.store, run_id, words, choice,
+                                  inherit=self._parent_level(run_id))
+            effort_mod.record(self, run_id, d, effort_mod.control(provider, model, d["level"]))
+            if provider == CLAUDE_CODE:     # clamped, or None for a model without effort
+                return effort_mod.claude_code_effort(d["level"], model)
+            return d["level"]
+        except Exception:  # noqa: BLE001
+            log.warning("could not decide the effort for %s", run_id, exc_info=True)
+            return None
+
+    def _parent_level(self, run_id: str) -> str | None:
+        """A sub-agent's spawner's latest effort level (it follows its lead unless its own
+        task is creative); None for a top-level run or a spawner with no decision yet."""
+        try:
+            parent = self.store.get_run(run_id).parent_id
+            if parent is None:
+                return None
+            for st in reversed(self.store.steps(parent, [StepKind.DECISION])):
+                eff = st.payload.get("effort")
+                if isinstance(eff, dict) and eff.get("level"):
+                    return str(eff["level"])
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
+    def _turn_effort(self, run_id: str, words: str, choice: str | None) -> str | None:
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return None
+        return self._decide_effort(run_id, words, choice, run.provider, run.model)
+
     def _raise_design_class(self, run_id: str, text: str) -> None:
         """A follow-up message may change the class (design_intensity.follow_up): it rises on
         an archetype or styling signal ("now make it sleek"), falls when the user asks for
@@ -1922,6 +2029,9 @@ class Runtime:
                              hint="wait for it to finish or cancel it")
         st.cancel_requested = False
         st.loop.activity = self.activity_tracker(run_id)   # the last turn's tracker was dropped
+        level = self._pending_effort.pop(run_id, None)
+        if level is not None:
+            st.loop.effort = level
         if hardware.model_kind(st.ref) == "local":
             await self.refresh_local_sizes()
         started = {"resumed": True}

@@ -58,10 +58,12 @@ def test_create_run_and_steps(client, fake):
     assert run["agent"] == "designer" and run["task"] == "make a bracket"
     assert rid in [x["id"] for x in client.get("/runs", headers=AUTH).json()]
     steps = client.get(f"/runs/{rid}/steps", headers=AUTH).json()
-    assert [s["kind"] for s in steps] == ["message", "message"]
+    # Plan 11 F8: the turn's effort decision comes first, then the messages
+    assert [s["kind"] for s in steps] == ["decision", "message", "message"]
+    assert steps[0]["payload"]["effort"]["source"] == "auto"
     later = client.get(f"/runs/{rid}/steps", headers=AUTH,
-                       params={"after_id": steps[0]["id"]}).json()
-    assert [s["id"] for s in later] == [steps[1]["id"]]
+                       params={"after_id": steps[1]["id"]}).json()
+    assert [s["id"] for s in later] == [steps[2]["id"]]
     assert client.get("/runs/nope", headers=AUTH).status_code == 404
     r = client.post("/runs", headers=AUTH, json={"agent": "nobody", "prompt": "x"})
     assert r.status_code == 404 and r.json()["error"] == "not_found"
@@ -69,7 +71,7 @@ def test_create_run_and_steps(client, fake):
     fake._turns.append([TextDelta(text="again")])
     assert client.post(f"/runs/{rid}/message", headers=AUTH, json={"text": "more"}).status_code == 200
     wait_status(client, rid)
-    assert len(client.get(f"/runs/{rid}/steps", headers=AUTH).json()) == 4
+    assert len(client.get(f"/runs/{rid}/steps", headers=AUTH).json()) == 6   # + effort, you, reply
 
 
 def test_cancel_endpoint(client):

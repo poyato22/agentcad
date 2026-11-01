@@ -328,6 +328,9 @@ class PitchOption(BaseModel):
     baseline: bool = Field(False, description="the honest-engineering option (covers only "
                            "where needed); exactly one option is the baseline")
     callouts: list[Callout] = Field(default_factory=list, max_length=4)
+    concept: Annotated[str, StringConstraints(max_length=60)] = Field(
+        "", description="Plan 11 F8: the ideate_concepts concept this option develops (it "
+        "joins the build's tried list)")
 
 
 class PitchArgs(BaseModel):
@@ -393,6 +396,7 @@ async def pitch_options(ctx: ToolContext, args: PitchArgs) -> ToolOutput:
                                     "question": args.question, "options": options,
                                     "chosen": None})
     names = [o["name"] for o in options]
+    _mark_tried(ctx, project, [o.concept or o.name for o in args.options], "pitched")
     ref = {"pitch_id": pitch_id, "project_id": project, "options": names, "stream": "view"}
     announce_card(ctx.events, ctx.store, ctx.run_id, "concept_pitch",
                   f"{len(options)} design directions", " · ".join(names), ref)
@@ -410,6 +414,15 @@ async def pitch_options(ctx: ToolContext, args: PitchArgs) -> ToolOutput:
         data={"pitch_id": pitch_id, "options": names,
               "baseline": next(o["name"] for o in options if o["baseline"])},
         images=imgs)
+
+
+def _mark_tried(ctx: ToolContext, project: str, names: list[str], status: str) -> None:
+    """Plan 11 F8: pitched concepts join the build's tried list (never fatal)."""
+    try:
+        from ..ideation.tools import ideations
+        ideations(ctx).mark_tried(project, names, status)
+    except Exception:  # noqa: BLE001 - the tried list is a memory aid, never a reason to fail
+        pass
 
 
 # ---- concept_status
