@@ -5,6 +5,7 @@
 // per-currency totals), the formula-safe CSV, and the sites routes.
 import { afterEach, describe, expect, it } from "vitest";
 import { loadScenario, startFakeCore, type FakeCore } from "./server";
+import { DEFAULT_SITES } from "./browser";
 
 let core: FakeCore;
 const sc = () => loadScenario("parts-list");
@@ -56,7 +57,7 @@ describe("fake core: agent browser (R3)", () => {
     await req("PUT", "/profile", { suggested_sites: [] });
     expect((await req("GET", "/profile")).json.suggested_sites).toEqual([]);
     const restored = (await req("POST", "/browser/sites/restore_defaults")).json;
-    expect(restored.length).toBe(18);
+    expect(restored.length).toBe(DEFAULT_SITES.length);   // the real core's list (fixture)
     expect((await req("GET", "/profile")).json.suggested_sites).toEqual(restored);
     expect((await req("GET", "/browser/sites/defaults")).json).toEqual(restored);
   });
