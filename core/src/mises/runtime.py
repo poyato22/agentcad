@@ -294,6 +294,7 @@ class Runtime:
         # Claude Code runs this process drives; the MCP endpoint (url, MCP-only token) of the
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
+        self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
         self._external_slots: dict[str, tuple[asyncio.Future[bool] | None, dict]] = {}
         self.mcp_endpoint: tuple[str, str] | None = None
         self._mcp_autostart: Callable[[], Awaitable[None]] | None = None
@@ -1881,6 +1882,68 @@ class Runtime:
     def is_live(self, run_id: str) -> bool:
         """True if this process drives the run (internal loop or external)."""
         return run_id in self._runs or run_id in self._external or run_id in self._claude
+
+    def _last_user_text(self, run_id: str) -> str | None:
+        """The text of the run's most recent user message (E9 retry)."""
+        try:
+            steps = self.store.steps(run_id, [StepKind.MESSAGE])
+        except Exception:  # noqa: BLE001
+            return None
+        for s in reversed(steps):
+            if s.payload.get("role") == "user" and str(s.payload.get("text") or "").strip():
+                return str(s.payload["text"])
+        return None
+
+    async def retry_last(self, run_id: str) -> dict:
+        """E9: re-send the run's last user turn after an error or a stall. A Claude Code run
+        resumes its session; a native run continues in place."""
+        try:
+            self.store.get_run(run_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        if self.run_busy(run_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
+                             hint="wait for it to finish or cancel it")
+        text = self._last_user_text(run_id)
+        if not text:
+            raise MisesError(ErrorCode.INVALID_INPUT, "this run has no message to retry",
+                             hint="send a new message instead")
+        await self.send(run_id, text)
+        return {"ok": True, "run_id": run_id}
+
+    #: a running turn with no activity for this long is reported as stalled (E9)
+    STALL_S = 90.0
+
+    def scan_stalls(self, *, now: float | None = None) -> list[str]:
+        """Publish a `run_stalled` event for each run this process drives whose turn has made no
+        activity for STALL_S and is not waiting on the user (a question or an approval). Each
+        run is reported once until it becomes active again. Returns the newly-stalled ids."""
+        now = time.time() if now is None else now
+        newly: list[str] = []
+        live = set(self._runs) | set(self._claude)
+        for rid in list(live):
+            if not self.run_busy(rid):
+                self._stalled.discard(rid)
+                continue
+            try:
+                run = self.store.get_run(rid)
+            except KeyError:
+                self._stalled.discard(rid)
+                continue
+            if run.status != "running" or self.pending_questions(rid) \
+                    or self.store.pending_approvals(rid):
+                continue
+            idle = now - float(run.last_activity_at or run.created_at or now)
+            if idle < self.STALL_S:
+                self._stalled.discard(rid)
+                continue
+            if rid in self._stalled:
+                continue
+            self._stalled.add(rid)
+            newly.append(rid)
+            self.events.publish(Event(type="run_stalled", run_id=rid,
+                                      data={"run_id": rid, "idle_s": round(idle, 1)}))
+        return newly
 
     def is_cancelling(self, run_id: str) -> bool:
         """True if cancel was requested on an internal run and it has not been resumed since."""

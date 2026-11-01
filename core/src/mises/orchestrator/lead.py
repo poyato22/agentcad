@@ -240,6 +240,22 @@ def queued_messages(rt: Runtime, run_id: str) -> list[dict]:
             for i, m in enumerate(rt.lead_queues.get(run_id) or [])]
 
 
+def cancel_queued(rt: Runtime, run_id: str, message_id: str) -> bool:
+    """E9: drop a message still waiting in the lead's queue (not yet delivered). Returns True
+    when one was removed, False when the id is unknown or already delivered."""
+    q = rt.lead_queues.get(run_id)
+    if not q:
+        return False
+    for i, m in enumerate(q):
+        if m["message_id"] == message_id:
+            q.pop(i)
+            _drop(rt, run_id, m, "cancelled by the user")
+            if not q:
+                rt.lead_queues.pop(run_id, None)
+            return True
+    return False
+
+
 def _enqueue(rt: Runtime, lead_id: str, text: str, log: dict | None, routed: Routed,
              images: list[tuple[str, str]] | None = None) -> dict:
     q = rt.lead_queues.setdefault(lead_id, [])
