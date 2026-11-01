@@ -1,7 +1,8 @@
-"""E33: a cheap, pure bbox view of the whole assembly, so an agent sees overlaps, stray parts
-and floating parts after any change — without running OCCT. The inputs are each part's bounding
-box (from its metrics.json) and the solved world transforms; the OCCT interference check
-(assembly_check) stays the ground truth for real clearances, run in the background or on demand.
+"""E33: a pure bbox view of the whole assembly, so an agent sees overlaps, stray parts and
+floating parts after any change. The inputs are each part's bounding box (from its metrics.json)
+and the solved world transforms. The bbox overlaps are only a PREFILTER: assembly/review.py runs
+the OCCT boolean common (assembly_check's worker) on the assembly when any pair's boxes overlap
+and replaces them with the real interference volumes.
 
 A health report is {ok, overlaps, stray, floating, extents, summary}:
 - overlaps: pairs whose world AABBs intersect by more than a tolerance (likely collisions);
@@ -119,6 +120,14 @@ def health(instances: list, transforms: dict[str, list[list[float]]],
         extents = {"min": [round(v, 2) for v in lo], "max": [round(v, 2) for v in hi],
                    "size": [round(hi[a] - lo[a], 2) for a in range(3)]}
 
+    return finalize({"overlaps": overlaps, "stray": stray, "floating": floating,
+                     "extents": extents, "overlap_method": "bbox"})
+
+
+def finalize(report: dict) -> dict:
+    """(Re)compute `ok` and `summary` from the report's lists (after OCCT replaced the bbox
+    overlap candidates with real interferences, E33)."""
+    overlaps, stray, floating = report["overlaps"], report["stray"], report["floating"]
     ok = not overlaps and not stray and not floating
     parts = []
     if overlaps:
@@ -128,8 +137,7 @@ def health(instances: list, transforms: dict[str, list[list[float]]],
     if floating:
         parts.append(f"{len(floating)} floating part(s)")
     summary = "assembly health: clean" if ok else "assembly health: " + ", ".join(parts)
-    return {"ok": ok, "overlaps": overlaps, "stray": stray, "floating": floating,
-            "extents": extents, "summary": summary}
+    return {**report, "ok": ok, "summary": summary}
 
 
 def _dist(a: list[float], b: list[float]) -> float:

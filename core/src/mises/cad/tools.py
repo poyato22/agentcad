@@ -581,6 +581,8 @@ async def _auto_place(ctx: ToolContext, part_id: str, d: Path) -> dict | None:
         events = getattr(ctx, "events", None)
         if events is not None:
             events.publish(Event(type="assembly_changed", data={"project_id": row.project_id}))
+        from ..assembly.tools import mark_changed      # E33: the lead reviews it at turn end
+        mark_changed(ctx, row.project_id)
         return {"project_id": row.project_id, "instance": inst.model_dump()}
     except Exception:  # noqa: BLE001 - the part is built; placing it is a convenience
         log.warning("could not place %s in the assembly", part_id, exc_info=True)

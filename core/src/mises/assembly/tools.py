@@ -74,28 +74,28 @@ def _solve(ctx: ToolContext, project_id: str) -> tuple:
 
 def _changed(ctx: ToolContext, project_id: str) -> None:
     ctx.events.publish(Event(type="assembly_changed", data={"project_id": project_id}))
+    mark_changed(ctx, project_id)
 
 
-def _health(ctx: ToolContext, project_id: str) -> tuple[dict, list[str]]:
-    """E33: a cheap bbox health report (overlaps, stray, floating, extents) for the build's
-    current assembly, plus warning lines. Never raises — a missing bbox just skips that part."""
-    from ..cad import safe_io
-    from .health import health, warnings_from
-    asm = _store(ctx).get(project_id)
-    res = solve(asm, resolve_face=face_resolver(_parts_root(ctx)))
-    root = _parts_root(ctx)
-    bboxes: dict[str, dict] = {}
-    for inst in asm.instances:
-        if inst.part_id in bboxes:
-            continue
+def mark_changed(ctx: ToolContext, project_id: str) -> None:
+    """E33: remember that this turn changed the build's assembly, so the lead gets a
+    whole-assembly render and a finish check when its turn ends (Runtime._after_turn)."""
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    fn = getattr(rt, "mark_assembly_changed", None)
+    run_id = getattr(ctx, "run_id", None)
+    if fn is not None and run_id:
         try:
-            m = safe_io.read_json(root / inst.part_id, "metrics.json")
-        except (OSError, ValueError, safe_io.UnsafePath):
-            continue
-        bbox = m.get("bbox") if isinstance(m, dict) else None
-        if isinstance(bbox, dict) and "min" in bbox and "max" in bbox:
-            bboxes[inst.part_id] = bbox
-    report = health(asm.instances, res.transforms, bboxes, joints=asm.joints)
+            fn(run_id, project_id)
+        except Exception:  # noqa: BLE001 - bookkeeping never fails the edit
+            pass
+
+
+async def _health(ctx: ToolContext, project_id: str) -> tuple[dict, list[str]]:
+    """E33: the assembly health (overlaps with real OCCT volumes for bbox-overlapping pairs,
+    stray, floating, extents), plus warning lines. A missing bbox just skips that part."""
+    from .health import warnings_from
+    from .review import assembly_report
+    report = await assembly_report(_store(ctx), _parts_root(ctx), project_id)
     return report, warnings_from(report)
 
 
@@ -287,8 +287,19 @@ async def assembly_check(ctx: ToolContext, args: CheckArgs) -> ToolOutput:
     if res.overconstrained:
         groups = "; ".join(", ".join(g) for g in res.overconstrained)
         summary += f"; over-constrained (fixed instances joined by joints): {groups}"
-    # a cheap bbox view too, so the agent also sees stray/floating parts it must fix (E33)
-    report, hwarns = _health(ctx, pid)
+    # the health view too, so the agent also sees stray/floating parts it must fix (E33); the
+    # OCCT interferences just computed are its overlaps (no second worker run)
+    from .health import finalize, warnings_from
+    from .review import bbox_report
+    report = bbox_report(_store(ctx), _parts_root(ctx), pid)[0]
+    if checked:
+        ids = {i.name: i.id for i in asm.instances}
+        report = finalize({**report, "overlap_method": "occt", "overlaps": [
+            {"a": h.get("a"), "b": h.get("b"), "a_id": ids.get(h.get("a"), h.get("a")),
+             "b_id": ids.get(h.get("b"), h.get("b")),
+             "volume_mm3": round(float(h.get("volume_mm3") or 0.0), 3)}
+            for h in interferences]})
+    hwarns = warnings_from(report)
     if not report["ok"]:
         summary += f"; {report['summary']}"
         warnings += hwarns
@@ -511,7 +522,7 @@ async def assembly_add_part(ctx: ToolContext, args: AddPartArgs) -> ToolOutput:
         store.add_instance(pid, inst)
     store.add_joint(pid, joint)
     _changed(ctx, pid)
-    report, warns = _health(ctx, pid)
+    report, warns = await _health(ctx, pid)
     return ToolOutput(summary=f"added {args.part_id} as instance {inst.name} ({inst.id}), "
                               f"{joint.kind} joint {joint.id} to {target.name} ({target.id})"
                               + ("" if report["ok"] else f"; {report['summary']}"),
@@ -576,7 +587,7 @@ async def assembly_move(ctx: ToolContext, args: MoveArgs) -> ToolOutput:
         store.update_instance(pid, inst.id, transform=new_t)
         asm2, res2 = _solve(ctx, pid)
         _changed(ctx, pid)
-        report, warns = _health(ctx, pid)
+        report, warns = await _health(ctx, pid)
         return ToolOutput(summary=f"moved free instance {inst.name} ({inst.id})"
                                   + ("" if report["ok"] else f"; {report['summary']}"),
                           data={"instance_id": inst.id, "joint_id": None,
@@ -593,7 +604,7 @@ async def assembly_move(ctx: ToolContext, args: MoveArgs) -> ToolOutput:
     store.update_joint(pid, joint.id, value=applied)
     asm2, res2 = _solve(ctx, pid)
     _changed(ctx, pid)
-    report, warns = _health(ctx, pid)
+    report, warns = await _health(ctx, pid)
     return ToolOutput(summary=f"moved {inst.name} ({inst.id}) along {joint.kind} joint "
                               f"{joint.id}: value {applied}"
                               + ("" if report["ok"] else f"; {report['summary']}"),

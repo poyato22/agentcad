@@ -135,6 +135,7 @@ class Gate:
         except Exception as e:
             raise MisesError(ErrorCode.TOOL_FAILED, f"{type(e).__name__}: {e}") from None
 
+        out = self._with_assembly_render(run_id, out)
         out = self._redact(out, run_id)                                          # 9
         out = self._cap_images(out)
         out = self._spill(out, workdir, call_id)
@@ -234,6 +235,18 @@ class Gate:
         if red == blob:
             return out
         return ToolOutput.model_validate_json(red).model_copy(update={"images": out.images})
+
+    def _with_assembly_render(self, run_id: str, out: ToolOutput) -> ToolOutput:
+        """E33: the whole-assembly render from this run's last turn rides along with its next
+        tool result (image blocks the model looks at), once."""
+        take = getattr(self.services.get("runtime"), "take_assembly_images", None)
+        imgs = take(run_id) if take is not None else []
+        if not imgs:
+            return out
+        note = ("whole-assembly render from your last turn attached (problem parts tinted: red "
+                "overlap, orange stray, amber no joint) — look at it")
+        return out.model_copy(update={"images": [*out.images, *imgs],
+                                      "warnings": [*out.warnings, note]})
 
     @staticmethod
     def _cap_images(out: ToolOutput) -> ToolOutput:

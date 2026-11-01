@@ -280,6 +280,9 @@ async def _auto_place(ctx: ToolContext, part_id: str, project: str | None) -> No
                                        part_id, display_name(row))
         if inst is not None and getattr(ctx, "events", None) is not None:
             ctx.events.publish(Event(type="assembly_changed", data={"project_id": project}))
+        if inst is not None:
+            from ..assembly.tools import mark_changed  # E33: the lead reviews it at turn end
+            mark_changed(ctx, project)
     except Exception:  # noqa: BLE001 - the part is in the build; placing it is a convenience
         log.warning("could not place catalog part %s in the assembly", part_id, exc_info=True)
 

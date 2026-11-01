@@ -326,7 +326,8 @@ def _merge(meta: dict, more: dict) -> dict:
     return {"kind": "sim_finished", "items": items}
 
 
-def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict) -> dict | None:
+def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict,
+                  images: list[tuple[str, str]] | None = None) -> dict | None:
     """A system note counts toward QUEUE_MAX but never raises 429. Notes waiting for the same
     turn are coalesced into one message; at the cap the oldest waiting note makes room, and a
     queue full of user messages drops the new note instead."""
@@ -334,6 +335,8 @@ def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict) -> dict | Non
     waiting = next((m for m in q if m.get("note")), None)
     if waiting is not None:                       # one message for every note of this turn
         waiting["text"] = waiting["shown"] = waiting["text"] + "\n" + text
+        if images:
+            waiting["images"] = [*(waiting.get("images") or []), *images]
         waiting["log"] = {"text": waiting["text"],
                           "system_note": _merge(waiting["log"]["system_note"],
                                                 log["system_note"])}
@@ -351,7 +354,8 @@ def _enqueue_note(rt: Runtime, lead_id: str, text: str, log: dict) -> dict | Non
         _drop(rt, lead_id, {"message_id": mid}, "the lead's queue is full")
         return None
     mid = "msg_" + secrets.token_hex(6)
-    q.append({"message_id": mid, "text": text, "log": log, "shown": text, "note": True})
+    q.append({"message_id": mid, "text": text, "log": log, "shown": text, "note": True,
+              **({"images": images} if images else {})})
     rt.store.append_step(lead_id, StepKind.DECISION, {"queued_message": {
         "message_id": mid, "text": text, "position": len(q), "routed": None,
         "system_note": log.get("system_note")}})
@@ -378,7 +382,8 @@ def _hold_reason(rt: Runtime, owner_id: str) -> str | None:
 
 
 async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict, *,
-                       defer: bool = False) -> dict | None:
+                       defer: bool = False,
+                       images: list[tuple[str, str]] | None = None) -> dict | None:
     """A short system note (e.g. "Study ... finished: ...") to the agent that owns `run_id`
     (note_owner): sent now when it is idle (it reacts in a turn that is NOT a new user turn:
     the budget window and the critique loop of the user's message go on), queued and
@@ -399,7 +404,7 @@ async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict, *,
             text, meta = t + "\n" + text, _merge(m, meta)
         log = {"text": text, "system_note": meta}
         if rt.lead_queues.get(owner.id) or rt.run_busy(owner.id):
-            return _enqueue_note(rt, owner.id, text, log)
+            return _enqueue_note(rt, owner.id, text, log, images)
         why = _hold_reason(rt, owner.id)
         if why is not None:
             _park(rt, owner.id, text, meta, why)
@@ -407,13 +412,16 @@ async def deliver_note(rt: Runtime, run_id: str, text: str, meta: dict, *,
         rt.note_turns[owner.id] = rt.note_turns.get(owner.id, 0) + 1
         sent = False
         try:
-            await rt.send(owner.id, text, log=log, user_turn=False)
+            if images:
+                await rt.send(owner.id, text, log=log, user_turn=False, images=images)
+            else:
+                await rt.send(owner.id, text, log=log, user_turn=False)
             sent = True
             return {"run_id": owner.id, "sent": True}
         except MisesError as e:
             if not (e.code == ErrorCode.INVALID_INPUT and "still working" in e.message):
                 raise
-            return _enqueue_note(rt, owner.id, text, log)
+            return _enqueue_note(rt, owner.id, text, log, images)
         finally:
             if not sent:
                 rt.note_turns[owner.id] = max(0, rt.note_turns.get(owner.id, 1) - 1)

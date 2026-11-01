@@ -295,6 +295,11 @@ class Runtime:
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
         self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
+        # E33: root run id -> the build whose assembly its turn changed; the render waiting for
+        # its next tool result; the turn-end review tasks (awaited by tests)
+        self.assembly_touched: dict[str, str] = {}
+        self.pending_assembly_images: dict[str, list] = {}
+        self._after_turn_tasks: set[asyncio.Task] = set()
         self._external_slots: dict[str, tuple[asyncio.Future[bool] | None, dict]] = {}
         self.mcp_endpoint: tuple[str, str] | None = None
         self._mcp_autostart: Callable[[], Awaitable[None]] | None = None
@@ -1420,6 +1425,7 @@ class Runtime:
         if result.stop_reason == "end_turn" and not st.cancel_requested:
             # a Claude Code turn ended but the session stays open for the next message
             self.activity_tracker(rid).set("idle", "waiting for your next message")
+            self._schedule_after_turn(rid, result)     # E33 assembly review
         return result
 
     def _is_claude_run(self, run_id: str) -> bool:
@@ -1725,6 +1731,7 @@ class Runtime:
             "status": status, "stop_reason": result.stop_reason, "error": result.error,
             "final_text": result.final_text}))
         self._end_activity(run_id)
+        self._schedule_after_turn(run_id, result)      # E33 assembly review
         return result
 
     def _state(self, run_id: str) -> _RunState:
@@ -1890,6 +1897,68 @@ class Runtime:
     def is_live(self, run_id: str) -> bool:
         """True if this process drives the run (internal loop or external)."""
         return run_id in self._runs or run_id in self._external or run_id in self._claude
+
+    # ---- E33: the lead sees the whole assembly after a turn that changed it
+    def mark_assembly_changed(self, run_id: str, project_id: str) -> None:
+        """An assembly-changing tool (or auto-place) ran in `run_id`'s turn: its root agent
+        (the lead, for a sub-agent's change) reviews the assembly when its turn ends."""
+        try:
+            root, _family = self.store.run_family(run_id)
+            run = self.store.get_run(root)
+        except KeyError:
+            return
+        if run.provider in ("ui", "acp") or run.archived:
+            return
+        self.assembly_touched[root] = project_id
+
+    def take_assembly_images(self, run_id: str) -> list:
+        """The whole-assembly render waiting for this run's next tool result (Gate)."""
+        return self.pending_assembly_images.pop(run_id, [])
+
+    def _schedule_after_turn(self, run_id: str, result: RunResult) -> None:
+        if result.stop_reason != "end_turn" or run_id not in self.assembly_touched:
+            return
+        try:
+            if self.store.get_run(run_id).parent_id is not None:
+                return                  # a sub-agent's changes are reviewed by its root
+            loop = asyncio.get_running_loop()
+        except (KeyError, RuntimeError):
+            return
+        task = loop.create_task(self._after_turn(run_id, result.final_text))
+        self._after_turn_tasks.add(task)
+        task.add_done_callback(self._after_turn_tasks.discard)
+
+    async def _after_turn(self, run_id: str, final_text: str | None) -> None:
+        """E33 turn-end review of a turn that changed the assembly: the health report with real
+        interference volumes and a whole-assembly render (problem parts tinted). When the agent
+        reported the work done while the health has errors, a visible warning step and a system
+        note (with the render) tell it to fix them — the user is never blocked. Otherwise the
+        render rides along with the agent's next tool result. Never raises."""
+        pid = self.assembly_touched.pop(run_id, None)
+        if pid is None:
+            return
+        from .assembly import review
+        try:
+            report = await review.assembly_report(self.assembly_store, self.home / "parts", pid)
+            images = await review.overview_images(self.home, self.assembly_store, pid, report)
+        except Exception:  # noqa: BLE001 - a review must never break the run
+            log.warning("assembly review after %s's turn failed", run_id, exc_info=True)
+            return
+        if report["ok"] or not review.claims_done(final_text):
+            if images:
+                self.pending_assembly_images[run_id] = images
+            return
+        info = {"project_id": pid, "summary": report["summary"],
+                "overlaps": report["overlaps"], "stray": report["stray"],
+                "floating": report["floating"], "images": len(images)}
+        with contextlib.suppress(Exception):
+            self.store.append_step(run_id, StepKind.DECISION, {"assembly_health_warning": info})
+        self.events.publish(Event(type="assembly_health_warning", run_id=run_id,
+                                  data={"run_id": run_id, **info}))
+        from .orchestrator.lead import deliver_note
+        await deliver_note(self, run_id, review.fix_note(report),
+                           {"kind": "assembly_health", "summary": report["summary"]},
+                           images=[(i.media_type, i.data_b64) for i in images] or None)
 
     def _last_user_text(self, run_id: str) -> str | None:
         """The text of the run's most recent user message (E9 retry)."""
