@@ -44,7 +44,9 @@ class Costly:
             yield ev
 
 
-async def test_a_lead_stopped_on_budget_is_resumed_not_archived(home):
+async def test_a_lead_stopped_on_budget_is_resumed_not_archived(home, monkeypatch):
+    from mises import budget
+    monkeypatch.setattr(budget, "profile_caps_on", lambda store: True)     # G3: caps are opt-in
     box = []
     prov = Costly(box, [tool_turn(0), text("resumed with my thread")])
     rt = Runtime(home, provider_resolver=lambda ref: (prov, "m"))

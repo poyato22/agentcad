@@ -564,7 +564,9 @@ async def test_time_budget(tmp_path, monkeypatch):
     assert r.data["done"] and r.data["stop_reason"] == "time_budget"
 
 
-async def test_usd_budget(tmp_path):
+async def test_usd_budget(tmp_path, monkeypatch):
+    from mises import budget
+    monkeypatch.setattr(budget, "profile_caps_on", lambda store: True)     # G3: caps are opt-in
     from mises.types import Caps
     _make_part(tmp_path, "cube")
     store, ctx = _store_ctx(tmp_path, "pA", "pA")
