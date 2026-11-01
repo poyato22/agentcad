@@ -253,6 +253,8 @@ class Runtime:
         from .engineering.eng_tools import register_eng_check_tools
         register_dyn_tools(self.registry)
         register_eng_check_tools(self.registry)
+        from .rocketry.tools import register_rocket_tools   # Plan 11 F6: rocketry
+        register_rocket_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)

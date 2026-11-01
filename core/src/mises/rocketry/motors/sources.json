@@ -1,0 +1,16 @@
+{
+  "note": "Thrust curves bundled with Mises. Every file is a RASP .eng simfile from ThrustCurve.org whose license class there is Public Domain ('PD'), as recorded per simfile in ThrustCurve's data (mirrored in the OpenRocket motor-database, https://github.com/openrocket/motor-database, thrust_curves.license). Files are unmodified. Curves whose ThrustCurve license is not PD (e.g. AeroTech F39T, F42T, F52T, G64W, Estes F15) are NOT bundled; the PD Estes C6 user file was left out because its curve integrates to 10.0 Ns against the 8.82 Ns certified total. Every bundled curve integrates within 3% of ThrustCurve's listed total impulse (tests/rocketry). Unbundled curves: rocket_motor fetches them at runtime into the user's home, or the agent passes the .eng text it opened on thrustcurve.org.",
+  "retrieved": "2026-11-01",
+  "files": {
+    "AeroTech_F44W.eng": {"designation": "F44W", "manufacturer": "AeroTech", "simfile": "5f4294d20002e900000007ef", "data_source": "mfr", "license": "PD",
+                          "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007ef/"},
+    "AeroTech_F52C.eng": {"designation": "F52C", "manufacturer": "AeroTech", "simfile": "5f5e5a6a1e865c0004c95620", "data_source": "cert (TMT)", "license": "PD",
+                          "url": "https://www.thrustcurve.org/simfiles/5f5e5a6a1e865c0004c95620/"},
+    "AeroTech_F67C.eng": {"designation": "F67C", "manufacturer": "AeroTech", "simfile": "639413fa1766e20004fd1199", "data_source": "cert", "license": "PD",
+                          "url": "https://www.thrustcurve.org/simfiles/639413fa1766e20004fd1199/"},
+    "AeroTech_G25W.eng": {"designation": "G25W", "manufacturer": "AeroTech", "simfile": "5f4294d20002e900000007ea", "data_source": "cert", "license": "PD",
+                          "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007ea/"},
+    "Estes_G40W.eng": {"designation": "G40W", "manufacturer": "Estes (AeroTech-made)", "simfile": "5f4294d20002e900000007b0", "data_source": "cert", "license": "PD",
+                       "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007b0/"}
+  }
+}
