@@ -178,6 +178,29 @@ describe("agent dock: the Conversation over View | Simulations", () => {
     expect(section("sim").tagName).toBe("BUTTON");
   });
 
+  it("a press never moves the row before it ends: the click lands where it went down (reduced motion)", async () => {
+    // With reduced motion a widening is instant: the focus a mouse press gives a filmstrip tile
+    // must not widen the half between pointerdown and pointerup (the tile would move away and
+    // the click be lost). It widens once the press is over.
+    const reduce = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+    onTestFinished(() => { window.matchMedia = reduce; });
+    mount([...TEXT, ...STUDY, view(90_001, 2e9, "the lid"), view(90_002, 2e9 + 1, "the lid, closer")]);
+    await frame();
+    const row = document.querySelector("[data-dock-row]") as HTMLElement;
+    const tileBtn = within(section("view").querySelector("[data-filmstrip]") as HTMLElement).getAllByRole("button")[0];
+    fireEvent.pointerEnter(section("view"));
+    fireEvent.pointerDown(tileBtn);
+    tileBtn.focus();                                   // the focus a mouse press brings
+    await act(async () => { await new Promise((r) => setTimeout(r, HOVER_INTENT_MS + 30)); });
+    expect(row.hasAttribute("data-expand")).toBe(false);          // nothing moved mid-press
+    fireEvent.pointerUp(tileBtn);
+    fireEvent.click(tileBtn);
+    expect(section("view").querySelector("[data-testid=view-card]")?.textContent).toContain("the lid");
+    await frame();
+    expect(row.getAttribute("data-expand")).toBe("view");          // then it widens
+  });
+
   it("a closed stream is a slim tab that counts what arrives while it is closed; the choice is remembered", async () => {
     mount([...TEXT, ...STUDY]);
     await frame();

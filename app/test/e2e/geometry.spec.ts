@@ -95,7 +95,8 @@ test("view_stream_shows_the_newest_large_the_rest_in_a_filmstrip_and_one_live_ca
   await expect(big).toHaveAttribute("data-kind", "exploded");
   await expect(big).toHaveAttribute("data-live", "true");
   // the View column's full width (P10 E6: a column of the dock)
-  expect((await big.boundingBox())!.width).toBeGreaterThanOrEqual((await viewStream(page).boundingBox())!.width - 30);
+  // (P11 F2: the half widens once the click is done; measured after its transition settles)
+  await expect.poll(async () => (await big.boundingBox())!.width - (await viewStream(page).boundingBox())!.width).toBeGreaterThanOrEqual(-30);
   await expect(big.getByTestId("live-view")).toHaveAttribute("data-state", "ready", { timeout: 10_000 });
   await expect(page.locator("[data-testid=live-view]")).toHaveCount(1);
   // a critique round shows large too and expands to its issues
