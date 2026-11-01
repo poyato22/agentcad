@@ -32,6 +32,12 @@ PROFILE_FILE = "profile.json"
 #    choice; it becomes "engineer". A user who picks the designer now (saved at v3+) keeps it.
 PROFILE_SCHEMA_VERSION = 3
 _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+# E3: the only environment variable names the user may set for Claude Code (CA bundle paths and
+# proxy URLs — never API keys)
+CLAUDE_CODE_ENV_KEYS = frozenset({
+    "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+})
 _DOMAIN_RE = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 
 KeyStatusFn = Callable[[], dict[str, str]]          # vendor -> "env" | "keychain" | "none" | ...
@@ -184,6 +190,26 @@ class Profile(BaseModel):
     # Plan 9 G-B (D27): an optional cheap model ("vendor/model", e.g. a Haiku) that rates how
     # design-heavy a request is; the keyword prior is used alone when unset or unavailable
     design_classifier_model: str | None = None
+    # E3: extra environment for the user's Claude Code — a CA bundle path or proxy URL for a
+    # VPN/filtering proxy that a GUI-launched core does not inherit from the shell. Only the
+    # allowlisted names below are kept (paths/URLs, never API keys); values are never logged
+    # beyond their names, and claude_environment() forwards them to every `claude` Mises starts.
+    claude_code_env: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("claude_code_env")
+    @classmethod
+    def _claude_env(cls, v: dict[str, str]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for name, value in v.items():
+            if name not in CLAUDE_CODE_ENV_KEYS:
+                raise ValueError(f"{name!r} is not an allowed Claude Code environment variable "
+                                 f"(allowed: {', '.join(sorted(CLAUDE_CODE_ENV_KEYS))})")
+            value = str(value)
+            if "\n" in value or "\r" in value or len(value) > 4096:
+                raise ValueError(f"the value of {name!r} must be one line under 4096 characters")
+            if value:
+                out[name] = value
+        return out
 
     @field_validator("catalog_allowed_domains")
     @classmethod

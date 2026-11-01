@@ -74,6 +74,43 @@ CLOSE_GRACE_S = 2.0                    # stdin EOF -> SIGTERM on a normal close
 MCP_FILE, AGENTS_FILE, RULES_FILE = "claude-mcp.json", "claude-agents.json", "mises-rules.md"
 
 
+# E3: classify a Claude Code failure from its message/stderr so the app can explain it and
+# offer the right fix. Ordered: the most specific cause first (TLS before a generic network
+# error, which a cert failure can also look like).
+_ERROR_CLASSES: tuple[tuple[re.Pattern, str, str, str], ...] = (
+    (re.compile(r"UNABLE_TO_GET_ISSUER|SELF_SIGNED_CERT|CERT_|CERTIFICATE|\bSSL\b|ERR_TLS|"
+                r"DEPTH_ZERO_SELF_SIGNED", re.I),
+     "tls", "Claude Code could not verify the TLS certificate on the way to Anthropic.",
+     "A VPN or proxy that filters HTTPS (e.g. a corporate or Windscribe CA) is likely "
+     "intercepting the connection. Start Mises from a terminal with NODE_EXTRA_CA_CERTS set to "
+     "your CA bundle, or set it in Profile → Claude Code."),
+    (re.compile(r"\b401\b|unauthori[sz]|invalid api key|authentication", re.I),
+     "auth", "Anthropic did not accept Claude Code's sign-in.",
+     "Sign in again from Setup or Profile (runs `claude auth login`)."),
+    (re.compile(r"\b429\b|rate.?limit|too many requests", re.I),
+     "rate_limit", "Anthropic rate-limited Claude Code.",
+     "Wait a moment, then retry."),
+    (re.compile(r"\b529\b|overloaded", re.I),
+     "overloaded", "Anthropic is overloaded right now.",
+     "Retry in a little while."),
+    (re.compile(r"\bproxy\b|EPROXY", re.I),
+     "proxy", "Claude Code's request to Anthropic failed at a proxy.",
+     "Check HTTPS_PROXY / HTTP_PROXY, or set them in Profile → Claude Code."),
+    (re.compile(r"ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|ECONNRESET|getaddrinfo|"
+                r"network|ENETUNREACH", re.I),
+     "network", "Claude Code could not reach Anthropic over the network.",
+     "Check your internet connection (and any VPN), then retry."),
+)
+
+
+def classify_claude_error(text: str | None) -> dict | None:
+    """{kind, cause, hint} for a recognised Claude Code failure, else None (E3)."""
+    for rx, kind, cause, hint in _ERROR_CLASSES:
+        if rx.search(text or ""):
+            return {"kind": kind, "cause": cause, "hint": hint}
+    return None
+
+
 def model_alias(model_ref: str) -> str | None:
     """`claude-code/<alias>` -> the alias; None for any other model ref. An alias that could not
     be a plain `--model` value (empty, a flag, spaces) is refused."""
@@ -463,9 +500,12 @@ class ClaudeCodeSession:
         turn_open = self._turn is not None and not self._turn.done()
         msg = (f"Claude Code exited (code {rc}) before finishing the turn" if turn_open
                else f"Claude Code exited (code {rc})")
-        self._error(msg, stderr_tail=self.stderr_tail)
+        tail = self.stderr_tail
+        cls = classify_claude_error(tail)
+        self._error(msg, stderr_tail=tail, **(cls or {}))
         self._fail_turn(MisesError(ErrorCode.TOOL_FAILED, msg,
-                                   hint="see the run's error step for Claude Code's stderr"))
+                                   hint=(cls or {}).get("hint")
+                                   or "see the run's error step for Claude Code's stderr"))
         self._finish("failed")
 
     def _on_message(self, msg: dict) -> None:
@@ -635,9 +675,11 @@ class ClaudeCodeSession:
         if msg.get("is_error"):
             detail = msg.get("result") if isinstance(msg.get("result"), str) else None
             message = f"Claude Code: {detail or msg.get('subtype') or 'error'}"
-            self._error(message, subtype=msg.get("subtype"))
+            cls = classify_claude_error(detail or msg.get("subtype"))
+            self._error(message, subtype=msg.get("subtype"), **(cls or {}))
             self._finish("failed")
-            self._fail_turn(MisesError(ErrorCode.TOOL_FAILED, message))
+            self._fail_turn(MisesError(ErrorCode.TOOL_FAILED, message,
+                                       hint=(cls or {}).get("hint")))
             return
         spent = budget.usd_exhausted(self.runtime.store, self.run_id)
         if spent is not None:
