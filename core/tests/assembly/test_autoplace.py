@@ -41,7 +41,15 @@ def test_first_part_is_grounded_at_its_own_origin(env):
     assert [inst.transform[r][3] for r in range(3)] == [0, 0, 0]
 
 
-def test_next_part_goes_beside_the_assembly_without_overlap(env):
+def _clear(boxes, gap=5.0 - 1e-6):
+    items = list(boxes.items())
+    for i, (na, (alo, ahi)) in enumerate(items):
+        for nb, (blo, bhi) in items[i + 1:]:
+            assert not all(alo[k] < bhi[k] + gap and ahi[k] > blo[k] - gap for k in range(3)), \
+                (na, nb)
+
+
+def test_next_part_goes_next_to_the_assembly_without_overlap(env):
     store, root = env
     _part(root, "base", [-10, -10, 0], [10, 10, 5])
     _part(root, "arm", [-30, -2, -1], [30, 2, 1])
@@ -49,15 +57,15 @@ def test_next_part_goes_beside_the_assembly_without_overlap(env):
     inst = auto_place(store, root, "p", "arm")
     assert inst is not None and inst.fixed is False
     boxes = _box(store, root, "p")
+    _clear(boxes)
     (blo, bhi), (alo, ahi) = boxes["base"], boxes["arm"]
-    assert alo[0] >= bhi[0] + 5 - 1e-9                       # past +X with a gap
-    assert (alo[1] + ahi[1]) / 2 == pytest.approx((blo[1] + bhi[1]) / 2)
     assert alo[2] == pytest.approx(blo[2])                   # on the same floor
-    # a third one clears both
+    # right next to the base: one gap away on some side, not a box-share further out
+    gap = max(alo[0] - bhi[0], blo[0] - ahi[0], alo[1] - bhi[1], blo[1] - ahi[1])
+    assert 5 - 1e-6 <= gap <= 10
     _part(root, "pin", [0, 0, 0], [4, 4, 4])
     auto_place(store, root, "p", "pin")
-    boxes = _box(store, root, "p")
-    assert boxes["pin"][0][0] > boxes["arm"][1][0]
+    _clear(_box(store, root, "p"))
 
 
 def test_a_placed_part_is_left_alone(env):
@@ -117,5 +125,63 @@ def test_a_write_landing_during_the_plan_is_seen_and_the_plan_redone(env, monkey
     monkeypatch.setattr(ap, "_plan", racing)
     inst = auto_place(store, root, "p", "arm")
     assert len(calls) == 2
+    _clear(_box(store, root, "p"))                              # planned against the new state
+
+
+# ---- FWC I3 (E33): near related parts or the origin cluster, never an ever-growing +X stack
+def _bboxes(root, asm):
+    out = {}
+    for i in asm.instances:
+        bb = json.loads((root / i.part_id / "metrics.json").read_text())["bbox"]
+        out[i.part_id] = {"min": bb["min"], "max": bb["max"]}
+    return out
+
+
+def test_many_parts_stay_in_a_compact_cluster_round_the_origin(env):
+    from mises.assembly.health import health
+    store, root = env
+    _part(root, "base", [-20, -20, 0], [20, 20, 10])
+    auto_place(store, root, "p", "base")
+    for k in range(12):
+        _part(root, f"p{k}", [0, 0, 0], [10, 10, 10])
+        auto_place(store, root, "p", f"p{k}")
     boxes = _box(store, root, "p")
-    assert boxes["arm"][0][0] > boxes["spare"][1][0]            # planned against the new state
+    _clear(boxes)
+    # 12 parts of 10 mm in a +X row would reach past x = 200; the cluster stays round the base
+    assert max(max(b[1][0], -b[0][0], b[1][1], -b[0][1]) for b in boxes.values()) < 70
+    asm = store.get("p")
+    rep = health(asm.instances, {i.id: i.transform for i in asm.instances}, _bboxes(root, asm))
+    assert rep["stray"] == [] and rep["overlaps"] == []
+
+
+def test_a_child_lands_by_its_parent_not_by_the_cluster(env):
+    store, root = env
+    _part(root, "base", [-10, -10, 0], [10, 10, 10])
+    _part(root, "leg", [-5, -5, 0], [5, 5, 40])
+    _part(root, "foot", [0, 0, 0], [8, 8, 4])
+    auto_place(store, root, "p", "base")
+    far = [[1, 0, 0, 300], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    store.add_instance("p", Instance(part_id="leg", name="leg", transform=far))
+    auto_place(store, root, "p", "foot", related=("leg",))
+    boxes = _box(store, root, "p")
+    _clear(boxes)
+    lc = [(boxes["leg"][0][a] + boxes["leg"][1][a]) / 2 for a in range(2)]
+    fc = [(boxes["foot"][0][a] + boxes["foot"][1][a]) / 2 for a in range(2)]
+    assert ((lc[0] - fc[0]) ** 2 + (lc[1] - fc[1]) ** 2) ** 0.5 < 20   # beside the leg
+    assert boxes["foot"][0][2] == pytest.approx(boxes["leg"][0][2])     # on the leg's floor
+
+
+def test_related_parts_are_parent_siblings_and_children():
+    from types import SimpleNamespace as N
+
+    from mises.assembly.autoplace import related_parts
+    rows = [N(id="body", parent_id=None, project_id="p"),
+            N(id="leg", parent_id="body", project_id="p"),
+            N(id="arm", parent_id="body", project_id="p"),
+            N(id="foot", parent_id="leg", project_id="p"),
+            N(id="other", parent_id=None, project_id="p")]
+    store = N(get_part=lambda pid: next((r for r in rows if r.id == pid), None),
+              list_part_rows=lambda project_id=None: rows)
+    assert set(related_parts(store, "leg")) == {"body", "arm", "foot"}
+    assert related_parts(store, "other") == ()
+    assert related_parts(store, "missing") == ()

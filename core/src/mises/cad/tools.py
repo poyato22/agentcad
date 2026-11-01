@@ -568,14 +568,15 @@ async def _auto_place(ctx: ToolContext, part_id: str, d: Path) -> dict | None:
     if store is None or asm is None or _editor(ctx) == "user":
         return None
     try:
-        from ..assembly.autoplace import auto_place
+        from ..assembly.autoplace import auto_place, related_parts
         from ..projects import display_name  # lazy: projects imports this module
         row = store.get_part(part_id)
         if row is None or not row.project_id:
             return None
         # off the event loop: the placement solves the whole assembly
         inst = await asyncio.to_thread(auto_place, asm, _home(ctx, d) / "parts", row.project_id,
-                                       part_id, display_name(row))
+                                       part_id, display_name(row),
+                                       related=related_parts(store, part_id))
         if inst is None:
             return None
         events = getattr(ctx, "events", None)
