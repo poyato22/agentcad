@@ -188,5 +188,50 @@
       "electronics"
     ],
     "suggested": true
+  },
+  {
+    "name": "ThrustCurve",
+    "domain": "thrustcurve.org",
+    "search_url": null,
+    "categories": [
+      "rocketry"
+    ],
+    "suggested": true
+  },
+  {
+    "name": "American Rocketry Challenge",
+    "domain": "rocketrychallenge.org",
+    "search_url": null,
+    "categories": [
+      "rocketry"
+    ],
+    "suggested": true
+  },
+  {
+    "name": "Apogee Components",
+    "domain": "apogeerockets.com",
+    "search_url": null,
+    "categories": [
+      "rocketry"
+    ],
+    "suggested": true
+  },
+  {
+    "name": "RocketReviews",
+    "domain": "rocketreviews.com",
+    "search_url": null,
+    "categories": [
+      "rocketry"
+    ],
+    "suggested": true
+  },
+  {
+    "name": "National Association of Rocketry",
+    "domain": "nar.org",
+    "search_url": null,
+    "categories": [
+      "rocketry"
+    ],
+    "suggested": true
   }
 ]
