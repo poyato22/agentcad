@@ -16,6 +16,7 @@ turn count within it; a run without a window (every other run) counts over its w
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from .store import AgentRun, Store
 from .types import ErrorCode, MisesError
@@ -103,14 +104,48 @@ def remaining_usd(store: Store, run_id: str) -> float:
     return max(0.0, min(left)) if left else 0.0
 
 
+#: providers that are a subscription, never metered dollars: no dollar cap ever applies (G3)
+SUBSCRIPTION = frozenset({"claude-code"})
+
+
+def caps_enabled(store: Store, run: AgentRun) -> bool:
+    """G3: whether dollar caps apply to `run`: only when the profile turns them on
+    (`dollar_caps`, off by default), and never for a run of its family on a subscription
+    runtime (Claude Code)."""
+    if run.provider in SUBSCRIPTION:
+        return False
+    try:
+        root, _family = store.run_family(run.id)
+        if root != run.id and store.get_run(root).provider in SUBSCRIPTION:
+            return False
+    except KeyError:
+        pass
+    return profile_caps_on(store)
+
+
+def profile_caps_on(store: Store) -> bool:
+    """The profile's `dollar_caps` switch (off by default)."""
+    db = getattr(store, "path", None)          # home/mises.db: the profile sits beside it
+    if db is None or str(db) == ":memory:":
+        return False
+    try:
+        from .profile import load_profile
+        return bool(load_profile(Path(db).parent).dollar_caps)
+    except Exception:  # noqa: BLE001 - an unreadable profile never stops an agent
+        return False
+
+
 def usd_exhausted(store: Store, run_id: str) -> MisesError | None:
     """BUDGET_EXHAUSTED when the run's own dollar cap, or its root's cap over the whole family,
     is spent; None otherwise. Nothing spent is never "exhausted" (an unknown-cost run counts
     $0, so it is stopped only by what cost-reporting relatives spent). A lead counts only
-    this user message's spend (its own and its sub-agents')."""
+    this user message's spend (its own and its sub-agents'). G3: None whenever dollar caps
+    are off (the default) or the run is on Claude Code."""
     try:
         run = store.get_run(run_id)
     except KeyError:
+        return None
+    if not caps_enabled(store, run):
         return None
     windowed = _windowed(run)
     cap = _cap(store, run_id)

@@ -253,6 +253,10 @@ class Profile(BaseModel):
     browser_fetches_per_run: int = Field(DEFAULT_BROWSER_FETCHES, ge=1, le=1000)
     # sub-agents a run and its sub-agents may start (a build's lead: per user message)
     max_spawns_per_turn: int = Field(8, ge=1, le=64)
+    # G3: the per-run / per-message dollar caps (Caps.usd_run) apply only when this is on (off by
+    # default for every runtime), and never on Claude Code (a subscription, not metered dollars).
+    # Agents can always be stopped; the spawn, fetch and recovery caps stay whatever this says.
+    dollar_caps: bool = False
     # ceilings for an agent's wind-study settings (memory, OpenFOAM cores, time per run)
     wind_max_memory_mb: int = Field(4096, ge=256, le=8192)
     wind_max_cpus: int = Field(8, ge=1, le=32)

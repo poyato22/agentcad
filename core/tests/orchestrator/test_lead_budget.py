@@ -17,6 +17,12 @@ from mises.store import Store
 from mises.types import Caps, ErrorCode, MisesError, SafetyClass as C
 
 
+@pytest.fixture(autouse=True)
+def caps_on(monkeypatch):
+    """G3: dollar caps are off by default; these tests are about them, so they turn them on."""
+    monkeypatch.setattr(budget, "profile_caps_on", lambda store: True)
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("MISES_HOME", str(tmp_path / "home"))

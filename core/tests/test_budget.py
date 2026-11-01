@@ -26,6 +26,8 @@ from mises.types import Caps, ErrorCode, MisesError, SafetyClass as C, StepKind,
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("MISES_HOME", str(tmp_path / "home"))
     monkeypatch.setattr(runtime_mod, "keychain_get", lambda *a: None)
+    # G3: dollar caps are off by default; these tests are about the caps, so they turn them on
+    monkeypatch.setattr(budget, "profile_caps_on", lambda store: True)
 
 
 def _run(store, cap=5.0, parent=None, provider="fake"):
@@ -164,27 +166,38 @@ def test_claude_code_counts_total_cost_deltas(tmp_path):
     assert notes and "counted as $0" in notes[0]["note"]
 
 
-async def test_claude_code_run_stops_at_the_cap_and_refuses_another_turn(tmp_path):
+def test_claude_code_is_a_subscription_never_dollar_capped_even_when_caps_are_on(tmp_path):
+    """G3: past its 'cap' a Claude Code run keeps its status and spend is only recorded."""
     rt = Runtime(tmp_path / "home")
     s = _session(rt, cap=1.0)
     s._on_result(_result(1.2))
     run = rt.store.get_run(s.run_id)
-    assert run.status == "failed" and run.usd == pytest.approx(1.2)
-    errs = rt.store.steps(s.run_id, [StepKind.ERROR])
-    assert errs[-1].payload["stop_reason"] == "budget"
-    assert errs[-1].payload["error"] == "budget_exhausted"
-    s._proc = type("P", (), {"returncode": None})()   # a live process, for prompt()'s check
-    with pytest.raises(MisesError) as e:
-        await s.prompt("one more")
-    assert e.value.code == ErrorCode.BUDGET_EXHAUSTED
+    assert run.status != "failed" and run.usd == pytest.approx(1.2)
+    assert not [e for e in rt.store.steps(s.run_id, [StepKind.ERROR])
+                if e.payload.get("error") == "budget_exhausted"]
+    assert budget.usd_exhausted(rt.store, s.run_id) is None
 
 
-def test_claude_code_child_spend_counts_against_the_parent_family(tmp_path):
+def test_claude_code_family_spend_never_caps_its_children(tmp_path):
     rt = Runtime(tmp_path / "home")
     parent = _session(rt, cap=1.0)
     child = _session(rt, cap=1.0, parent=parent.run_id)
     child._on_result(_result(0.7))
-    assert budget.usd_exhausted(rt.store, parent.run_id) is None
-    parent._on_result(_result(0.4))               # 1.1 across the family >= 1.0
-    assert rt.store.get_run(parent.run_id).status == "failed"
-    assert budget.usd_exhausted(rt.store, child.run_id) is not None
+    parent._on_result(_result(0.4))               # 1.1 across the family, a cap of 1.0
+    assert rt.store.get_run(parent.run_id).status != "failed"
+    assert budget.usd_exhausted(rt.store, child.run_id) is None
+
+
+def test_dollar_caps_are_off_by_default_and_a_profile_setting(tmp_path, monkeypatch):
+    """G3: no dollar cap applies unless the profile turns them on (any runtime)."""
+    monkeypatch.undo()                                    # the real profile switch
+    monkeypatch.setenv("MISES_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(runtime_mod, "keychain_get", lambda *a: None)
+    rt = Runtime(tmp_path / "home")
+    rid = _run(rt.store, cap=1.0)
+    rt.store.add_usage(rid, usd=3.0)
+    assert budget.usd_exhausted(rt.store, rid) is None
+    from mises.profile import load_profile, save_profile
+    prof = load_profile(rt.home)
+    save_profile(rt.home, prof.model_copy(update={"dollar_caps": True}))
+    assert budget.usd_exhausted(rt.store, rid) is not None

@@ -202,6 +202,7 @@ def _json_or_none(raw: str | None) -> dict | None:
 
 class Store:
     def __init__(self, path: Path | str):
+        self.path = Path(path)            # G3: the profile beside it (budget.caps_enabled)
         self._lock = threading.RLock()
         self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row

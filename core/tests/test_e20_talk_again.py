@@ -23,6 +23,8 @@ def rt(tmp_path, monkeypatch):
     home = tmp_path / "home"
     monkeypatch.setenv("MISES_HOME", str(home))
     monkeypatch.setattr(runtime_mod, "keychain_get", lambda *a: None)
+    # G3: dollar caps are off by default; the cap tests here turn them on
+    monkeypatch.setattr(budget, "profile_caps_on", lambda store: True)
     return Runtime(home, provider_resolver=lambda ref: (_ for _ in ()).throw(AssertionError(ref)))
 
 
