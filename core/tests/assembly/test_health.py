@@ -1,5 +1,5 @@
 """E33: the pure bbox health report (overlaps, stray, floating, extents)."""
-from mises.assembly.health import health, world_aabb
+from mises.assembly.health import health, warnings_from, world_aabb
 from mises.assembly.model import Frame, Instance, Joint, JointRef
 
 
@@ -57,3 +57,18 @@ def test_clean_assembly_is_ok():
                     b=JointRef(instance_id="b", frame=Frame(origin=[0, 0, 0], axis=[0, 0, 1])))]
     rep = health([a, b], {"a": a.transform, "b": b.transform}, {"box": BOX}, joints=joints)
     assert rep["ok"] and rep["summary"] == "assembly health: clean"
+
+
+# ---- FWC M9: "no joint/contact": parts that only rest on each other are not floating
+def test_touching_parts_with_no_joints_are_not_floating():
+    # a bought-part enclosure: base, lid on the base, a board on the lid; no joints at all
+    insts = [_inst("base", 0), _inst("lid", 10), _inst("board", 20.3)]   # 0.3 mm air: contact
+    rep = health(insts, {i.id: i.transform for i in insts}, {"box": BOX}, joints=[])
+    assert rep["floating"] == [] and rep["ok"], rep["summary"]
+
+
+def test_a_part_clear_of_everything_still_floats():
+    insts = [_inst("base", 0), _inst("lid", 10), _inst("loose", 22)]       # 2 mm gap
+    rep = health(insts, {i.id: i.transform for i in insts}, {"box": BOX}, joints=[])
+    assert [f["instance"] for f in rep["floating"]] == ["loose"]
+    assert "joint or contact" in " ".join(warnings_from(rep))

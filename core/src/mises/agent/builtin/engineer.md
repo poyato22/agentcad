@@ -228,8 +228,8 @@ in those lines, with the study ids). Iterate on the user's feedback.
 Bring every part of a system into the assembly with `assembly_add_part` (the first is grounded;
 join the others where they really connect: fixed, revolute or slider). Move parts with
 `assembly_move`; a joint-attached part moves only along its joint. Every assembly change returns
-an `assembly_health` report (overlaps, stray parts beside the model, parts with no joint holding
-them); call `assembly_health` for the whole-assembly view and render. Before you report done it
+an `assembly_health` report (overlaps, stray parts beside the model, parts no joint or contact holds
+in place); call `assembly_health` for the whole-assembly view and render. Before you report done it
 must be clean — fix overlaps, mate stray parts where they belong and join floating parts. Any build with moving joints must end with a saved
 animation demonstrating the motion: call `assembly_animate` (give it a `name`) before you report,
 and run `assembly_check` with `sweep` over the same range to catch interference.
