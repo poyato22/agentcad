@@ -46,7 +46,7 @@ export function MeasurePanel({ picks, state, onClear, onClose }: { picks: readon
         <button type="button" class="vx-x" aria-label="Close measure" onClick={onClose}>×</button>
       </header>
       {picks.length === 0
-        ? <p class="vx-hint faint">Click an edge, a face or a corner. Shift-click to add a second one.</p>
+        ? <p class="vx-hint faint">Click an edge, a face or a corner, then a second one to measure between them.</p>
         : (
           <>
             <ul class="vx-picks">
@@ -61,7 +61,7 @@ export function MeasurePanel({ picks, state, onClear, onClose }: { picks: readon
             )}
             {state.error && <p class="vx-error" role="alert">{state.error}</p>}
             <div class="vx-actions">
-              <span class="faint vx-hint">Shift-click adds</span>
+              <span class="faint vx-hint">{picks.length === 1 ? "Click a second feature" : "A click starts a new pair · Esc clears"}</span>
               <button type="button" class="btn btn-ghost" onClick={onClear}>Clear</button>
             </div>
           </>
@@ -102,8 +102,11 @@ export function CommentBox({ at, bounds, where, busy, error, onSend, onCancel }:
 }
 
 /** Numbered pins on the model, and the dots of measure's corner picks. */
-export function PinLayer({ pins, dots, toScreen, bounds, openPin, onOpen, onThread }: {
-  pins: readonly Pin[]; dots: readonly Vec3[]; toScreen: (p: Vec3) => [number, number]; bounds: Bounds;
+export function PinLayer({ pins, dots, hoverDot = null, toScreen, bounds, openPin, onOpen, onThread }: {
+  pins: readonly Pin[]; dots: readonly Vec3[];
+  /** E16: the corner a measure click would snap to, drawn big. */
+  hoverDot?: Vec3 | null;
+  toScreen: (p: Vec3) => [number, number]; bounds: Bounds;
   openPin: string | null; onOpen(key: string | null): void; onThread(pin: Pin): void;
 }): JSX.Element {
   const open = pins.find((p) => p.key === openPin) ?? null;
@@ -113,6 +116,10 @@ export function PinLayer({ pins, dots, toScreen, bounds, openPin, onOpen, onThre
         const s = toScreen(d);
         return <span key={`d${i}`} class="vx-dot" style={{ left: `${s[0]}px`, top: `${s[1]}px` }} aria-hidden="true" />;
       })}
+      {hoverDot && (() => {
+        const s = toScreen(hoverDot);
+        return <span class="vx-dot vx-dot-hover" data-testid="hover-vertex" style={{ left: `${s[0]}px`, top: `${s[1]}px` }} aria-hidden="true" />;
+      })()}
       {pins.map((p) => {
         const s = toScreen(p.point);      // one off the sheet is clipped by it (.vp overflow)
         return (
