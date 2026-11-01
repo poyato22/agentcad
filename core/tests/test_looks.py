@@ -29,3 +29,17 @@ def test_concept_cmf_by_role():
 
 def test_no_concept_and_a_plastic_keeps_the_drafting_look():
     assert default_look("bracket", "bracket", "PLA", []) is None
+
+
+def test_renders_use_the_default_look_and_a_real_appearance_wins():
+    """Home covers, part thumbnails and agent renders (appearance.render_params) show what the
+    app shows: the default look for a part nobody styled, the appearance when it is set."""
+    from types import SimpleNamespace as NS
+    from mises.appearance import render_params
+    motor = NS(id="coreless_motor", label="motor", material="Al 6061-T6", appearance=None,
+               color=None, kind="part", project_id=None)
+    assert render_params(motor)["metalness"] == 1 and render_params(motor)["color"] == "#c4c8cc"
+    red = NS(**{**vars(motor), "appearance": {"preset": "anodized", "color": "#d23c2a"}})
+    assert render_params(red)["color"] == "#d23c2a"
+    plain = NS(**{**vars(motor), "material": "PLA"})
+    assert render_params(plain)["preset"] is None

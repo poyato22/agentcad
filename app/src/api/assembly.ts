@@ -8,7 +8,7 @@
 //   ball [rx, ry, rz] deg; fixed ignores it. `limits` [lo, hi] clamp the scalar and each component.
 // Transforms are 4x4 row-major, mm, in the CAD frame (Z up).
 import { z } from "zod";
-import { appearanceSchema, partMetricsSchema } from "./schemas";
+import { appearanceSchema, partMetricsLenientSchema } from "./schemas";
 
 export const JOINT_KINDS = ["fixed", "revolute", "slider", "cylindrical", "ball"] as const;
 export type JointKind = (typeof JOINT_KINDS)[number];
@@ -71,7 +71,8 @@ export const jointDeletedSchema = z.object({ removed_joint: z.string() });
  *  part tree fields are Plan 5 C1's, and older rows carry only part_id/vars/metrics/mtime. */
 export const assemblyPartSchema = z.object({
   part_id: z.string(), label: z.string().nullish(), color: z.string().nullish(), kind: z.string().nullish(),
-  metrics: partMetricsSchema.nullable(), mtime: z.number().nullish().transform((v) => v ?? 0),   // the layout skeleton row has none (G3): one row must not fail the list
+  // one row's odd metrics must not fail the whole list (it would take every part's look with it)
+  metrics: partMetricsLenientSchema.nullable().catch(null), mtime: z.number().nullish().transform((v) => v ?? 0),   // the layout skeleton row has none (G3)
   // U8 finish, so Assembly view draws a polished part shiny as the Part viewer does (I5)
   appearance: appearanceSchema.nullish().catch(null),
   // G4: the look it shows while nobody gave it one (its material, the approved concept's CMF)

@@ -83,12 +83,20 @@ def normalize(raw: Any) -> dict:
             "opacity": _unit(raw, "opacity", MIN_OPACITY, base["opacity"])}
 
 
-def render_params(row: Any) -> dict:
+def render_params(row: Any, store: Any = None) -> dict:
     """What a renderer needs for a part row (store.Part): {preset, color, metalness, roughness,
-    opacity}; color None means the renderer's own default grey. U1's thumbnails call this."""
+    opacity}; color None means the renderer's own default grey. U1's thumbnails call this.
+    G4: a part with no appearance renders with its default look (looks.default_look: its
+    material, else the build's approved concept CMF when `store` is given), as the app draws it."""
     a = getattr(row, "appearance", None)
     color = getattr(row, "color", None)
     if not a:
+        from .looks import concept_cmf, default_look
+        if getattr(row, "kind", "part") == "part" and getattr(row, "id", None):
+            look = default_look(row.id, getattr(row, "label", None), getattr(row, "material", None),
+                                concept_cmf(store, getattr(row, "project_id", None)))
+            if look is not None:
+                return {**look, "color": color or look["color"]}
         return {"preset": None, "color": color, **DEFAULT}
     try:
         n = normalize(a)

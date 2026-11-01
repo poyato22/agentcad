@@ -334,7 +334,7 @@ def _look(ctx: ToolContext, part_id: str) -> tuple[tuple | None, float, float]:
     if row is None:
         return None, 0.9, 0.0
     from ..appearance import render_params
-    p = render_params(row)
+    p = render_params(row, store)
     return (_hex_rgb(p.get("color")), float(p.get("roughness", 0.9)),
             float(p.get("metalness", 0.0)))
 

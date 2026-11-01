@@ -99,7 +99,8 @@ export interface AssemblyScene {
   /** P11 F4: the box of an instance's mesh as drawn, in its part frame (mm); null: not shown. */
   partBox(instanceId: string): { min: Vec3; max: Vec3 } | null;
   /** A world point (mm) → client pixels. Test probe. */
-  probe(): { project(p: Vec3): { x: number; y: number } };
+  /** Dev/test: screen points, and the material an instance is drawn with right now (G4). */
+  probe(): { project(p: Vec3): { x: number; y: number }; material(iid: string): { color: string; metalness: number | null; roughness: number | null; opacity: number } | null };
   resize(w: number, h: number): void;
   /** FW-layout: CSS px of the canvas the floating surfaces cover at each side; the model is framed
    *  and centred in the rest (ui/shell/insets). */
@@ -670,6 +671,14 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
           const v = new THREE.Vector3(...p).project(camera);
           const r = canvas.getBoundingClientRect();
           return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+        },
+        material(iid) {
+          let mesh: THREE.Mesh | null = null;
+          entries.get(iid)?.body?.traverse((o) => { if (!mesh && o instanceof THREE.Mesh) mesh = o; });
+          const m = (mesh as THREE.Mesh | null)?.material as THREE.MeshStandardMaterial | undefined;
+          if (!m) return null;
+          return { color: `#${m.color.getHexString()}`, metalness: "metalness" in m ? m.metalness : null,
+            roughness: "roughness" in m ? m.roughness : null, opacity: m.opacity };
         },
       };
     },

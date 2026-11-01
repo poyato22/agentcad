@@ -145,7 +145,7 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
                 rows[pid] = store.get_part(pid)
             return rows[pid]
         placed = [(i.part_id, _projects.part_version(home, r), tf.get(i.id) or i.transform,
-                   render_params(r))
+                   render_params(r, store))
                   for i in insts if (r := part(i.part_id)) is not None]
         if any(thumbs.mesh_stamp(home, p[0]) for p in placed):
             return placed
@@ -155,7 +155,7 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
             return []
         big = max(built, key=lambda p: float((p.get("metrics") or {}).get("volume_mm3") or 0))
         r = store.get_part(big["part_id"])
-        return [(big["part_id"], big["version"], None, render_params(r) if r else None)]
+        return [(big["part_id"], big["version"], None, render_params(r, store) if r else None)]
 
     @router.get("/projects/{project_id}/thumb.png")
     async def project_thumb(project_id: str, request: Request, size: int = thumbs.COVER_W):

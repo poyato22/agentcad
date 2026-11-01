@@ -366,7 +366,7 @@ def build_ui_router(runtime: Runtime) -> UiRouter:
         row = runtime.store.get_part(part_id)
         version = _projects.part_version(home, row) if row is not None else 0
         sz = thumbs.clamp_size(size)
-        look = render_params(row) if row is not None else None   # U8 appearance
+        look = render_params(row, runtime.store) if row is not None else None   # U8 / G4 look
         key = thumbs.part_key(home, part_id, version, sz, look)   # version + model.stl + look
         if key is None:
             raise MisesError(ErrorCode.NOT_FOUND, f"no thumbnail for part {part_id!r}",

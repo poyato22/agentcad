@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
 import { expect, test, type FakeControl } from "./fixtures";
+import { CORE_TOKEN, CORE_URL } from "./ports";
 
 test.use({ launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } });
 
@@ -256,6 +257,52 @@ test("x_ray_and_explode_work_on_the_assembly", async ({ page }) => {
   await page.getByRole("button", { name: "Clear the view modes" }).click();
   await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-explode", "off");
   await expect(page.getByTestId("pill-xray")).toHaveAttribute("aria-pressed", "false");
+});
+
+test("a_part's_appearance_colors_every_instance_through_x-ray_explode_and_play (G4)", async ({ page, fake }) => {
+  // the part's finish as the core stores it (PATCH /parts/{id}): red anodized
+  const res = await page.request.patch(`${CORE_URL}/parts/mount_plate`, {
+    headers: { Authorization: `Bearer ${CORE_TOKEN}` }, data: { appearance: { preset: "anodized", color: "#d23c2a" } } });
+  expect(res.ok()).toBe(true);
+  await openAssembly(page);
+  const ids = HINGE.instances.map((i) => i.id);
+  const look = (id: string) => page.evaluate((iid) => (window as unknown as {
+    __misesAssembly: { material(i: string): { color: string; metalness: number | null; roughness: number | null; opacity: number } | null } })
+    .__misesAssembly.material(iid), id);
+  const painted = async () => {
+    for (const id of ids) {
+      await expect.poll(async () => (await look(id))?.color, { timeout: 8000 }).toBe("#d23c2a");
+      const m = await look(id);
+      expect(m?.metalness).toBeCloseTo(0.85, 2);
+      expect(m?.roughness).toBeCloseTo(0.32, 2);
+    }
+  };
+  await painted();
+  for (const scheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: `test-results/g4-colored-assembly-${scheme}.png` });
+  }
+  await page.emulateMedia({ colorScheme: "dark" });
+  // X-ray see-through, then off: the color and the full opacity come back
+  await page.getByTestId("pill-xray").click();
+  await expect.poll(async () => (await look(ids[0]))?.opacity).toBeLessThan(1);
+  expect((await look(ids[0]))?.color).toBe("#d23c2a");
+  await page.getByTestId("pill-xray").click();
+  await expect.poll(async () => (await look(ids[0]))?.opacity).toBe(1);
+  await painted();
+  // exploded, and in Play's full window (the tour, then an agent's animation)
+  await page.getByTestId("pill-explode").click();
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-explode", "on");
+  await painted();
+  await page.getByRole("button", { name: "Clear the view modes" }).click();
+  await fake.emit({ type: "assembly_animate", run_id: null, data: { project_id: PROJECT, joint_id: JOINT, from: 0, to: 120, duration_s: 2 } });
+  await page.getByTestId("pill-play").click();
+  await expect(page.getByTestId("motion-bar")).toBeVisible();
+  await painted();
+  await page.getByTestId("motion-xray").click();
+  await page.getByTestId("motion-xray").click();
+  await painted();
 });
 
 test("play_opens_the_assembly_full_window_and_esc_closes_it", async ({ page, fake }) => {
