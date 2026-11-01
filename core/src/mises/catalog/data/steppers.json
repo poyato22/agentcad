@@ -87,7 +87,32 @@
     "pattern": 31,
     "hole_d": 3
    },
-   "category": "stepper"
+   "category": "stepper",
+   "perf": {
+    "type": "stepper",
+    "voltage_v": 24.0,
+    "stall_torque_nm": 0.4,
+    "no_load_rpm": 600,
+    "rated_torque_nm": 0.28,
+    "stall_current_a": 1.7,
+    "idle_current_a": 0.85,
+    "gear_ratio": null,
+    "rotor_inertia_kgm2": 5.4e-06,
+    "backlash_deg": 0,
+    "feedback": "none",
+    "output_axis": [
+     0,
+     0,
+     1
+    ],
+    "output_origin_mm": [
+     0,
+     0,
+     0
+    ],
+    "rom_deg": null,
+    "price_usd": 12
+   }
   }
  ]
 }

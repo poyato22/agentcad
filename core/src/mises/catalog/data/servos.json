@@ -76,7 +76,35 @@
     "spacing": 27.5,
     "hole_d": 2
    },
-   "category": "servo"
+   "category": "servo",
+   "perf": {
+    "type": "servo",
+    "voltage_v": 4.8,
+    "stall_torque_nm": 0.177,
+    "no_load_rpm": 100,
+    "rated_torque_nm": 0.06,
+    "stall_current_a": 0.65,
+    "idle_current_a": 0.01,
+    "gear_ratio": null,
+    "rotor_inertia_kgm2": null,
+    "backlash_deg": 2.0,
+    "feedback": "pot",
+    "output_axis": [
+     0,
+     0,
+     1
+    ],
+    "output_origin_mm": [
+     5.5,
+     0,
+     22.7
+    ],
+    "rom_deg": [
+     -90,
+     90
+    ],
+    "price_usd": 3
+   }
   },
   {
    "id": "servo_mg996r_standard",
@@ -134,7 +162,35 @@
     "spacing": 49.5,
     "hole_d": 4.5
    },
-   "category": "servo"
+   "category": "servo",
+   "perf": {
+    "type": "servo",
+    "voltage_v": 6.0,
+    "stall_torque_nm": 1.08,
+    "no_load_rpm": 60,
+    "rated_torque_nm": 0.35,
+    "stall_current_a": 2.5,
+    "idle_current_a": 0.01,
+    "gear_ratio": null,
+    "rotor_inertia_kgm2": null,
+    "backlash_deg": 1.0,
+    "feedback": "pot",
+    "output_axis": [
+     0,
+     0,
+     1
+    ],
+    "output_origin_mm": [
+     10.15,
+     0,
+     42.9
+    ],
+    "rom_deg": [
+     -90,
+     90
+    ],
+    "price_usd": 8
+   }
   }
  ]
 }
