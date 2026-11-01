@@ -25,7 +25,7 @@ test("layout_regions_exist", async ({ page }) => {
   expect([viewer.x, viewer.y, viewer.width, viewer.height]).toEqual([0, 44, 1440, 900 - 44]);
   expect(left.width).toBe(240);
   expect([left.x, left.y]).toEqual([12, 44 + 12]);
-  expect(consoleBox.width).toBe(440 + 2 * 30);   // P10 E6: the Conversation column (440) + View / Simulations tabs
+  expect(consoleBox.width).toBe(560);   // P11 F2: one dock width (the Conversation over View | Simulations)
   expect(consoleBox.x + consoleBox.width).toBe(1440 - 12);
   expect(consoleBox.y).toBe(44 + 12);
   expect(consoleBox.height).toBe(900 - 44 - 24);
@@ -293,12 +293,12 @@ test("cmd_1_to_4_navigate", async ({ page }) => {
 test("console_collapses_to_a_rail_and_expands", async ({ page }) => {
   await page.goto("/");
   const consoleRegion = page.locator("[data-region=console]");
-  expect((await consoleRegion.boundingBox())?.width).toBe(500);
+  expect((await consoleRegion.boundingBox())?.width).toBe(560);
   await page.getByRole("button", { name: "Collapse the agent console" }).click();
   // folded: a slim floating tab
   await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(34);
   await page.getByRole("button", { name: "Expand the agent console" }).click();
-  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(500);
+  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(560);
 });
 
 test("theme_switch_persists_via_put_profile_and_sets_data_theme", async ({ page, fake }) => {

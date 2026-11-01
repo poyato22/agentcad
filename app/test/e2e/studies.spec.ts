@@ -235,6 +235,8 @@ for (const theme of ["dark", "light"] as const) {
     await expect(wind.getByTestId("card-chart")).toHaveAttribute("data-chart", "cd_vs_yaw");
     await expect(wind.getByTestId("study-thumb")).toHaveAttribute("data-state", "loaded");
     await page.locator("[data-region=console]").screenshot({ path: `test-results/a8-cards-${theme}.png` });
+    // P11 F2: the pointer goes into the Simulations half first (it widens), as a user's does
+    await page.locator("[data-dock] [data-stream=sim] .dock-h").hover();
     await wind.getByTestId("open-immersive").click();
     const imm = await immersiveShows(page, rec("wind").sim_id);
     // the traffic lights keep their corner: the top strip starts after the inset
@@ -285,6 +287,8 @@ test("opening_the_immersive_view_30_times_never_exhausts_webgl_contexts", async 
   await wind.scrollIntoViewIfNeeded();
   await expect(wind.getByTestId("study-thumb")).toHaveAttribute("data-state", "loaded");
   for (let i = 0; i < 30; i++) {
+    // P11 F2: the pointer goes into the Simulations half first (it widens), as a user's does
+    await page.locator("[data-dock] [data-stream=sim] .dock-h").hover();
     await wind.getByTestId("open-immersive").click();
     await expect(page.getByTestId("immersive")).toHaveAttribute("data-ready", "true");
     await expect(page.getByTestId("study-canvas").last()).toHaveAttribute("data-particles", "900");
