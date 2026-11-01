@@ -36,6 +36,10 @@ import { parseAnimateSteps, setAnimationPlayer } from "../../state/assemblyAnima
 import type { AnimateStep } from "../../api/types";
 import { registerAnnounceJump } from "../console/announceJumps";
 import { NO_INSETS, viewInsets } from "../shell/insets";
+import { pushUndo } from "../../state/undo";
+import type { Mat4 } from "../../api/assembly";
+import { asmTool, useAssemblyTools } from "./tools";
+import type { SceneMark } from "./scene";
 import "./assembly.css";
 
 /** The full window frames its model at about 70% of the limiting side. */
@@ -107,6 +111,15 @@ effect(() => {
   assemblyOf.value = d && assembly.projectId.value === activeBuildId.value ? d : null;
 });
 
+/** E19: an instance's origin when it sits off the world origin (null: on it, or none). */
+function offsetOf(t: Mat4 | undefined): [number, number, number] | null {
+  if (!t) return null;
+  const o: [number, number, number] = [t[0][3], t[1][3], t[2][3]];
+  return Math.hypot(...o) > 0.01 ? o : null;
+}
+const mmFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+const fmtMm = (v: number) => mmFmt.format(Math.abs(v) < 0.05 ? 0 : v).replace(/^-/, "−");
+
 function typing(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
@@ -123,6 +136,8 @@ export function AssemblyView(): JSX.Element {
   const [noGl, setNoGl] = useState(false);
   const [modeHost, setModeHost] = useState<ModeHost | null>(null);
   const animate = useRef(false);
+  const toolsRef = useRef<ReturnType<typeof useAssemblyTools> | null>(null);
+  const marksRef = useRef<() => SceneMark[]>(() => []);
   const modesCtl = useModesController(modeHost, assemblyModes.value, animate);
 
   const data = ctl.data.value;
@@ -137,7 +152,9 @@ export function AssemblyView(): JSX.Element {
     let scene: AssemblyScene | null = null;
     try {
       scene = createAssemblyScene(canvas, {
-        onSelect: (id) => {
+        onSelect: (id, ev) => {
+          // a click tool (Measure, Comment) takes the click; the selection stays
+          if (ev && toolsRef.current?.click(ev)) return;
           ctl.select(id);
           // the part's row in the left tree follows (it does not open the part)
           const inst = ctl.instance(id);
@@ -161,8 +178,10 @@ export function AssemblyView(): JSX.Element {
     measure();
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     ro?.observe(host);
-    // the explode follows the joint tree at the pose shown (E4)
-    const offPose = ctl.onPose((pose) => { scene?.setStructure(ctl.explodeLinks(pose)); scene?.setPose(pose); });
+    // the explode follows the joint tree at the pose shown (E4); the origin line, the selection (E19)
+    const offPose = ctl.onPose((pose) => { scene?.setStructure(ctl.explodeLinks(pose)); scene?.setPose(pose); scene?.setOffset(offsetOf(pose[ctl.selected.peek() ?? ""])); });
+    // the overlay's marks are asked for every frame (they follow poses and the explode)
+    scene?.setMarks(() => marksRef.current());
     return () => {
       ro?.disconnect();
       offPose();
@@ -218,7 +237,7 @@ export function AssemblyView(): JSX.Element {
     scene.setReach(reachOf());
     scene.setInstances((data?.instances ?? []).map((i) => ({
       id: i.id, template: templates.current.get(i.part_id)?.scene ?? null, color: ctl.part(i.part_id)?.color ?? null,
-      material: materialOf(ctl.part(i.part_id) ?? {}), hidden: hidden.has(i.part_id),
+      material: materialOf(ctl.part(i.part_id) ?? {}), hidden: hidden.has(i.part_id), name: i.name,
     })));
     scene.setStructure(ctl.explodeLinks());
     scene.setPose(ctl.currentPose());
@@ -237,12 +256,15 @@ export function AssemblyView(): JSX.Element {
     });
   }, []);
 
-  useEffect(() => { sceneRef.current?.setSelected(ctl.selected.value); }, [ctl.selected.value]);
+  useEffect(() => {
+    sceneRef.current?.setSelected(ctl.selected.value);
+    sceneRef.current?.setOffset(offsetOf(ctl.currentPose()[ctl.selected.value ?? ""]));
+  }, [ctl.selected.value]);
   useEffect(() => { sceneRef.current?.setArriving(ctl.arriving.value); }, [ctl.arriving.value]);
 
   const it = ctl.interference.value;
   // exploded, the clash blocks would hang where the parts were: they show assembled only
-  const apart = assemblyModes.value.explode > 0;
+  const apart = assemblyModes.value.explode > 0 || (assemblyModes.value.layout ?? 0) > 0;
   useEffect(() => {
     const byName = (n: string) => (data?.instances ?? []).filter((i) => (i.name || i.id) === n).map((i) => i.id);
     sceneRef.current?.setInterference(apart ? [] : it.items.map((x) => ({ a: byName(x.a), b: byName(x.b), text: `${x.a} · ${x.b}  ${fmtVolume(x.volume_mm3)}` })));
@@ -336,6 +358,14 @@ export function AssemblyView(): JSX.Element {
     const onKey = (e: KeyboardEvent) => {
       if (!isTrustedKey(e) || modalOpen() || e.defaultPrevented) return;
       if (e.key === "Escape" && immersive.peek() !== null) { e.preventDefault(); closeImmersive(); return; }
+      if (e.key === "Escape" && !typing(e.target) && toolsRef.current?.escape()) { e.preventDefault(); return; }
+      // E19: R puts the selected part back on the origin (undo with ⌘Z)
+      if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !typing(e.target)
+        && (e.target === document.body || (e.target instanceof HTMLElement && !!e.target.closest(".asm"))) && ctl.selected.peek()) {
+        e.preventDefault();
+        void resetToOrigin(ctl.selected.peek() as string);
+        return;
+      }
       // Space plays / pauses a full-window motion (not on a focused button: that one's own click)
       const m = ctl.motion.peek();
       if (e.key === " " && m && immersive.peek()?.mode === "animation" && !typing(e.target) && !(e.target instanceof HTMLButtonElement)) {
@@ -379,6 +409,61 @@ export function AssemblyView(): JSX.Element {
     return out;
   }
 
+  /** E19: the selected instance back at the origin (its turn kept): a free or grounded one only —
+   *  a part a joint places moves with its joint. Undoable. */
+  async function resetToOrigin(iid: string): Promise<void> {
+    const inst = ctl.instance(iid);
+    const pid = ctl.projectId.peek();
+    if (!inst || !pid) return;
+    const mob = ctl.mobilityOf(iid);
+    if (mob?.kind === "joint" || mob?.kind === "locked") {
+      const j = mob.kind === "joint" ? ctl.joint(mob.joint) : null;
+      const other = j ? ctl.instance(j.a.instance_id === iid ? j.b.instance_id : j.a.instance_id) : null;
+      setNote(`${inst.name} is placed by its joint${other ? ` to ${other.name}` : ""}: it moves with that joint, so it can't be reset on its own. Reset ${other?.name ?? "the part it hangs on"} instead.`);
+      return;
+    }
+    const before: Mat4 = inst.transform.map((r) => [...r]);
+    if (Math.hypot(before[0][3], before[1][3], before[2][3]) < 1e-6) { setNote(`${inst.name} is already at the origin.`); return; }
+    const after: Mat4 = before.map((r, i) => (i < 3 ? [r[0], r[1], r[2], 0] : [...r]));
+    const put = async (t: Mat4) => { await actions.client().patchInstance(pid, iid, { transform: t }); await ctl.refresh(true); };
+    try {
+      await put(after);
+      pushUndo({ label: `Reset ${inst.name} to the origin`, undo: () => put(before), redo: () => put(after) });
+      setNote(`${inst.name} is at the origin. ⌘Z puts it back.`);
+    } catch (err) {
+      setNote(`Couldn't reset ${inst.name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => { if (!note) return; const t = setTimeout(() => setNote(null), 6000); return () => clearTimeout(t); }, [note]);
+
+  // Plan 10 tools (Measure, Comment) and the overlay marks: laid-out names, the offset, picks, pins
+  const [room, setRoom] = useState({ w: 1, h: 1, x0: 0 });
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => { const r = host.getBoundingClientRect(); setRoom({ w: r.width, h: r.height, x0: insets.left }); });
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, [insets.left]);
+  const tools = useAssemblyTools(sceneRef.current, ctl, room);
+  toolsRef.current = tools;
+  marksRef.current = () => {
+    const out: SceneMark[] = [];
+    for (const l of modesCtl?.layouter.labels() ?? []) out.push({ key: l.id, point: l.point, text: l.text, kind: "layout" });
+    const id = ctl.selected.peek();
+    const t = id ? ctl.currentPose()[id] : undefined;
+    const o = offsetOf(t);
+    if (o && !immersive.peek() && assemblyModes.peek().explode === 0 && (assemblyModes.peek().layout ?? 0) === 0) {
+      out.push({ key: "sel", point: o, text: `Δ ${o.map((c) => fmtMm(c)).join(", ")} mm`, kind: "delta" });
+    }
+    return [...out, ...tools.marks()];
+  };
+  // any change on the page (a hover, a pick, a pin, a mode) re-places the marks on the next frame
+  useEffect(() => { sceneRef.current?.setMarks(() => marksRef.current()); });
+  const moved = assemblyModes.value.explode > 0 || (assemblyModes.value.layout ?? 0) > 0;
+  useEffect(() => { sceneRef.current?.setOriginShown(!moved); }, [moved]);
+
   const sel = ctl.instance(ctl.selected.value);
   const selMob = sel ? ctl.mobilityOf(sel.id) : null;
   const selJoint = selMob?.kind === "joint" ? ctl.joint(selMob.joint) : null;
@@ -398,10 +483,27 @@ export function AssemblyView(): JSX.Element {
         <canvas ref={canvasRef} class="vp-canvas" data-testid="assembly-canvas"
           data-instances={count} data-shown={shownCount} data-arriving={ctl.arriving.value ? "on" : "off"}
           data-section={assemblyModes.value.section.on ? "on" : "off"} data-explode={assemblyModes.value.explode > 0 ? "on" : "off"}
+          data-layout={(assemblyModes.value.layout ?? 0) > 0 ? "on" : "off"} data-tool={tools.tool}
           aria-label="Assembly view" />
-        {labels.map((l) => (
-          <span key={l.key} class="asm-tag" style={{ left: `${l.x}px`, top: `${l.y}px` }} data-testid="interference-tag">{l.text}</span>
-        ))}
+        {labels.map((l) => {
+          const at = { left: `${l.x}px`, top: `${l.y}px` };
+          switch (l.kind) {
+            case "layout": return <span key={l.key} class="asm-lay" style={at} data-testid="layout-label">{l.text}</span>;
+            case "delta": return <span key={l.key} class="asm-delta num" style={at} data-testid="origin-delta">{l.text}</span>;
+            case "pick": return <span key={l.key} class="vx-dot asm-pick" style={at} data-testid="assembly-pick" aria-hidden="true" />;
+            case "hover": return <span key={l.key} class="vx-dot vx-dot-hover" style={at} data-testid="assembly-hover" aria-hidden="true" />;
+            case "pin": {
+              const key = l.key.slice(4);
+              return (
+                <button key={l.key} type="button" class="vx-pin asm-pin" style={at} data-testid="pin" data-pin={l.text} data-hidden={l.hidden ? "" : undefined}
+                  aria-label={`Comment ${l.text}`} onClick={() => tools.openPin(key)}>{l.text}</button>
+              );
+            }
+            default: return <span key={l.key} class="asm-tag" style={at} data-testid="interference-tag">{l.text}</span>;
+          }
+        })}
+        {!imm && tools.overlay}
+        {note && !imm && <div class="asm-note" role="status" data-testid="assembly-note">{note}</div>}
         {ctl.loading.value && !data && <div class="vp-empty asm-empty">Loading the assembly…</div>}
         {data && count === 0 && <div class="vp-empty asm-empty">Nothing in this assembly yet. Parts an agent builds land here by themselves.</div>}
         {noGl && <div class="vp-empty asm-empty">3D view unavailable on this Mac.</div>}
@@ -421,7 +523,7 @@ export function AssemblyView(): JSX.Element {
           <ImmersiveBar imm={imm} ctl={ctl} host={modeHost} onClose={closeImmersive} />
         ) : (
           <ViewerPill host={modeHost} modesCtl={modesCtl} modes={assemblyModes.value} onModes={(m) => { assemblyModes.value = m; }} animate={animate}
-            issues={issues} onPlay={play} canPlay={count > 0} />
+            issues={issues} onPlay={play} canPlay={count > 0} tool={tools.tool} onTool={(t) => { asmTool.value = t; }} />
         )}
       </div>
     </div>

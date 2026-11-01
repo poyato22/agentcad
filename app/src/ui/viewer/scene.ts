@@ -98,6 +98,8 @@ export interface ModeHost {
   /** Plan 10 E4: who places whom (by shown part id), so the explode follows the assembly's
    *  structure. Absent: the explode infers it (a part inside another is its child). */
   structure?(): ReadonlyMap<string, ExplodeLink>;
+  /** CSS px of the canvas the floating surfaces cover at each side (re-framing fits the rest). */
+  insets?(): { left: number; right: number };
 }
 
 /** One shown part's place in the assembly: its parent and the placing joint's world axis/origin. */
@@ -593,6 +595,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       scene, camera, controls, canvas, parts: () => items, requestRender,
       onRestyle(cb) { restyled.add(cb); return () => { restyled.delete(cb); }; },
       enableLocalClipping() { renderer.localClippingEnabled = true; },
+      insets: () => ({ left: insetL, right: insetR }),
     }),
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);

@@ -31,20 +31,20 @@ export interface OverlayLabel {
   key: string; x: number; y: number; text: string;
   /** Plan 10: what it is (absent: an interference tag): a part's name laid out, the selected
    *  instance's offset from the origin, a comment pin. */
-  kind?: "layout" | "delta" | "pin";
+  kind?: "layout" | "delta" | "pin" | "pick" | "hover";
   /** Behind the camera or cut away: drawn faint (pins). */
   hidden?: boolean;
 }
 
 /** A world point (mm) with a text, placed on screen every frame (setMarks). */
-export interface SceneMark { key: string; point: Vec3; text: string; kind: "layout" | "delta" | "pin" }
+export interface SceneMark { key: string; point: Vec3; text: string; kind: "layout" | "delta" | "pin" | "pick" | "hover" }
 
 /** A click on a part: which instance, where (world mm) and the face normal there (world). */
 export interface AssemblyHit { instanceId: string; point: Vec3; normal: Vec3 }
 
 export interface SceneCallbacks {
-  /** A click on a part (null: empty space). */
-  onSelect(id: string | null): void;
+  /** A click on a part (null: empty space), with the click (Plan 10: measure / comment use it). */
+  onSelect(id: string | null, ev?: PointerEvent): void;
   /** Interference tags, in canvas CSS pixels, after every render. */
   onLabels(labels: OverlayLabel[]): void;
 }
@@ -53,6 +53,8 @@ export interface AssemblyScene {
   setInstances(list: readonly SceneInstance[]): void;
   setPose(pose: Readonly<Record<string, Mat4>>): void;
   setSelected(id: string | null): void;
+  /** Plan 10 E16: the part under the pointer while measuring or commenting (its edges tinted). */
+  setHovered(id: string | null): void;
   /** Interfering pairs (instance ids) with their volume label. */
   setInterference(pairs: readonly { a: string[]; b: string[]; text: string }[]): void;
   setArriving(on: boolean): void;
@@ -73,6 +75,9 @@ export interface AssemblyScene {
   /** Plan 10 E19: a dashed line from the world origin to this point (the selected instance off
    *  the origin); null hides it. The origin triad itself is always drawn, faint. */
   setOffset(to: Vec3 | null): void;
+  /** The triad and the offset line shown (off while exploded or laid out: the parts aren't where
+   *  the origin says). */
+  setOriginShown(on: boolean): void;
   /** The part (instance) under client pixel (x, y), with the world point and normal. */
   pickAt(clientX: number, clientY: number): AssemblyHit | null;
   /** Plan 10 E16: called with the part under the pointer as it moves (null: none), throttled to
@@ -80,6 +85,11 @@ export interface AssemblyScene {
   onHover(cb: (hit: AssemblyHit | null, ev: PointerEvent) => void): () => void;
   /** A world point → canvas CSS pixels (overlays). */
   toCanvas(p: Vec3): { x: number; y: number; behind: boolean };
+  /** Plan 10 E35: a point in an instance's part frame → world, where its body is drawn now (its
+   *  pose, and the explode / layout move); null: no such instance shown. */
+  partToWorld(instanceId: string, p: Vec3): Vec3 | null;
+  /** The inverse: a world point on the body as drawn → the part frame. */
+  worldToPart(instanceId: string, w: Vec3): Vec3 | null;
   /** A world point (mm) → client pixels. Test probe. */
   probe(): { project(p: Vec3): { x: number; y: number } };
   resize(w: number, h: number): void;
@@ -148,6 +158,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   let colors = tokens();
   const entries = new Map<string, Entry>();
   let selected: string | null = null;
+  let hovered: string | null = null;
   let interference: { a: string[]; b: string[]; text: string }[] = [];
   let arriving = false;
   /** The parts (with geometry) the camera was last fitted to: a part added or removed refits. */
@@ -225,7 +236,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       if (!e.body) continue;
       // the part keeps its own color; a clash shows as red edges and the red overlap block
       const face = e.material?.shiny ? (e.material.color ?? e.color ?? colors.face) : (e.color ?? colors.face);
-      const edge = e.id === selected || arriving ? colors.blue : hot.has(e.id) ? colors.red : colors.edge;
+      const edge = e.id === selected || e.id === hovered || arriving ? colors.blue : hot.has(e.id) ? colors.red : colors.edge;
       e.body.traverse((o) => {
         if (o instanceof THREE.LineSegments) (o.material as THREE.LineBasicMaterial).color.set(edge);
         else if (o instanceof THREE.Mesh) {
@@ -288,6 +299,17 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     if (!id || !entries.has(id)) return null;
     const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : new THREE.Vector3(0, 0, 1);
     return { instanceId: id, point: [h.point.x, h.point.y, h.point.z], normal: [n.x, n.y, n.z] };
+  }
+
+  /** Part frame → world as the body is drawn now: the group's pose × the body's own move away
+   *  from where its template sits (the explode / layout), i.e. G · M · R0⁻¹. */
+  function bodyMatrix(iid: string): THREE.Matrix4 | null {
+    const e = entries.get(iid);
+    if (!e?.body || !e.template) return null;
+    e.group.updateMatrixWorld(true);
+    e.body.updateMatrix();
+    e.template.object.updateMatrix();
+    return e.group.matrixWorld.clone().multiply(e.body.matrix).multiply(e.template.object.matrix.clone().invert());
   }
 
   function cloneBody(t: PartScene): THREE.Object3D {
@@ -356,6 +378,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   offsetLine.visible = false;
   scene.add(offsetLine);
   let offsetTo: Vec3 | null = null;
+  let originShown = true;
   /** The triad's arm length: a tenth of what is shown (it never dwarfs a small part). */
   function placeTriad(): void {
     const b = posedBox();
@@ -367,7 +390,8 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       offsetGeo.setFromPoints([new THREE.Vector3(), new THREE.Vector3(...offsetTo)]);
       offsetLine.computeLineDistances();
     }
-    offsetLine.visible = offsetTo !== null;
+    offsetLine.visible = originShown && offsetTo !== null;
+    triad.visible = originShown;
   }
 
   // ---- picking
@@ -409,7 +433,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     const d = down;
     down = null;
     if (!d || Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 4) return; // an orbit, not a click
-    cb.onSelect(hit(ev));
+    cb.onSelect(hit(ev), ev);
   };
   // D6: Fit is a double-click on empty space (or F)
   const onDbl = (ev: MouseEvent) => { if (hit(ev) === null) fit(); };
@@ -535,6 +559,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     onRestyle(f) { restyled.add(f); return () => { restyled.delete(f); }; },
     enableLocalClipping() { renderer.localClippingEnabled = true; },
     structure: () => structure,
+    insets: () => ({ left: insetL, right: insetR }),
   };
 
   return {
@@ -586,6 +611,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       requestRender();
     },
     setSelected(id) { selected = id; restyle(); },
+    setHovered(id) { if (hovered !== id) { hovered = id; restyle(); } },
     setInterference(pairs) { interference = [...pairs]; restyle(); },
     setArriving(on) { if (arriving !== on) { arriving = on; restyle(); } },
     setReach(list) { reach = [...list]; },
@@ -601,7 +627,20 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
       placeTriad();
       requestRender();
     },
+    setOriginShown(on) { if (on !== originShown) { originShown = on; placeTriad(); requestRender(); } },
     pickAt,
+    partToWorld(iid, p) {
+      const m = bodyMatrix(iid);
+      if (!m) return null;
+      const v = new THREE.Vector3(...p).applyMatrix4(m);
+      return [v.x, v.y, v.z];
+    },
+    worldToPart(iid, w) {
+      const m = bodyMatrix(iid);
+      if (!m) return null;
+      const v = new THREE.Vector3(...w).applyMatrix4(m.invert());
+      return [v.x, v.y, v.z];
+    },
     onHover(f) { hoverers.add(f); return () => { hoverers.delete(f); }; },
     toCanvas,
     probe() {

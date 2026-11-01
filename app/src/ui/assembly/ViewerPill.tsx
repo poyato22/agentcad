@@ -2,7 +2,8 @@
 //   ▶ Play     full-window view of the assembly (the agent's latest animation, else an exploded tour)
 //   ◧ Section  one click cuts the assembly; the slider sweeps the plane through its box, X / Y / Z
 //              pick the plane, flip looks from the other side (the drag handle on the model too)
-//   X-ray · Explode
+//   X-ray · Explode · Laid out (Plan 10 E36: every part flat in a grid, named)
+//   Measure · Comment (Plan 10 E16 / E35: click tools on the assembly; pressed again, Select)
 // and, only when the agents' check found something, a small status chip (interference, a joint that
 // can't apply). The modes are the part viewer's (ui/viewer/modes) on the instances' poses.
 import type { JSX } from "preact";
@@ -52,13 +53,17 @@ export interface ViewerPillProps {
   issues: readonly CheckIssue[];
   onPlay(): void;
   canPlay: boolean;
+  /** The click tool on (Select when absent). */
+  tool?: "select" | "measure" | "comment";
+  onTool?(t: "select" | "measure" | "comment"): void;
 }
 
-export function ViewerPill({ host, modesCtl: ctl, modes, onModes, animate, issues, onPlay, canPlay }: ViewerPillProps): JSX.Element {
+export function ViewerPill({ host, modesCtl: ctl, modes, onModes, animate, issues, onPlay, canPlay, tool = "select", onTool }: ViewerPillProps): JSX.Element {
   const set = (patch: Partial<ModesState>, glide = false) => { animate.current = glide; onModes({ ...modes, ...patch }); };
   const sec = modes.section;
   const xrayOn = modes.xray.opacity < 0.999;
   const exploding = modes.explode > 0;
+  const laid = (modes.layout ?? 0) > 0;
   const canExplode = (ctl?.exploder.count ?? 0) >= 2;
   const box = host ? restBox(host.parts()) : null;
   const n = unit(sec.normal);
@@ -101,10 +106,22 @@ export function ViewerPill({ host, modesCtl: ctl, modes, onModes, animate, issue
           onClick={() => set({ xray: { ...modes.xray, opacity: xrayOn ? 1 : XRAY_OPACITY } })}>X-ray</button>
         <button type="button" class="pill-btn" aria-pressed={exploding} data-testid="pill-explode" disabled={!canExplode && !exploding}
           title={canExplode || exploding ? "Move the parts apart" : "Explode needs two or more parts"}
-          onClick={() => set({ explode: exploding ? 0 : 1 }, true)}>Explode</button>
-        {(xrayOn || sec.on || exploding) && (
+          onClick={() => set({ explode: exploding ? 0 : 1, layout: 0 }, true)}>Explode</button>
+        <button type="button" class="pill-btn" aria-pressed={laid} data-testid="pill-layout" disabled={!canExplode && !laid}
+          title={canExplode || laid ? "Lay every part out flat in a grid, largest first, each named" : "Laid out needs two or more parts"}
+          onClick={() => set({ layout: laid ? 0 : 1, explode: 0 }, true)}>Laid out</button>
+        {onTool && (
+          <>
+            <span class="pill-sep" aria-hidden="true" />
+            <button type="button" class="pill-btn" aria-pressed={tool === "measure"} data-testid="pill-measure" title="Measure between two spots on the parts"
+              onClick={() => onTool(tool === "measure" ? "select" : "measure")}>Measure</button>
+            <button type="button" class="pill-btn" aria-pressed={tool === "comment"} data-testid="pill-comment" title="Pin a comment on a part for the agent"
+              onClick={() => onTool(tool === "comment" ? "select" : "comment")}>Comment</button>
+          </>
+        )}
+        {(xrayOn || sec.on || exploding || laid) && (
           <button type="button" class="pill-btn pill-clear" title="Turn every view mode off" aria-label="Clear the view modes"
-            onClick={() => { animate.current = modes.explode > 0; onModes(MODES_OFF); }}>✕</button>
+            onClick={() => { animate.current = modes.explode > 0 || laid; onModes(MODES_OFF); }}>✕</button>
         )}
         {issues.length > 0 && (
           <span ref={chipRef} class="pill-chip" data-testid="assembly-check-chip" data-status={fails ? "fail" : "warn"} tabIndex={0}

@@ -68,3 +68,99 @@ test("the robot explodes coherently and the camera keeps it framed (E4)", async 
   await page.getByTestId("pill-explode").click();
   await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-explode", "off");
 });
+
+async function at(page: Page, p: [number, number, number]): Promise<{ x: number; y: number }> {
+  return page.evaluate((q) => (window as unknown as { __misesAssembly: { project(p: number[]): { x: number; y: number } } }).__misesAssembly.project(q), p);
+}
+
+test("laid out: every part flat in a grid with its name, and back (E36)", async ({ page, fake }) => {
+  await fake.reset(robot());
+  await openRobot(page);
+  await page.getByTestId("pill-layout").click();
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-layout", "on");
+  await expect(page.getByTestId("layout-label")).toHaveCount(13);
+  await expect(page.getByTestId("layout-label").filter({ hasText: /^chassis$/ })).toHaveCount(1);
+  await page.waitForTimeout(300);
+  await shots(page, "robot-laid-out");
+  // Explode instead: the layout goes, the explode comes
+  await page.getByTestId("pill-explode").click();
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-layout", "off");
+  await expect(page.getByTestId("layout-label")).toHaveCount(0);
+  await page.getByTestId("pill-explode").click();
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-explode", "off");
+});
+
+test("the origin and R: the selected part's offset shows; R puts it on the origin; ⌘Z puts it back (E19, E11)", async ({ page, fake }) => {
+  await fake.reset(robot());
+  await openRobot(page);
+  // the battery sits loose 18.5 mm up in the chassis pocket
+  const b = await at(page, [-15, 0, 26]);
+  await page.mouse.click(b.x, b.y);
+  await expect(page.getByTestId("assembly-selection")).toContainText("battery");
+  await expect(page.getByTestId("origin-delta")).toHaveText("Δ 0, 0, 18.5 mm");
+  await shots(page, "robot-origin");
+  await page.keyboard.press("r");
+  await expect(page.getByTestId("assembly-note")).toContainText("battery is at the origin");
+  await expect(page.getByTestId("origin-delta")).toHaveCount(0);
+  await page.keyboard.press("Meta+z");
+  await expect(page.getByTestId("undo-status")).toHaveText("Undid: Reset battery to the origin");
+  await expect(page.getByTestId("origin-delta")).toHaveText("Δ 0, 0, 18.5 mm");
+  // a part a joint places can't be reset on its own: the note says why
+  const t = await at(page, [30, -20, 45]);
+  await page.mouse.click(t.x, t.y);
+  await expect(page.getByTestId("assembly-selection")).toContainText("turret");
+  await page.keyboard.press("r");
+  await expect(page.getByTestId("assembly-note")).toContainText("placed by its joint to chassis");
+});
+
+test("measure in the assembly: hover shows the spot, two clicks measure between them (E16)", async ({ page, fake }) => {
+  await fake.reset(robot());
+  await openRobot(page);
+  await page.getByTestId("pill-measure").click();
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-tool", "measure");
+  let a = await at(page, [-12, -35, 30]);
+  await expect.poll(async () => {
+    a = await at(page, [-12, -35, 30]);
+    await page.mouse.move(a.x + 1, a.y);
+    await page.mouse.move(a.x, a.y);
+    return page.getByTestId("assembly-hover").count();
+  }).toBe(1);
+  await shots(page, "robot-measure-hover");
+  await page.mouse.click(a.x, a.y);
+  const c = await at(page, [12, -35, 30]);
+  await page.mouse.move(c.x, c.y);
+  await page.mouse.click(c.x, c.y);
+  await expect(page.getByTestId("assembly-pick")).toHaveCount(2);
+  const panel = page.getByTestId("assembly-measure");
+  await expect(panel.locator('[data-value="distance"] dd')).toHaveText(/^2[34](\.\d+)? mm$/);
+  await expect(panel.locator('[data-value="angle"] dd')).toHaveText("0°");
+  await shots(page, "robot-measure-two");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("assembly-pick")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("assembly-canvas")).toHaveAttribute("data-tool", "select");
+});
+
+test("comment pins in the assembly name the instance and follow it through the explode (E35)", async ({ page, fake }) => {
+  await fake.reset(robot());
+  await openRobot(page);
+  await page.getByTestId("pill-comment").click();
+  const t = await at(page, [30, -20, 45]);
+  await page.mouse.click(t.x, t.y);
+  const box = page.getByTestId("comment-box");
+  await expect(box).toContainText("turret");
+  await box.getByRole("textbox").fill("make the turret taller");
+  await box.getByRole("button", { name: "Send to agent" }).click();
+  const pin = page.getByTestId("pin");
+  await expect(pin).toHaveCount(1);
+  const sent = (await fake.calls()).filter((c) => c.method === "POST" && /\/feedback$/.test(c.path)).at(-1);
+  const body = (sent?.body ?? {}) as Record<string, unknown>;
+  expect(body["instance_id"]).toBe("r_turret");
+  expect(Array.isArray(body["world_point"])).toBe(true);
+  const before = await pin.boundingBox();
+  await page.getByTestId("pill-explode").click();
+  await page.waitForTimeout(900);
+  const after = await pin.boundingBox();
+  expect(Math.hypot((after?.x ?? 0) - (before?.x ?? 0), (after?.y ?? 0) - (before?.y ?? 0))).toBeGreaterThan(5);
+  await shots(page, "robot-pin-exploded");
+});

@@ -2,7 +2,7 @@
 // applied together and re-applied after every restyle of the viewer (new parts, shaded / wire,
 // theme), since a part that reloads comes with fresh materials.
 import * as THREE from "three";
-import type { ModeHost, ShownPart } from "../scene";
+import { visibleWidth, type ModeHost, type ShownPart } from "../scene";
 import { dirFromAzEl, liveBox } from "./camera";
 import { Exploder } from "./explode";
 import { Layouter } from "./layout";
@@ -160,7 +160,11 @@ export class ModesController {
       v.set(x, y, z).applyMatrix4(camera.matrixWorldInverse);
       mx = Math.max(mx, Math.abs(v.x - c.x)); my = Math.max(my, Math.abs(v.y - c.y));
     }
-    return Math.min((camera.right - camera.left) / 2 / mx, (camera.top - camera.bottom) / 2 / my) / 1.06;
+    // only the canvas the floating surfaces leave counts (the frustum spans under them too)
+    const W = Math.max(this.host.canvas.clientWidth || this.host.canvas.width || 1, 1);
+    const ins = this.host.insets?.() ?? { left: 0, right: 0 };
+    const halfW = ((camera.right - camera.left) * (visibleWidth(W, ins.left, ins.right) / W)) / 2;
+    return Math.min(halfW / mx, (camera.top - camera.bottom) / 2 / my) / 1.06;
   }
 
   /** Moves the orbit target (and the camera with it, so the view direction stays). */
