@@ -2040,16 +2040,28 @@ class Runtime:
             return str(pl["text"]), (log if set(log) - {"text"} else None)
         return None
 
+    #: how long retry waits for a stalled turn it cancelled to wind down (FWC M3)
+    RETRY_CANCEL_WAIT_S = 10.0
+
     async def retry_last(self, run_id: str) -> dict:
         """E9: re-send the run's last user turn after an error or a stall. A Claude Code run
-        resumes its session; a native run continues in place."""
+        resumes its session; a native run continues in place. A turn reported stalled
+        (`run_stalled`) is cancelled first, so Retry works in exactly the stalled state; a turn
+        that is busy and not stalled is refused (it is still working)."""
         try:
             self.store.get_run(run_id)
         except KeyError:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        if self.run_busy(run_id) and run_id in self._stalled:
+            self.cancel(run_id)
+            deadline = time.monotonic() + self.RETRY_CANCEL_WAIT_S
+            while self.run_busy(run_id) and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+            self._stalled.discard(run_id)
         if self.run_busy(run_id):
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
-                             hint="wait for it to finish or cancel it")
+                             hint="wait for it to finish or cancel it (a stalled turn is "
+                                  "cancelled by retry)")
         turn = self._last_user_turn(run_id)
         if turn is None:
             raise MisesError(ErrorCode.INVALID_INPUT, "this run has no message to retry",
