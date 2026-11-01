@@ -1,7 +1,7 @@
 // Golden tests of the exploded layout (Plan 10 E4) on a three-level assembly and an enclosure.
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { explodeParents, explodePlan, MIN_SHARE, OWN_SHARE, type ExplodeUnit } from "./explodePlan";
+import { CHILD_SHARE, explodeParents, explodePlan, MIN_SHARE, OWN_SHARE, PARENT_SHARE, type ExplodeUnit } from "./explodePlan";
 
 const box = (min: [number, number, number], max: [number, number, number]) => new THREE.Box3(new THREE.Vector3(...min), new THREE.Vector3(...max));
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -64,19 +64,31 @@ describe("explodePlan (E4)", () => {
     expect(o.wheelL.x).toBeCloseTo(0); expect(o.wheelL.z).toBeCloseTo(0);
   });
 
-  it("each part moves by a share of its own size, not of the whole", () => {
+  it("steps come from the level (parent's extent, own size), comparable across the tree, damped down a chain", () => {
     const u = arm();
     const out = explodePlan(u);
     const o = byId(u, out);
+    const parentOf: Record<string, string> = { turret: "base", upper: "turret", fore: "upper", fingerL: "fore", fingerR: "fore", wheelL: "base", wheelR: "base" };
+    const steps = Object.entries(parentOf).map(([c, p]) => o[c].clone().sub(o[p]).length());
+    for (const s of steps) expect(s).toBeGreaterThan(0);
+    // no level runs away from the others (the review's 3x bound)
+    expect(Math.max(...steps) / Math.min(...steps)).toBeLessThan(3);
+    // the turret's step: the larger of its share of the base's height and of its own size
     const whole = new THREE.Box3(); for (const x of u) whole.union(x.box);
     const D = whole.getSize(new THREE.Vector3()).length();
-    const own = (id: string) => Math.max(OWN_SHARE * u.find((x) => x.id === id)!.box.getSize(new THREE.Vector3()).length(), MIN_SHARE * D);
-    // the turret's own step (its parent, the base, stays)
-    expect(o.turret.length()).toBeCloseTo(own("turret"), 5);
-    // a finger's own step on top of the forearm's
-    expect(o.fingerL.clone().sub(o.fore).length()).toBeCloseTo(own("fingerL"), 5);
-    // a small finger moves less (of its own) than the long forearm
-    expect(o.fingerL.clone().sub(o.fore).length()).toBeLessThan(o.fore.clone().sub(o.upper).length());
+    expect(o.turret.length()).toBeCloseTo(Math.max(PARENT_SHARE * 20, CHILD_SHARE * Math.hypot(30, 30, 30), MIN_SHARE * D), 5);
+    // OWN_SHARE still sets the roots' radial step
+    expect(OWN_SHARE).toBeGreaterThan(0);
+  });
+
+  it("a child that overlaps its parent clears the parent's box along its way first", () => {
+    const u: ExplodeUnit[] = [
+      { id: "chassis", box: box([-60, -40, 0], [60, 40, 30]) },
+      // a mast sunk 10 mm into the chassis, on a Z slide
+      { id: "mast", box: box([-5, -5, 20], [5, 5, 60]), parent: "chassis", axis: v(0, 0, 1), origin: v(0, 0, 30) },
+    ];
+    const o = byId(u, explodePlan(u));
+    expect(u[1].box.min.z + o.mast.z).toBeGreaterThan(30);
   });
 
   it("nothing lands on anything else", () => {

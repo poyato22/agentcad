@@ -25,10 +25,16 @@ export interface ExplodeUnit {
 
 /** A unit's own move, as a share of its own diagonal. */
 export const OWN_SHARE = 0.35;
+/** A child's step: this share of its parent's extent along the way it goes ... */
+export const PARENT_SHARE = 0.25;
+/** ... or this share of its own diagonal, whichever is more. */
+export const CHILD_SHARE = 0.2;
+/** Each level below the first steps this much less (an arm's links). */
+export const DEPTH_DAMP = 0.85;
 /** The least move, as a share of the whole's diagonal (a tiny part still visibly comes out). */
-export const MIN_SHARE = 0.04;
+export const MIN_SHARE = 0.06;
 /** Space left between parts stacked one after another, as a share of the smaller one. */
-export const STACK_GAP = 0.12;
+export const STACK_GAP = 0.3;
 /** A box this much inside another (by volume) sits inside it. */
 const INSIDE = 0.6;
 
@@ -87,6 +93,19 @@ export function explodePlan(units: readonly ExplodeUnit[]): THREE.Vector3[] {
   const dirs = units.map(() => new THREE.Vector3());
   const own = units.map(() => 0);
   const gap = (i: number) => Math.max(OWN_SHARE * diags[i], MIN_SHARE * whole);
+  // E4 review: a child's step comes from its level (its parent's extent along the way it goes),
+  // not only its own size, so siblings separate by comparable amounts; deep chains step a little
+  // less each level so an arm's links don't run away. Then it clears the parent's box.
+  const depth = units.map(() => 0);
+  for (let i = 0; i < n; i++) { let k = parent[i]; let g = 0; while (k !== null && g++ < n) { depth[i]++; k = parent[k]; } }
+  const extent = (b: THREE.Box3, d: THREE.Vector3) => proj(b, d, true) - proj(b, d, false);
+  const childStep = (i: number, p: number) => {
+    const step = Math.max(PARENT_SHARE * extent(units[p].box, dirs[i]), CHILD_SHARE * diags[i]) * DEPTH_DAMP ** Math.max(0, depth[i] - 1);
+    // clears the parent where it overlaps it (a part sitting on or in it), never more
+    const eps = whole * 1e-4;
+    const clear = overlaps(units[i].box, units[p].box, eps) ? Math.max(0, proj(units[p].box, dirs[i], true) - proj(units[i].box, dirs[i], false)) : 0;
+    return clear + Math.max(step, MIN_SHARE * whole);
+  };
 
   // roots: the one holding the most (the frame everything hangs off; else the biggest) stays
   // put; the others go radially out from the middle, and ones at the middle step off the
@@ -119,16 +138,16 @@ export function explodePlan(units: readonly ExplodeUnit[]): THREE.Vector3[] {
         const s = Math.sign(along) || Math.sign(centers[i].clone().sub(centers[p]).dot(a)) || 1;
         dirs[i].copy(a).multiplyScalar(s);
       } else dirs[i].copy(v.normalize());
-      own[i] = gap(i);
+      own[i] = childStep(i, p);
     } else if (!given[i]) {
       // inside its parent's box: out through the parent's thinnest side, clearing it
       const s = units[p].box.getSize(new THREE.Vector3());
       const k = s.z <= s.x && s.z <= s.y ? "z" : s.y <= s.x ? "y" : "x";
       dirs[i].set(0, 0, 0)[k] = k === "z" ? 1 : (Math.sign(v[k]) || 1);
-      own[i] = Math.max(0, proj(units[p].box, dirs[i], true) - proj(u.box, dirs[i], false)) + gap(i);
+      own[i] = childStep(i, p);
     } else {
       dirs[i].copy(v.lengthSq() > 1e-12 ? v.normalize() : new THREE.Vector3(0, 0, 1));
-      own[i] = gap(i);
+      own[i] = childStep(i, p);
     }
   }
 
