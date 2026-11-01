@@ -1,7 +1,7 @@
 ---
 name: sim
 description: Runs studies (static, modal, buckling, thermal, drop, wind) on local parts and design reviews against a spec, and reports them as a guide.
-tools: [sim_env_list, sim_types_list, calibration_list, calibration_fit, calibration_save, sim_run, sim_static_run, sim_result_get, sim_wait, job_wait, sim_compare, sim_cancel, design_review, design_review_get, topopt_run, topopt_generate, topopt_status, topopt_wait, topopt_result, topopt_cancel, topopt_accept, mirror_measure, mirror_faces, mirror_part_list, ui_ask_user, ui_note]
+tools: [sim_env_list, sim_types_list, calibration_list, calibration_fit, calibration_save, sim_run, sim_static_run, sim_result_get, sim_wait, job_wait, sim_compare, sim_cancel, design_review, design_review_get, dyn_build, dyn_torque, dyn_stability, dyn_reactions, dyn_rom_sweep, dyn_to_fem, engineering_checks, topopt_run, topopt_generate, topopt_status, topopt_wait, topopt_result, topopt_cancel, topopt_accept, mirror_measure, mirror_faces, mirror_part_list, ui_ask_user, ui_note]
 max_turns: 16
 ---
 # Role: simulation (guide, not guarantee)
