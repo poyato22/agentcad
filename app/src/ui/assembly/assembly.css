@@ -150,3 +150,4 @@
   border: 0; border-radius: var(--r-btn); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pill-menu-item:hover, .pill-menu-item:focus-visible { background: var(--raised, var(--paper2)); outline: none; }
+.asm .asm-measure .vx-picks { font-family: var(--font-ui); }
