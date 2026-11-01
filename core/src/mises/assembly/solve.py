@@ -397,6 +397,21 @@ def _solve_loops(tree: _Tree, values: dict[str, object], result: "SolveResult") 
     coupled = {j.id for j in tree.order}
     held: set[str] = set(coupled)
     free: list[str] = []
+    _t, _a, via = tree.place(values)
+    depth: dict[str, int] = {}
+
+    def level(iid: str) -> int:
+        """How many joints from its anchor the solve places an instance."""
+        if iid not in depth:
+            jid = via.get(iid)
+            if jid is None:
+                depth[iid] = 0
+            else:
+                j = by_id[jid]
+                other = j.a.instance_id if j.b.instance_id == iid else j.b.instance_id
+                depth[iid] = level(other) + 1
+        return depth[iid]
+
     for lp in tree.loops:
         path = [jid for jid in tree.path(lp.joint_a, lp.joint_b)
                 if by_id[jid].kind != "fixed"]
@@ -405,8 +420,11 @@ def _solve_loops(tree: _Tree, values: dict[str, object], result: "SolveResult") 
                                        "reason": "its two bodies are not joined by a joint "
                                                  "path, so the loop has nothing to adjust"})
             continue
-        drivers = lp.drivers if lp.drivers is not None else [
-            next((jid for jid in path if jid not in coupled), path[0])]
+        # default driver: the movable joint on the path nearest the ground (its anchor)
+        drivers = lp.drivers if lp.drivers is not None else [min(
+            (jid for jid in path if jid not in coupled),
+            key=lambda jid: min(level(by_id[jid].a.instance_id), level(by_id[jid].b.instance_id)),
+            default=path[0])]
         held.update(drivers)
         free.extend(jid for jid in path if jid not in free)
     free = [jid for jid in free if jid not in held]
@@ -454,6 +472,50 @@ def _solve_loops(tree: _Tree, values: dict[str, object], result: "SolveResult") 
         values[jid] = solved[jid]
     for j in tree.order:
         values[j.id] = solved[j.id]
+
+
+CONTINUATION_DEG = 5.0       # a loop solve follows a driver in steps no larger than this
+CONTINUATION_MM = 2.0
+
+
+def solve_from(assembly, start: dict[str, object], *,
+               resolve_face: FaceResolver | None = None) -> SolveResult:
+    """Solve `assembly` (its joints carry the NEW values) arriving from the values in `start`
+    (the pose it was in). With loops, the drivers move there in small steps, each solve starting
+    from the last one's answer, so a linkage stays on its assembly branch instead of jumping to
+    the mirror pose a single big move can land on. Without loops it is solve()."""
+    loops = list(getattr(assembly, "loops", None) or [])
+    if not loops:
+        return solve(assembly, resolve_face=resolve_face)
+    target = {j.id: j.value for j in assembly.joints}
+    n = 1
+    for j in assembly.joints:
+        a, b = start.get(j.id, j.value), j.value
+        if isinstance(a, (list, tuple)) or isinstance(b, (list, tuple)):
+            continue
+        step = CONTINUATION_MM if j.kind == "slider" else CONTINUATION_DEG
+        n = max(n, math.ceil(abs(float(b) - float(a)) / step))
+    n = min(n, 400)
+    cur = dict(start)
+    res = None
+    for k in range(1, n + 1):
+        f = k / n
+        vals = {}
+        for j in assembly.joints:
+            a, b = start.get(j.id, j.value), target[j.id]
+            if a == b or j.coupling is not None:
+                vals[j.id] = cur.get(j.id, b)        # not moved by the caller: last answer
+            elif isinstance(a, (list, tuple)) or isinstance(b, (list, tuple)):
+                vals[j.id] = b
+            else:                                    # a joint the caller moved: step it
+                vals[j.id] = float(a) + (float(b) - float(a)) * f
+        trial = assembly.model_copy(update={"joints": [
+            j.model_copy(update={"value": vals[j.id]}) for j in assembly.joints]})
+        res = solve(trial, resolve_face=resolve_face)
+        cur = {**vals, **res.solved}
+    stored = {j.id: j.value for j in assembly.joints}
+    res.solved = {jid: v for jid, v in res.applied.items() if v != stored.get(jid)}
+    return res
 
 
 def solve(assembly, *, resolve_face: FaceResolver | None = None) -> SolveResult:

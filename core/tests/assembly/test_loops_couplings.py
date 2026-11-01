@@ -218,3 +218,74 @@ def test_set_values_stores_solved_values(tmp_path):
     # stored: the next solve starts closed and stays put
     assert again.applied["j_r"] == pytest.approx(res.applied["j_r"], abs=1e-6)
     assert any(_same_angle(res.applied["j_r"], rocker_analytic(20.0, b), 0.01) for b in (1, -1))
+
+
+# ---- tools
+@pytest.fixture
+def ctx(tmp_path):
+    from types import SimpleNamespace
+
+    from mises.events import EventBus
+    store = AssemblyStore(tmp_path / "assembly.db")
+    return SimpleNamespace(workdir=tmp_path, events=EventBus(), services={"assembly": store},
+                           run_id=None)
+
+
+def _load(ctx, asm, loops=True):
+    st = ctx.services["assembly"]
+    for i in asm.instances:
+        st.add_instance("p", i)
+    for j in asm.joints:
+        st.add_joint("p", j)
+    if loops:
+        for lp in asm.loops:
+            st.add_loop("p", lp)
+    return st
+
+
+async def test_add_loop_tool_closes_and_refuses(ctx):
+    from mises.assembly.tools import AddLoopArgs, assembly_add_loop
+    st = _load(ctx, four_bar(30.0, guess_coupler=coupler_analytic(30.0) + 3,
+                             guess_rocker=rocker_analytic(30.0) + 3), loops=False)
+    bad = AddLoopArgs(project_id="p", a=_ref("coupler", (5, 0, 0)), b=_ref("rocker", (C, 0, 0)))
+    with pytest.raises(MisesError, match="cannot close"):
+        await assembly_add_loop.handler(ctx, bad)
+    ok = AddLoopArgs(project_id="p", a=_ref("coupler", (B, 0, 0)), b=_ref("rocker", (C, 0, 0)),
+                     drivers=["j_in"])
+    r = await assembly_add_loop.handler(ctx, ok)
+    assert r.ok and set(r.data["solved"]) == {"j_cc", "j_r"}
+    # the stored values are now the closed pose
+    assert _same_angle(st.get_joint("p", "j_r").value, rocker_analytic(30.0), 0.01)
+
+
+async def test_drive_moves_followers_and_animate_reports_them(ctx):
+    from mises.assembly.tools import AnimateArgs, DriveArgs, assembly_animate, assembly_drive
+    st = _load(ctx, four_bar(30.0, guess_coupler=coupler_analytic(30.0),
+                             guess_rocker=rocker_analytic(30.0)))
+    r = await assembly_drive.handler(ctx, DriveArgs(project_id="p", joint_id="j_in", value=40.0))
+    assert set(r.data["followers"]) == {"j_cc", "j_r"}
+    assert _same_angle(st.get_joint("p", "j_r").value, rocker_analytic(40.0), 0.01)
+    a = await assembly_animate.handler(ctx, AnimateArgs(project_id="p", joint_id="j_in",
+                                                        to=400.0, keyframes=9))
+    step = a.data["animation"]
+    follow = {f["joint_id"]: f["values"] for f in step["follow"]}
+    assert set(follow) == {"j_cc", "j_r"} and len(follow["j_r"]) == 9
+    for k, v in enumerate(follow["j_r"]):           # one full crank turn, on one branch
+        assert _same_angle(v, rocker_analytic(40.0 + 45.0 * k), 0.05)
+
+
+async def test_add_joint_tool_takes_a_coupling(ctx):
+    from mises.assembly.tools import AddJointArgs, assembly_add_joint
+    asm = _pair()
+    st = _load(ctx, Assembly(instances=asm.instances, joints=[asm.joints[0]]))
+    with pytest.raises(MisesError, match="no joint"):
+        await assembly_add_joint.handler(ctx, AddJointArgs(
+            project_id="p", kind="revolute", a=_ref("g", (30, 0, 0)), b=_ref("w", (0, 0, 0)),
+            coupling=Coupling(kind="gear", ratio=-0.5, partner_joint="nope")))
+    r = await assembly_add_joint.handler(ctx, AddJointArgs(
+        project_id="p", kind="revolute", a=_ref("g", (30, 0, 0)), b=_ref("w", (0, 0, 0)),
+        coupling=Coupling(kind="gear", ratio=-0.5, partner_joint="j1"),
+        design={"bearing": "bearing_608_deep_groove", "retention": "snap ring"}))
+    jid = r.data["joint"]["id"]
+    assert st.get_joint("p", jid).value == pytest.approx(-15.0)
+    assert st.get_joint("p", jid).design.retention == "snap ring"

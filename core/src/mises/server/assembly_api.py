@@ -15,8 +15,9 @@ from pydantic import BaseModel, field_validator
 
 from .. import mass as mass_mod
 from ..assembly.geometry import face_resolver, part_dir, run_geometry
-from ..assembly.model import Instance, Joint, JointKind, JointRef, check_part_id
-from ..assembly.solve import solve
+from ..assembly.model import (Coupling, Instance, Joint, JointDesign, JointKind, JointRef,
+                              check_part_id)
+from ..assembly.solve import solve, solve_from
 from ..events import Event
 from ..types import ErrorCode, MisesError, canonical_json, sha256_hex
 from .ui_api import _contained, _etag_matches
@@ -65,6 +66,8 @@ class JointBody(BaseModel):
     b: JointRef
     value: float | list[float] = 0.0
     limits: list[float] | None = None
+    coupling: Coupling | None = None       # Plan 10
+    design: JointDesign | None = None
 
 
 class JointPatch(BaseModel):
@@ -105,6 +108,9 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
                            "transform": res.transforms[i.id], "fixed": i.fixed}
                           for i in asm.instances],
             "joints": [j.model_dump() for j in asm.joints],
+            # Plan 10: closed chains (only when the build has some, so older payloads keep shape)
+            **({"loops": [lp.model_dump() for lp in asm.loops],
+                "loop_errors": res.loop_errors} if asm.loops else {}),
             "dof_remaining": res.dof_remaining,
             "overconstrained": res.overconstrained,
             # Plan 9 B2: each instance x its part's tree mass; parts with no known mass listed
@@ -161,7 +167,8 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
 
     @router.post("/projects/{project_id}/assembly/joints", status_code=201)
     async def add_joint(project_id: str, body: JointBody):
-        joint = Joint(kind=body.kind, a=body.a, b=body.b, value=body.value, limits=body.limits)
+        joint = Joint(kind=body.kind, a=body.a, b=body.b, value=body.value, limits=body.limits,
+                      coupling=body.coupling, design=body.design)
         asm = store.get(project_id)
         trial = asm.model_copy(update={"joints": [*asm.joints, joint]})
         solve(trial, resolve_face=face_resolver(parts_root()))  # rejects loops / unknown refs
@@ -199,8 +206,12 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
             store.get_joint(project_id, body.joint_id)
         except KeyError as e:
             raise _not_found(e)
+        before = {j.id: j.value for j in store.get(project_id).joints}
         store.update_joint(project_id, body.joint_id, value=body.value)
-        asm, res = _solved(project_id)
+        asm = store.get(project_id)
+        res = solve_from(asm, before, resolve_face=face_resolver(parts_root()))
+        if res.solved:              # Plan 10: coupled / loop joints follow the driven one
+            store.set_values(project_id, res.solved)
         _changed(project_id)
         return {"applied": res.applied.get(body.joint_id, body.value),
                 "transforms": {i.id: res.transforms[i.id] for i in asm.instances}}

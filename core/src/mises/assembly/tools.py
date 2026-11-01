@@ -13,8 +13,9 @@ from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
 from . import motion
 from .geometry import face_resolver, resolve_face, run_geometry
-from .model import AssemblyStore, Frame, Instance, Joint, JointKind, JointRef, check_part_id
-from .solve import SolveResult, solve, translate
+from .model import (AssemblyStore, Coupling, Frame, Instance, Joint, JointDesign, JointKind,
+                    JointRef, Loop, LoopType, check_part_id)
+from .solve import SolveResult, solve, solve_from, translate
 
 
 def _store(ctx: ToolContext) -> AssemblyStore:
@@ -77,13 +78,24 @@ def _changed(ctx: ToolContext, project_id: str) -> None:
 
 
 def _asm_data(asm, res: SolveResult) -> dict:
-    return {
+    out = {
         "instances": [{**i.model_dump(), "world_transform": res.transforms[i.id]}
                       for i in asm.instances],
         "joints": [j.model_dump() for j in asm.joints],
         "dof_remaining": res.dof_remaining,
         "overconstrained": res.overconstrained,
     }
+    if asm.loops:
+        out["loops"] = [lp.model_dump() for lp in asm.loops]
+        out["loop_errors"] = res.loop_errors
+    return out
+
+
+def store_solved(ctx: ToolContext, project_id: str, res: SolveResult) -> None:
+    """Plan 10: keep the stored values of loop-solved and coupled joints in step with their
+    driver, so every reader (the app's own solve too) sees the closed, meshed pose."""
+    if res.solved:
+        _store(ctx).set_values(project_id, res.solved)
 
 
 class ProjectArgs(BaseModel):
@@ -110,6 +122,12 @@ class AddJointArgs(BaseModel):
     b: JointRef
     value: float | list[float] = 0.0
     limits: list[float] | None = None
+    coupling: Coupling | None = Field(
+        default=None, description="Make this joint follow another: value = offset + ratio x "
+        "partner_joint's value (gear: -z1/z2 deg/deg; belt: z1/z2; rack/screw: mm per deg).")
+    design: JointDesign | None = Field(
+        default=None, description="E27 design data: bearing, shaft, retention, clearance_mm, "
+        "actuator, rom_deg, load_n, fastener.")
 
 
 class DriveArgs(BaseModel):
@@ -121,7 +139,7 @@ class DriveArgs(BaseModel):
 class RemoveArgs(BaseModel):
     project_id: str
     instance_id: str | None = None
-    joint_id: str | None = None
+    joint_id: str | None = Field(default=None, description="A joint id, or a loop id.")
 
 
 @tool("assembly_get", safety=SafetyClass.READ, scope_arg="project_id",
@@ -157,12 +175,17 @@ async def assembly_add_instance(ctx: ToolContext, args: AddInstanceArgs) -> Tool
 async def assembly_add_joint(ctx: ToolContext, args: AddJointArgs) -> ToolOutput:
     pid = _resolve_build(ctx, args.project_id)
     store = _store(ctx)
-    joint = Joint(kind=args.kind, a=args.a, b=args.b, value=args.value, limits=args.limits)
+    joint = Joint(kind=args.kind, a=args.a, b=args.b, value=args.value, limits=args.limits,
+                  coupling=args.coupling, design=args.design)
     # validate against the would-be assembly before writing: solve rejects loops / unknown refs
     asm = store.get(pid)
+    if joint.coupling is not None and joint.coupling.partner_joint not in {j.id for j in asm.joints}:
+        raise MisesError(ErrorCode.NOT_FOUND, f"no joint {joint.coupling.partner_joint!r} to "
+                         "couple to", hint="assembly_get lists the joints")
     trial = asm.model_copy(update={"joints": [*asm.joints, joint]})
-    solve(trial, resolve_face=face_resolver(_parts_root(ctx)))
+    res = solve(trial, resolve_face=face_resolver(_parts_root(ctx)))
     store.add_joint(pid, joint)
+    store_solved(ctx, pid, res)
     _changed(ctx, pid)
     return ToolOutput(summary=f"added {joint.kind} joint {joint.id}",
                       data={"joint": joint.model_dump()}, step_kind=StepKind.DIFF)
@@ -178,14 +201,26 @@ async def assembly_drive(ctx: ToolContext, args: DriveArgs) -> ToolOutput:
         store.get_joint(pid, args.joint_id)
     except KeyError:
         raise MisesError(ErrorCode.NOT_FOUND, f"no joint {args.joint_id!r}")
+    before = {j.id: j.value for j in store.get(pid).joints}
     store.update_joint(pid, args.joint_id, value=args.value)
-    asm, res = _solve(ctx, pid)
+    asm = store.get(pid)
+    res = solve_from(asm, before, resolve_face=face_resolver(_parts_root(ctx)))
+    store_solved(ctx, pid, res)
     _changed(ctx, pid)
     applied = res.applied.get(args.joint_id, args.value)
-    return ToolOutput(summary=f"drove joint {args.joint_id} to {applied}",
-                      data={"applied": applied,
-                            "transforms": {i.id: res.transforms[i.id] for i in asm.instances}},
-                      step_kind=StepKind.DIFF)
+    data = {"applied": applied,
+            "transforms": {i.id: res.transforms[i.id] for i in asm.instances}}
+    warnings = []
+    if res.solved:
+        data["followers"] = res.solved
+    if res.loop_errors:
+        data["loop_errors"] = res.loop_errors
+        warnings.append("a loop cannot close at this value (out of range or past a toggle "
+                        "position): " + ", ".join(e["loop_id"] for e in res.loop_errors))
+    return ToolOutput(summary=f"drove joint {args.joint_id} to {applied}"
+                              + (f"; {len(res.solved)} coupled/loop joint(s) followed"
+                                 if res.solved else ""),
+                      data=data, warnings=warnings, step_kind=StepKind.DIFF)
 
 
 @tool("assembly_remove", safety=SafetyClass.LOCAL_MUTATE, scope_arg="project_id",
@@ -200,6 +235,9 @@ async def assembly_remove(ctx: ToolContext, args: RemoveArgs) -> ToolOutput:
             dropped = store.delete_instance(pid, args.instance_id)
             summary = (f"removed instance {args.instance_id}"
                        + (f" and {len(dropped)} joint(s)" if dropped else ""))
+        elif any(lp.id == args.joint_id for lp in store.get(pid).loops):
+            store.delete_loop(pid, args.joint_id)
+            summary = f"removed loop {args.joint_id}"
         else:
             store.delete_joint(pid, args.joint_id)
             summary = f"removed joint {args.joint_id}"
@@ -207,6 +245,53 @@ async def assembly_remove(ctx: ToolContext, args: RemoveArgs) -> ToolOutput:
         raise MisesError(ErrorCode.NOT_FOUND, f"nothing to remove: {e}")
     _changed(ctx, pid)
     return ToolOutput(summary=summary, step_kind=StepKind.DIFF)
+
+
+class AddLoopArgs(BaseModel):
+    project_id: str
+    a: JointRef = Field(description="One body of the loop-closing joint and its frame on it.")
+    b: JointRef = Field(description="The other body and its frame; the two frames must meet.")
+    type: LoopType = Field(default="revolute", description="revolute: the frames' origins meet "
+                           "and their Z axes align; ball: origins meet; fixed: a weld.")
+    drivers: list[str] | None = Field(default=None, description="Joints held at their value "
+                                      "(the inputs); default the first movable joint on the "
+                                      "loop's path from the grounded side.")
+
+
+@tool("assembly_add_loop", safety=SafetyClass.LOCAL_MUTATE, scope_arg="project_id",
+      description="Close a kinematic loop (four-bar, slider-crank, Jansen leg, parallel "
+                  "gripper): a joint between two bodies already connected through the joint "
+                  "tree. The solve then adjusts the free joints on the loop's path so the two "
+                  "frames meet whenever a driver moves. Refused when the loop cannot close at "
+                  "the current pose.")
+async def assembly_add_loop(ctx: ToolContext, args: AddLoopArgs) -> ToolOutput:
+    pid = _resolve_build(ctx, args.project_id)
+    store = _store(ctx)
+    asm = store.get(pid)
+    loop = Loop(joint_a=args.a.instance_id, joint_b=args.b.instance_id, frame_a=args.a.frame,
+                frame_b=args.b.frame, type=args.type, drivers=args.drivers)
+    known = {j.id for j in asm.joints}
+    for d in loop.drivers or []:
+        if d not in known:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no joint {d!r} to hold as a driver")
+    res = solve(asm.model_copy(update={"loops": [*asm.loops, loop]}),
+                resolve_face=face_resolver(_parts_root(ctx)))
+    bad = [e for e in res.loop_errors if e["loop_id"] == loop.id]
+    if bad:
+        raise MisesError(ErrorCode.INVALID_INPUT, f"the loop cannot close: {bad[0]['reason']}"
+                         + (f" (misses by {bad[0]['residual_mm']} mm)"
+                            if bad[0].get("residual_mm") is not None else ""),
+                         hint="check the frames, the link lengths and the drivers' values")
+    try:
+        store.add_loop(pid, loop)
+    except KeyError as e:
+        raise MisesError(ErrorCode.NOT_FOUND, f"no instance {e}") from None
+    store_solved(ctx, pid, res)
+    _changed(ctx, pid)
+    return ToolOutput(summary=f"closed loop {loop.id} between {loop.joint_a} and {loop.joint_b}"
+                              f" ({len(res.solved)} joint value(s) solved)",
+                      data={"loop": loop.model_dump(), "solved": res.solved},
+                      step_kind=StepKind.DIFF)
 
 
 class SweepArgs(BaseModel):
@@ -626,12 +711,28 @@ async def assembly_animate(ctx: ToolContext, args: AnimateArgs) -> ToolOutput:
     step_poses, t0 = [], 0.0
     for p in plan:
         jid, frames = p["joint_id"], []
+        follow: dict[str, list] = {}
         for k in range(args.keyframes):
             f = k / (args.keyframes - 1)
+            before = dict(values)
             values[jid] = motion.lerp(p["from"], p["to"], f)
-            res = solve(motion.with_values(asm, values), resolve_face=resolver)
+            res = solve_from(motion.with_values(asm, values), before, resolve_face=resolver)
+            # Plan 10: coupled and loop-closing joints follow the driver; each frame starts
+            # from the last one's solution, so a linkage stays on its branch
+            for fj, fv in res.solved.items():
+                if fj != jid:
+                    values[fj] = fv
+            for fj, fv in res.applied.items():
+                if fj != jid:
+                    follow.setdefault(fj, []).append(fv)
             frames.append((round(t0 + f * p["duration_s"], 4), values[jid],
                            {i: motion.round_mat(m) for i, m in res.transforms.items()}))
+        follow = {fj: vs for fj, vs in follow.items()
+                  if len(vs) == args.keyframes and any(v != vs[0] for v in vs)}
+        if follow:
+            # the joints that move with this step (gear trains, belts, closed chains): their
+            # value at each key frame, for a player that solves joint values itself
+            p["follow"] = [{"joint_id": fj, "values": vs} for fj, vs in follow.items()]
         # only the instances this step moves (the rest hold still), so the result stays small
         moving = {i for i in frames[0][2] if any(fr[2][i] != frames[0][2][i] for fr in frames)}
         step_poses.append([{"t": t, "joint_id": jid, "value": v,
@@ -708,5 +809,5 @@ def animation_plan(asm, steps) -> list[dict]:
 def register_assembly_tools(registry: ToolRegistry) -> None:
     for t in (assembly_get, assembly_add_instance, assembly_add_joint, assembly_drive,
               assembly_remove, assembly_check, assembly_add_part, assembly_move,
-              assembly_animate):
+              assembly_animate, assembly_add_loop):
         registry.register(t)
