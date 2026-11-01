@@ -1,0 +1,2449 @@
+{
+ "instances": [
+  {
+   "id": "675d6d15880b",
+   "part_id": "fuselage_top",
+   "name": "fuselage top",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": true
+  },
+  {
+   "id": "ce17303bb2b3",
+   "part_id": "fuselage_bottom",
+   "name": "fuselage bottom",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "1fe3a808740c",
+   "part_id": "coreless_motor",
+   "name": "motor",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "b46f0b8dbc32",
+   "part_id": "motor_pinion",
+   "name": "pinion",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "a3121f075ff3",
+   "part_id": "gear_cluster_axis_b",
+   "name": "cluster_b",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "27cd00dc5a57",
+   "part_id": "gear_cluster_axis_a",
+   "name": "cluster_a",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "66bd3d9aee7f",
+   "part_id": "crank_rod_left",
+   "name": "rod_left",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "6fa79d2ce40b",
+   "part_id": "crank_gear_big",
+   "name": "gear_big_left",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "0fd42f90bf46",
+   "part_id": "crank_front_left",
+   "name": "crank_fl",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "ea6db83bcb09",
+   "part_id": "crank_rear_left",
+   "name": "crank_rl",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "55eacfe0443c",
+   "part_id": "crank_rod_right",
+   "name": "rod_right",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "b0ae5f6d00bb",
+   "part_id": "crank_gear_mid_right",
+   "name": "gear_mid_right",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "04f244ec707d",
+   "part_id": "crank_front_right",
+   "name": "crank_fr",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "b5c2b5e79829",
+   "part_id": "crank_rear_right",
+   "name": "crank_rr",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "2287cadf8a93",
+   "part_id": "battery_lipo",
+   "name": "battery",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "ac8019100355",
+   "part_id": "receiver_board",
+   "name": "receiver",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "24bbd364a8fd",
+   "part_id": "boom_tube",
+   "name": "boom",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "53e26e21c3fd",
+   "part_id": "tail_mount",
+   "name": "tail",
+   "transform": [
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "beb5cdf8d209",
+   "part_id": "wing_root_left",
+   "name": "root_fl",
+   "transform": [
+    [
+     0.9999999198748561,
+     0.0,
+     0.00040031272926443427,
+     -0.0016024928567874607
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     -0.00040031272926443427,
+     0.0,
+     0.9999999198748561,
+     -0.006204526803023319
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "d9a88a0016c8",
+   "part_id": "wing_root_right",
+   "name": "root_fr",
+   "transform": [
+    [
+     0.9999999323918821,
+     0.0,
+     -0.0003677175969313673,
+     0.0014719183135533597
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0003677175969313673,
+     0.0,
+     0.9999999323918821,
+     -0.005699352319964665
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "d27b3b0f899e",
+   "part_id": "wing_root_left",
+   "name": "root_rl",
+   "transform": [
+    [
+     0.9977046926689999,
+     0.0,
+     0.06771518460623592,
+     -0.30643800205544597
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     50.0
+    ],
+    [
+     -0.06771518460623592,
+     0.0,
+     0.9977046926689999,
+     -1.0404041320726563
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "ba23025cf031",
+   "part_id": "wing_root_right",
+   "name": "root_rr",
+   "transform": [
+    [
+     0.9977052626713573,
+     0.0,
+     -0.0677067857594637,
+     0.3063955716318165
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     50.0
+    ],
+    [
+     0.0677067857594637,
+     0.0,
+     0.9977052626713573,
+     -1.0402762299571167
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "6236097422b0",
+   "part_id": "spar_rod_left",
+   "name": "spar_fl",
+   "transform": [
+    [
+     0.9999999198748561,
+     0.0,
+     0.00040031272926443427,
+     -0.0016024928567874607
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     -0.00040031272926443427,
+     0.0,
+     0.9999999198748561,
+     -0.006204526803023319
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "02f111a0753a",
+   "part_id": "spar_rod_right",
+   "name": "spar_fr",
+   "transform": [
+    [
+     0.9999999323918821,
+     0.0,
+     -0.0003677175969313673,
+     0.0014719183135533597
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0003677175969313673,
+     0.0,
+     0.9999999323918821,
+     -0.005699352319964665
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "7dde5772cb8b",
+   "part_id": "spar_rod_left",
+   "name": "spar_rl",
+   "transform": [
+    [
+     0.9977046926689999,
+     0.0,
+     0.06771518460623592,
+     -0.30643800205544597
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     50.0
+    ],
+    [
+     -0.06771518460623592,
+     0.0,
+     0.9977046926689999,
+     -1.0404041320726563
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "c3529789ba69",
+   "part_id": "spar_rod_right",
+   "name": "spar_rr",
+   "transform": [
+    [
+     0.9977052626713573,
+     0.0,
+     -0.0677067857594637,
+     0.3063955716318165
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     50.0
+    ],
+    [
+     0.0677067857594637,
+     0.0,
+     0.9977052626713573,
+     -1.0402762299571167
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "e2c94d1d6ee3",
+   "part_id": "crank_link",
+   "name": "link_fl",
+   "transform": [
+    [
+     -0.5712002914940991,
+     0.0,
+     -0.8208107132567509,
+     0.2314
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     -27.0
+    ],
+    [
+     0.8208107132567509,
+     0.0,
+     -0.5712002914940991,
+     -4.0396
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "2407612763a0",
+   "part_id": "crank_link",
+   "name": "link_fr",
+   "transform": [
+    [
+     0.5712123144002128,
+     0.0,
+     -0.8208023464132839,
+     -0.2315
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     -24.0
+    ],
+    [
+     0.8208023464132839,
+     0.0,
+     0.5712123144002128,
+     -4.0392
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "e41b7be79c63",
+   "part_id": "crank_link",
+   "name": "link_rl",
+   "transform": [
+    [
+     0.20265112229369325,
+     0.0,
+     -0.9792510008333444,
+     -8.2358
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     23.0
+    ],
+    [
+     0.9792510008333444,
+     0.0,
+     0.20265112229369325,
+     -6.4207
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  },
+  {
+   "id": "9f20340ff076",
+   "part_id": "crank_link",
+   "name": "link_rr",
+   "transform": [
+    [
+     -0.20265994450947022,
+     0.0,
+     -0.9792491750782425,
+     8.2359
+    ],
+    [
+     0.0,
+     1.0,
+     0.0,
+     26.0
+    ],
+    [
+     0.9792491750782425,
+     0.0,
+     -0.20265994450947022,
+     -6.4206
+    ],
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "fixed": false
+  }
+ ],
+ "joints": [
+  {
+   "id": "fee40ef5a347",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "ce17303bb2b3",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "1d48a9d69f4a",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "1fe3a808740c",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "326beb2688ab",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "ce17303bb2b3",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "2287cadf8a93",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "0d00251353a3",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "ce17303bb2b3",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "ac8019100355",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "ea49c4dbc7fc",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "24bbd364a8fd",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "1927e37e5bd5",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "24bbd364a8fd",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "53e26e21c3fd",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "479b4ee45cff",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "1fe3a808740c",
+    "frame": {
+     "origin": [
+      -4.0,
+      -49.0,
+      2.77
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "b46f0b8dbc32",
+    "frame": {
+     "origin": [
+      -4.0,
+      -49.0,
+      2.77
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null,
+   "design": {
+    "bearing": "bushing",
+    "shaft": null,
+    "retention": "press",
+    "clearance_mm": 0.0,
+    "actuator": null,
+    "rom_deg": [
+     0.0,
+     360.0
+    ],
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "bbfa36690d8d",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      3.9,
+      -46.0,
+      4.033
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "a3121f075ff3",
+    "frame": {
+     "origin": [
+      3.9,
+      -46.0,
+      4.033
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null,
+   "coupling": {
+    "kind": "gear",
+    "ratio": -0.333333,
+    "partner_joint": "479b4ee45cff",
+    "offset": 0.0
+   },
+   "design": {
+    "bearing": "printed",
+    "shaft": {
+     "d_mm": 2,
+     "material": "PA12"
+    },
+    "retention": "end pockets in bulkheads",
+    "clearance_mm": 0.15,
+    "actuator": null,
+    "rom_deg": null,
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "7c7f7e14fe21",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      -4.0,
+      -40.0,
+      2.77
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "27cd00dc5a57",
+    "frame": {
+     "origin": [
+      -4.0,
+      -40.0,
+      2.77
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null,
+   "coupling": {
+    "kind": "gear",
+    "ratio": -0.333333,
+    "partner_joint": "bbfa36690d8d",
+    "offset": 0.0
+   },
+   "design": {
+    "bearing": "printed",
+    "shaft": {
+     "d_mm": 2,
+     "material": "PA12"
+    },
+    "retention": "end pockets in bulkheads",
+    "clearance_mm": 0.15,
+    "actuator": null,
+    "rom_deg": null,
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "b93b864ec66e",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "ce17303bb2b3",
+    "frame": {
+     "origin": [
+      -4.0,
+      0.0,
+      -5.23
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "66bd3d9aee7f",
+    "frame": {
+     "origin": [
+      -4.0,
+      0.0,
+      -5.23
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null,
+   "coupling": {
+    "kind": "gear",
+    "ratio": -0.333333,
+    "partner_joint": "7c7f7e14fe21",
+    "offset": 0.0
+   },
+   "design": {
+    "bearing": "printed",
+    "shaft": {
+     "d_mm": 3,
+     "material": "CF plate"
+    },
+    "retention": "end pocket in rear bulkhead + gear glued",
+    "clearance_mm": 0.2,
+    "actuator": null,
+    "rom_deg": null,
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "462dd11c0442",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "ce17303bb2b3",
+    "frame": {
+     "origin": [
+      4.0,
+      0.0,
+      -5.23
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "55eacfe0443c",
+    "frame": {
+     "origin": [
+      4.0,
+      0.0,
+      -5.23
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null,
+   "coupling": {
+    "kind": "gear",
+    "ratio": -1.0,
+    "partner_joint": "b93b864ec66e",
+    "offset": 0.0
+   },
+   "design": {
+    "bearing": "printed",
+    "shaft": {
+     "d_mm": 3,
+     "material": "CF plate"
+    },
+    "retention": "end pocket in rear bulkhead + gear glued",
+    "clearance_mm": 0.2,
+    "actuator": null,
+    "rom_deg": null,
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "971986612d95",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "66bd3d9aee7f",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "6fa79d2ce40b",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "c0c7876f62b6",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "66bd3d9aee7f",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "0fd42f90bf46",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "8a14c3efaa46",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "66bd3d9aee7f",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "ea6db83bcb09",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "0ca5c43be7ca",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "55eacfe0443c",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "b0ae5f6d00bb",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "c77a465ea260",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "55eacfe0443c",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "04f244ec707d",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "ee1291ad6bed",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "55eacfe0443c",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "b5c2b5e79829",
+    "frame": {
+     "origin": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "41166c4ae788",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      -15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "beb5cdf8d209",
+    "frame": {
+     "origin": [
+      -15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.022936230484804834,
+   "limits": [
+    -35.0,
+    35.0
+   ],
+   "design": {
+    "bearing": "bushing",
+    "shaft": {
+     "d_mm": 1.5,
+     "material": "Steel 1018"
+    },
+    "retention": "1.5 mm steel wire, ends bent over",
+    "clearance_mm": 0.2,
+    "actuator": null,
+    "rom_deg": [
+     -25.0,
+     25.0
+    ],
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "59cb3eebce45",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "d9a88a0016c8",
+    "frame": {
+     "origin": [
+      15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": -0.021068666831664404,
+   "limits": [
+    -35.0,
+    35.0
+   ],
+   "design": {
+    "bearing": "bushing",
+    "shaft": {
+     "d_mm": 1.5,
+     "material": "Steel 1018"
+    },
+    "retention": "1.5 mm steel wire, ends bent over",
+    "clearance_mm": 0.2,
+    "actuator": null,
+    "rom_deg": [
+     -25.0,
+     25.0
+    ],
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "934aecc6247b",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      -15.5,
+      24.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "d27b3b0f899e",
+    "frame": {
+     "origin": [
+      -15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 3.882765455053016,
+   "limits": [
+    -35.0,
+    35.0
+   ],
+   "design": {
+    "bearing": "bushing",
+    "shaft": {
+     "d_mm": 1.5,
+     "material": "Steel 1018"
+    },
+    "retention": "1.5 mm steel wire, ends bent over",
+    "clearance_mm": 0.2,
+    "actuator": null,
+    "rom_deg": [
+     -25.0,
+     25.0
+    ],
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "3207b7741bb5",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "675d6d15880b",
+    "frame": {
+     "origin": [
+      15.5,
+      24.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "ba23025cf031",
+    "frame": {
+     "origin": [
+      15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": -3.8822831296325835,
+   "limits": [
+    -35.0,
+    35.0
+   ],
+   "design": {
+    "bearing": "bushing",
+    "shaft": {
+     "d_mm": 1.5,
+     "material": "Steel 1018"
+    },
+    "retention": "1.5 mm steel wire, ends bent over",
+    "clearance_mm": 0.2,
+    "actuator": null,
+    "rom_deg": [
+     -25.0,
+     25.0
+    ],
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "1d387d3e0282",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "beb5cdf8d209",
+    "frame": {
+     "origin": [
+      -15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "6236097422b0",
+    "frame": {
+     "origin": [
+      -15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "cec293d65524",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "d9a88a0016c8",
+    "frame": {
+     "origin": [
+      15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "02f111a0753a",
+    "frame": {
+     "origin": [
+      15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "4f17d50a4cfb",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "d27b3b0f899e",
+    "frame": {
+     "origin": [
+      -15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "7dde5772cb8b",
+    "frame": {
+     "origin": [
+      -15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "4355b1696af6",
+   "kind": "fixed",
+   "a": {
+    "instance_id": "ba23025cf031",
+    "frame": {
+     "origin": [
+      15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "c3529789ba69",
+    "frame": {
+     "origin": [
+      15.5,
+      -26.0,
+      4.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": 0.0,
+   "limits": null
+  },
+  {
+   "id": "c1b566e4581e",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "0fd42f90bf46",
+    "frame": {
+     "origin": [
+      0.2314,
+      -26.9,
+      -4.0396
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "e2c94d1d6ee3",
+    "frame": {
+     "origin": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": -124.83396820943724,
+   "limits": null,
+   "design": {
+    "bearing": "printed",
+    "shaft": {
+     "d_mm": 1.6,
+     "material": "PA12"
+    },
+    "retention": "pin end flare (heat) / drop of CA",
+    "clearance_mm": 0.15,
+    "actuator": null,
+    "rom_deg": null,
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "b8ccf80807d1",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "04f244ec707d",
+    "frame": {
+     "origin": [
+      -0.2315,
+      -23.9,
+      -4.0392
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "2407612763a0",
+    "frame": {
+     "origin": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": -55.165192540687485,
+   "limits": null,
+   "design": {
+    "bearing": "printed",
+    "shaft": {
+     "d_mm": 1.6,
+     "material": "PA12"
+    },
+    "retention": "pin end flare (heat) / drop of CA",
+    "clearance_mm": 0.15,
+    "actuator": null,
+    "rom_deg": null,
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "f91526ca23ab",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "ea6db83bcb09",
+    "frame": {
+     "origin": [
+      -8.2358,
+      23.1,
+      -6.4207
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "e41b7be79c63",
+    "frame": {
+     "origin": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": -78.30796757324474,
+   "limits": null,
+   "design": {
+    "bearing": "printed",
+    "shaft": {
+     "d_mm": 1.6,
+     "material": "PA12"
+    },
+    "retention": "pin end flare (heat) / drop of CA",
+    "clearance_mm": 0.15,
+    "actuator": null,
+    "rom_deg": null,
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  },
+  {
+   "id": "997411fcada3",
+   "kind": "revolute",
+   "a": {
+    "instance_id": "b5c2b5e79829",
+    "frame": {
+     "origin": [
+      8.2359,
+      26.1,
+      -6.4206
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "b": {
+    "instance_id": "9f20340ff076",
+    "frame": {
+     "origin": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "axis": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "face_id": null
+    }
+   },
+   "value": -101.69254861331086,
+   "limits": null,
+   "design": {
+    "bearing": "printed",
+    "shaft": {
+     "d_mm": 1.6,
+     "material": "PA12"
+    },
+    "retention": "pin end flare (heat) / drop of CA",
+    "clearance_mm": 0.15,
+    "actuator": null,
+    "rom_deg": null,
+    "load_n": null,
+    "fastener": null,
+    "contact": null
+   }
+  }
+ ],
+ "loops": [
+  {
+   "id": "408cd3787fc3",
+   "kind": "loop",
+   "joint_a": "e2c94d1d6ee3",
+   "joint_b": "beb5cdf8d209",
+   "frame_a": {
+    "origin": [
+     11.0,
+     0.1,
+     0.0
+    ],
+    "axis": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "face_id": null
+   },
+   "frame_b": {
+    "origin": [
+     -6.0522,
+     -26.9,
+     4.9931
+    ],
+    "axis": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "face_id": null
+   },
+   "type": "revolute",
+   "drivers": [
+    "479b4ee45cff"
+   ]
+  },
+  {
+   "id": "39f0e5c2b7b0",
+   "kind": "loop",
+   "joint_a": "2407612763a0",
+   "joint_b": "d9a88a0016c8",
+   "frame_a": {
+    "origin": [
+     11.0,
+     0.1,
+     0.0
+    ],
+    "axis": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "face_id": null
+   },
+   "frame_b": {
+    "origin": [
+     6.0522,
+     -23.9,
+     4.9931
+    ],
+    "axis": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "face_id": null
+   },
+   "type": "revolute",
+   "drivers": [
+    "479b4ee45cff"
+   ]
+  },
+  {
+   "id": "50e044f142d1",
+   "kind": "loop",
+   "joint_a": "e41b7be79c63",
+   "joint_b": "d27b3b0f899e",
+   "frame_a": {
+    "origin": [
+     11.0,
+     0.1,
+     0.0
+    ],
+    "axis": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "face_id": null
+   },
+   "frame_b": {
+    "origin": [
+     -6.0522,
+     -26.9,
+     4.9931
+    ],
+    "axis": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "face_id": null
+   },
+   "type": "revolute",
+   "drivers": [
+    "479b4ee45cff"
+   ]
+  },
+  {
+   "id": "3d959747d39d",
+   "kind": "loop",
+   "joint_a": "9f20340ff076",
+   "joint_b": "ba23025cf031",
+   "frame_a": {
+    "origin": [
+     11.0,
+     0.1,
+     0.0
+    ],
+    "axis": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "face_id": null
+   },
+   "frame_b": {
+    "origin": [
+     6.0522,
+     -23.9,
+     4.9931
+    ],
+    "axis": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "face_id": null
+   },
+   "type": "revolute",
+   "drivers": [
+    "479b4ee45cff"
+   ]
+  }
+ ],
+ "loop_errors": [],
+ "dof_remaining": 1,
+ "overconstrained": [],
+ "total_mass_g": 37.9788,
+ "mass_unknown": []
+}

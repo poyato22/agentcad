@@ -65,8 +65,24 @@ function interp(a: Mat4, b: Mat4, t: number): Mat4 {
 
 const ease = (t: number) => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, t)));
 
-/** One joint step of a motion: from → to over duration_s. */
-export interface MotionStep { joint_id: string; from: JointValue; to: JointValue; duration_s: number }
+/** One joint step of a motion: from → to over duration_s; `follow` (G4): the joints that move
+ *  with it (gear trains, closed linkages) as the core solved them at evenly spaced fractions. */
+export interface MotionStep { joint_id: string; from: JointValue; to: JointValue; duration_s: number; follow?: readonly { joint_id: string; values: readonly JointValue[] }[] }
+
+/** A follower's value at fraction `f` of its step (piecewise linear between the samples). */
+function sampleAt(values: readonly JointValue[], f: number): JointValue {
+  const x = Math.min(1, Math.max(0, f)) * (values.length - 1);
+  const k = Math.min(values.length - 2, Math.floor(x));
+  return lerpValue(values[k], values[k + 1], x - k);
+}
+
+/** A revolute step through whole turns (a crank, a motor) plays at constant speed: eased, a
+ *  looping drive would stop dead at every turn. */
+function wholeTurns(s: MotionStep, kind: string | undefined): boolean {
+  if (kind !== "revolute" || Array.isArray(s.from) || Array.isArray(s.to)) return false;
+  const span = Math.abs(s.to - s.from);
+  return span >= 359.999 && Math.abs(span / 360 - Math.round(span / 360)) < 1e-6;
+}
 
 /** A presented animation being shown (G-D): `t` seconds into a pass of `duration`. */
 export interface MotionState { t: number; duration: number; playing: boolean; speed: number; loop: boolean }
@@ -352,7 +368,10 @@ export class AssemblyController {
     this.stopAnimate();
     const restore = new Map<string, JointValue>();
     for (const s of usable) {
-      if (!restore.has(s.joint_id)) restore.set(s.joint_id, this.values.peek()[s.joint_id] ?? (this.joint(s.joint_id) as Joint).value);
+      for (const id of [s.joint_id, ...(s.follow ?? []).map((f) => f.joint_id)]) {
+        const j = this.joint(id);
+        if (j && !restore.has(id)) restore.set(id, this.values.peek()[id] ?? j.value);
+      }
     }
     this.playRestore = restore;
     return usable;
@@ -366,9 +385,15 @@ export class AssemblyController {
     const pose = new Map<string, JointValue>();
     usable.forEach((s, k) => {
       const j = this.joint(s.joint_id) as Joint;
-      if (k < i) pose.set(s.joint_id, clampJoint(s.to, j.limits));
-      else if (k === i) pose.set(s.joint_id, clampJoint(lerpValue(s.from, s.to, ease(Math.min(1, u / durs[i]))), j.limits));
-      else if (!pose.has(s.joint_id)) pose.set(s.joint_id, clampJoint(s.from, j.limits));
+      // how far along its step: done, on its way (eased; whole turns at constant speed), not yet
+      const f = k < i ? 1 : k > i ? 0 : wholeTurns(s, j.kind) ? Math.min(1, u / durs[i]) : ease(Math.min(1, u / durs[i]));
+      if (k > i && pose.has(s.joint_id)) return;
+      pose.set(s.joint_id, clampJoint(lerpValue(s.from, s.to, f), j.limits));
+      // G4: the joints it carries (gear trains, linkages) at the same fraction
+      for (const fw of s.follow ?? []) {
+        const fj = this.joint(fw.joint_id);
+        if (fj && fw.values.length >= 2 && !(k > i && pose.has(fw.joint_id))) pose.set(fw.joint_id, clampJoint(sampleAt(fw.values, f), fj.limits));
+      }
     });
     return { pose, i };
   }

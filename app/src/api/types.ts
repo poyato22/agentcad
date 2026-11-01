@@ -180,8 +180,12 @@ export interface Announcement {
 }
 
 /** One move of an agent's animation: a joint from → to (joint values: revolute deg, slider mm,
- *  cylindrical [deg, mm], ball [rx, ry, rz]) over duration_s. */
-export interface AnimateStep { joint_id: string; from: number | number[]; to: number | number[]; duration_s: number }
+ *  cylindrical [deg, mm], ball [rx, ry, rz]) over duration_s. `follow` (core assembly_animate,
+ *  Plan 10): the joints that move with it — gear trains, closed linkages — as their solved value
+ *  at evenly spaced fractions of the step (ends included), so the app plays them without a
+ *  loop solve of its own. */
+export interface AnimateFollow { joint_id: string; values: (number | number[])[] }
+export interface AnimateStep { joint_id: string; from: number | number[]; to: number | number[]; duration_s: number; follow?: AnimateFollow[] }
 
 /** `assembly_animate` event (U3c assembly_animate, R19), normalised: the single-joint form
  *  {joint_id, from, to, duration_s} and the `sequence` form both become `steps`, played one after
@@ -279,6 +283,8 @@ export interface PartSummary {
   color?: string | null; kind?: PartKind; version?: number;
   /** Plan 7 U8: the part's material (lib/appearance.ts); absent or null = the drafting look. */
   appearance?: Appearance | null;
+  /** G4 (core mises/looks.py): the look shown while `appearance` is null (material, concept CMF). */
+  default_appearance?: Appearance | null;
   /** Plan 9 B2: the tree mass in g (lib/mass.ts), null when unknown (`mass_note` says why). */
   mass_g?: number | null;
   mass_source?: MassSource | null;

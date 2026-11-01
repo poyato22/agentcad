@@ -1,0 +1,1308 @@
+[
+ {
+  "id": "skeleton_000b9ce75f54",
+  "project_id": "000b9ce75f54",
+  "label": "Skeleton",
+  "parent_id": null,
+  "order": 0,
+  "color": null,
+  "kind": "skeleton",
+  "version": 4,
+  "appearance": null,
+  "material": null,
+  "part_id": "skeleton_000b9ce75f54",
+  "default_appearance": null,
+  "vars": {},
+  "metrics": {},
+  "mtime": null,
+  "mass_g": null,
+  "mass_source": "unknown",
+  "mass_note": "layout skeleton: it has no mass"
+ },
+ {
+  "id": "fuselage_top",
+  "project_id": "000b9ce75f54",
+  "label": "fuselage_top",
+  "parent_id": null,
+  "order": 1,
+  "color": null,
+  "kind": "part",
+  "version": 6,
+  "appearance": null,
+  "material": null,
+  "part_id": "fuselage_top",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "half": 1.0,
+   "lug_screw_clear": 1.9,
+   "lug_screw_pilot": 1.3,
+   "ring_w": 4.5,
+   "boss_r": 4.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -19.5,
+     -75.0,
+     -2.1911285700318428e-15
+    ],
+    "max": [
+     19.5,
+     75.0,
+     13.0
+    ],
+    "size": [
+     39.0,
+     150.0,
+     13.000000000000002
+    ]
+   },
+   "volume_mm3": 7970.850385819418,
+   "mass_g": 9.8839
+  },
+  "mtime": 1793563040.3330204,
+  "mass_g": 9.8839,
+  "mass_source": "built",
+  "mass_note": "7971 mm3 x 1.24 g/cm3 (PLA, build default)"
+ },
+ {
+  "id": "fuselage_bottom",
+  "project_id": "000b9ce75f54",
+  "label": "fuselage_bottom",
+  "parent_id": null,
+  "order": 2,
+  "color": null,
+  "kind": "part",
+  "version": 4,
+  "appearance": null,
+  "material": null,
+  "part_id": "fuselage_bottom",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "half": -1.0,
+   "lug_screw_clear": 1.9,
+   "lug_screw_pilot": 1.3,
+   "ring_w": 4.5,
+   "boss_r": 4.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -15.3,
+     -75.0,
+     -13.0
+    ],
+    "max": [
+     15.3,
+     75.0,
+     3.996802888650557e-16
+    ],
+    "size": [
+     30.6,
+     150.0,
+     13.0
+    ]
+   },
+   "volume_mm3": 6935.645741457014,
+   "mass_g": 8.6002
+  },
+  "mtime": 1793563040.3446164,
+  "mass_g": 8.6002,
+  "mass_source": "built",
+  "mass_note": "6936 mm3 x 1.24 g/cm3 (PLA, build default)"
+ },
+ {
+  "id": "motor_pinion",
+  "project_id": "000b9ce75f54",
+  "label": "motor_pinion",
+  "parent_id": null,
+  "order": 3,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "Brass C360",
+  "part_id": "motor_pinion",
+  "default_appearance": {
+   "preset": "polished_metal",
+   "color": "#c9a24a",
+   "metalness": 1.0,
+   "roughness": 0.06,
+   "opacity": 1.0
+  },
+  "vars": {
+   "width": 3.0,
+   "bore": 1.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -6.50000009999986,
+     -50.50000010000001,
+     0.2699999000001402
+    ],
+    "max": [
+     -1.49999990000014,
+     -47.49999989999999,
+     5.270000099999861
+    ],
+    "size": [
+     5.00000019999972,
+     3.0000002000000165,
+     5.000000199999721
+    ]
+   },
+   "volume_mm3": 32.895287545597775,
+   "mass_g": 0.2796
+  },
+  "mtime": 1793563040.3561215,
+  "mass_g": 0.2796,
+  "mass_source": "built",
+  "mass_note": "33 mm3 x 8.5 g/cm3 (Brass C360)"
+ },
+ {
+  "id": "crank_gear_big",
+  "project_id": "000b9ce75f54",
+  "label": "crank_gear_big",
+  "parent_id": null,
+  "order": 4,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "PA12",
+  "part_id": "crank_gear_big",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "width": 3.0,
+   "bore": 3.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -10.465297885017733,
+     -38.50000010000001,
+     -11.695297885017734
+    ],
+    "max": [
+     2.465297885017734,
+     -35.49999989999999,
+     1.2352978850177336
+    ],
+    "size": [
+     12.930595770035467,
+     3.0000002000000165,
+     12.930595770035467
+    ]
+   },
+   "volume_mm3": 313.5995384562105,
+   "mass_g": 0.3167
+  },
+  "mtime": 1793563040.3743758,
+  "mass_g": 0.3167,
+  "mass_source": "built",
+  "mass_note": "314 mm3 x 1.01 g/cm3 (PA12)"
+ },
+ {
+  "id": "gear_cluster_axis_b",
+  "project_id": "000b9ce75f54",
+  "label": "gear_cluster_axis_b",
+  "parent_id": null,
+  "order": 5,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "PA12",
+  "part_id": "gear_cluster_axis_b",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "stage": 1.0,
+   "width": 3.0,
+   "shaft_d": 2.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -2.590888503561323,
+     -51.4,
+     -2.4578885035613225
+    ],
+    "max": [
+     10.390888503561323,
+     -40.6,
+     10.523888503561322
+    ],
+    "size": [
+     12.981777007122645,
+     10.799999999999997,
+     12.981777007122645
+    ]
+   },
+   "volume_mm3": 385.1364156409625,
+   "mass_g": 0.389
+  },
+  "mtime": 1793563040.3952935,
+  "mass_g": 0.389,
+  "mass_source": "built",
+  "mass_note": "385 mm3 x 1.01 g/cm3 (PA12)"
+ },
+ {
+  "id": "gear_cluster_axis_a",
+  "project_id": "000b9ce75f54",
+  "label": "gear_cluster_axis_a",
+  "parent_id": null,
+  "order": 6,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "PA12",
+  "part_id": "gear_cluster_axis_a",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "stage": 2.0,
+   "width": 3.0,
+   "shaft_d": 2.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -10.490888503561324,
+     -45.49999999999999,
+     -3.7208885035613246
+    ],
+    "max": [
+     2.4908885035613246,
+     -34.599999999999994,
+     9.260888503561324
+    ],
+    "size": [
+     12.981777007122648,
+     10.899999999999999,
+     12.981777007122648
+    ]
+   },
+   "volume_mm3": 385.45057490632166,
+   "mass_g": 0.3893
+  },
+  "mtime": 1793563040.417156,
+  "mass_g": 0.3893,
+  "mass_source": "built",
+  "mass_note": "385 mm3 x 1.01 g/cm3 (PA12)"
+ },
+ {
+  "id": "crank_front_left",
+  "project_id": "000b9ce75f54",
+  "label": "crank_front_left",
+  "parent_id": null,
+  "order": 7,
+  "color": null,
+  "kind": "part",
+  "version": 2,
+  "appearance": null,
+  "material": "PA12",
+  "part_id": "crank_front_left",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": -1.0,
+   "front": 1.0,
+   "with_gear": 1.0,
+   "phi": 344.3,
+   "bore": 3.0,
+   "pin_d": 1.6
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -8.500000100006508,
+     -32.50000010000001,
+     -9.730000100006507
+    ],
+    "max": [
+     1.9358436842765074,
+     -25.200000000000003,
+     -0.7299998999934914
+    ],
+    "size": [
+     10.435843784283016,
+     7.300000100000005,
+     9.000000200013016
+    ]
+   },
+   "volume_mm3": 218.93040076699808,
+   "mass_g": 0.2211
+  },
+  "mtime": 1793563040.431999,
+  "mass_g": 0.2211,
+  "mass_source": "built",
+  "mass_note": "219 mm3 x 1.01 g/cm3 (PA12)"
+ },
+ {
+  "id": "crank_rear_left",
+  "project_id": "000b9ce75f54",
+  "label": "crank_rear_left",
+  "parent_id": null,
+  "order": 8,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "PA12",
+  "part_id": "crank_rear_left",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": -1.0,
+   "front": 0.0,
+   "with_gear": 0.0,
+   "phi": 164.3,
+   "bore": 3.0,
+   "pin_d": 1.6
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -9.935843684276506,
+     21.0,
+     -8.73
+    ],
+    "max": [
+     -0.49999999999999956,
+     24.799999999999997,
+     -1.73
+    ],
+    "size": [
+     9.435843684276506,
+     3.799999999999997,
+     7.0
+    ]
+   },
+   "volume_mm3": 82.25096680061193,
+   "mass_g": 0.0831
+  },
+  "mtime": 1793563040.4387836,
+  "mass_g": 0.0831,
+  "mass_source": "built",
+  "mass_note": "82 mm3 x 1.01 g/cm3 (PA12)"
+ },
+ {
+  "id": "crank_front_right",
+  "project_id": "000b9ce75f54",
+  "label": "crank_front_right",
+  "parent_id": null,
+  "order": 9,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "PA12",
+  "part_id": "crank_front_right",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": 1.0,
+   "front": 1.0,
+   "with_gear": 0.0,
+   "phi": 195.7,
+   "bore": 3.0,
+   "pin_d": 1.6
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -1.9358436842765074,
+     -24.3,
+     -8.73
+    ],
+    "max": [
+     7.5,
+     -20.5,
+     -1.7300000000000004
+    ],
+    "size": [
+     9.435843684276508,
+     3.8000000000000007,
+     7.0
+    ]
+   },
+   "volume_mm3": 82.25096680115578,
+   "mass_g": 0.0831
+  },
+  "mtime": 1793563040.4451659,
+  "mass_g": 0.0831,
+  "mass_source": "built",
+  "mass_note": "82 mm3 x 1.01 g/cm3 (PA12)"
+ },
+ {
+  "id": "crank_rear_right",
+  "project_id": "000b9ce75f54",
+  "label": "crank_rear_right",
+  "parent_id": null,
+  "order": 10,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "PA12",
+  "part_id": "crank_rear_right",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": 1.0,
+   "front": 0.0,
+   "with_gear": 0.0,
+   "phi": 15.7,
+   "bore": 3.0,
+   "pin_d": 1.6
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     0.5,
+     25.7,
+     -8.73
+    ],
+    "max": [
+     9.935843684276508,
+     29.5,
+     -1.7300000000000004
+    ],
+    "size": [
+     9.435843684276508,
+     3.8000000000000007,
+     7.0
+    ]
+   },
+   "volume_mm3": 82.25096680115738,
+   "mass_g": 0.0831
+  },
+  "mtime": 1793563040.4525256,
+  "mass_g": 0.0831,
+  "mass_source": "built",
+  "mass_note": "82 mm3 x 1.01 g/cm3 (PA12)"
+ },
+ {
+  "id": "crank_gear_mid_right",
+  "project_id": "000b9ce75f54",
+  "label": "crank_gear_mid_right",
+  "parent_id": null,
+  "order": 11,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "PA12",
+  "part_id": "crank_gear_mid_right",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "bore": 3.0,
+   "width": 3.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -0.44297640255796517,
+     -32.50000010000001,
+     -9.672976402557966
+    ],
+    "max": [
+     8.442976402557965,
+     -29.499999899999995,
+     -0.7870235974420335
+    ],
+    "size": [
+     8.88595280511593,
+     3.000000200000013,
+     8.885952805115933
+    ]
+   },
+   "volume_mm3": 126.07655875996947,
+   "mass_g": 0.1273
+  },
+  "mtime": 1793563040.465219,
+  "mass_g": 0.1273,
+  "mass_source": "built",
+  "mass_note": "126 mm3 x 1.01 g/cm3 (PA12)"
+ },
+ {
+  "id": "wing_root_left",
+  "project_id": "000b9ce75f54",
+  "label": "wing_root_left",
+  "parent_id": null,
+  "order": 12,
+  "color": null,
+  "kind": "part",
+  "version": 3,
+  "appearance": null,
+  "material": "PETG",
+  "part_id": "wing_root_left",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": -1.0,
+   "lever_angle": 6.0,
+   "hub_r": 3.0,
+   "pin_bore": 1.7,
+   "socket_len": 14.0,
+   "rod_bore": 2.4
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -29.5,
+     -29.5,
+     0.9999999999999991
+    ],
+    "max": [
+     -4.352041994001403,
+     -22.5,
+     7.000000000000001
+    ],
+    "size": [
+     25.147958005998596,
+     7.0,
+     6.000000000000002
+    ]
+   },
+   "volume_mm3": 454.0455943707355,
+   "mass_g": 0.5766
+  },
+  "mtime": 1793563040.4722478,
+  "mass_g": 0.5766,
+  "mass_source": "built",
+  "mass_note": "454 mm3 x 1.27 g/cm3 (PETG)"
+ },
+ {
+  "id": "wing_root_right",
+  "project_id": "000b9ce75f54",
+  "label": "wing_root_right",
+  "parent_id": null,
+  "order": 13,
+  "color": null,
+  "kind": "part",
+  "version": 3,
+  "appearance": null,
+  "material": "PETG",
+  "part_id": "wing_root_right",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": 1.0,
+   "lever_angle": 6.0,
+   "hub_r": 3.0,
+   "pin_bore": 1.7,
+   "socket_len": 14.0,
+   "rod_bore": 2.4
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     4.352041994001403,
+     -29.5,
+     0.9999999999999991
+    ],
+    "max": [
+     29.5,
+     -22.5,
+     7.000000000000001
+    ],
+    "size": [
+     25.147958005998596,
+     7.0,
+     6.000000000000002
+    ]
+   },
+   "volume_mm3": 454.0455943707145,
+   "mass_g": 0.5766
+  },
+  "mtime": 1793563040.4787424,
+  "mass_g": 0.5766,
+  "mass_source": "built",
+  "mass_note": "454 mm3 x 1.27 g/cm3 (PETG)"
+ },
+ {
+  "id": "crank_link",
+  "project_id": "000b9ce75f54",
+  "label": "crank_link",
+  "parent_id": null,
+  "order": 14,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "PETG",
+  "part_id": "crank_link",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "hole_d": 1.9,
+   "thickness": 1.5,
+   "pad_r": 1.7
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -1.7,
+     -3.774758283725532e-16,
+     -1.7000000000000002
+    ],
+    "max": [
+     12.7,
+     1.5000000000000004,
+     1.7000000000000002
+    ],
+    "size": [
+     14.399999999999999,
+     1.5000000000000009,
+     3.4000000000000004
+    ]
+   },
+   "volume_mm3": 61.21294204370336,
+   "mass_g": 0.0777
+  },
+  "mtime": 1793563040.4870799,
+  "mass_g": 0.0777,
+  "mass_source": "built",
+  "mass_note": "61 mm3 x 1.27 g/cm3 (PETG)"
+ },
+ {
+  "id": "tail_mount",
+  "project_id": "000b9ce75f54",
+  "label": "tail_mount",
+  "parent_id": null,
+  "order": 15,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": null,
+  "part_id": "tail_mount",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#12a6a0",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "boom_end_y": 162.0,
+   "collar_len": 12.0,
+   "collar_od": 9.0,
+   "stab_span": 60.0,
+   "stab_chord": 28.0,
+   "stab_t": 0.8,
+   "fin_h": 22.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -30.0,
+     142.0,
+     -4.500000000000002
+    ],
+    "max": [
+     30.0,
+     170.0,
+     26.3
+    ],
+    "size": [
+     60.0,
+     28.0,
+     30.800000000000004
+    ]
+   },
+   "volume_mm3": 2265.044025786562,
+   "mass_g": 2.8087
+  },
+  "mtime": 1793563040.4946446,
+  "mass_g": 2.8087,
+  "mass_source": "built",
+  "mass_note": "2265 mm3 x 1.24 g/cm3 (PLA, build default)"
+ },
+ {
+  "id": "wing_film_left",
+  "project_id": "000b9ce75f54",
+  "label": "wing_film_left",
+  "parent_id": null,
+  "order": 16,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": null,
+  "part_id": "wing_film_left",
+  "default_appearance": {
+   "preset": "glossy_plastic",
+   "color": "#f2b84b",
+   "metalness": 0.0,
+   "roughness": 0.22,
+   "opacity": 0.6
+  },
+  "vars": {
+   "side": -1.0,
+   "x_in": 30.0,
+   "x_tip": 152.5,
+   "chord_root": 34.0,
+   "chord_tip": 20.0,
+   "t": 0.1
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -152.5,
+     -26.0,
+     3.4
+    ],
+    "max": [
+     -30.0,
+     8.0,
+     3.5
+    ],
+    "size": [
+     122.5,
+     34.0,
+     0.10000000000000009
+    ]
+   },
+   "volume_mm3": 330.7500000000001,
+   "mass_g": 0.4101
+  },
+  "mtime": 1793563040.5006948,
+  "mass_g": 0.4101,
+  "mass_source": "built",
+  "mass_note": "331 mm3 x 1.24 g/cm3 (PLA, build default)"
+ },
+ {
+  "id": "wing_film_right",
+  "project_id": "000b9ce75f54",
+  "label": "wing_film_right",
+  "parent_id": null,
+  "order": 17,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": null,
+  "part_id": "wing_film_right",
+  "default_appearance": {
+   "preset": "glossy_plastic",
+   "color": "#f2b84b",
+   "metalness": 0.0,
+   "roughness": 0.22,
+   "opacity": 0.6
+  },
+  "vars": {
+   "side": 1.0,
+   "x_in": 30.0,
+   "x_tip": 152.5,
+   "chord_root": 34.0,
+   "chord_tip": 20.0,
+   "t": 0.1
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     30.0,
+     -26.0,
+     3.5
+    ],
+    "max": [
+     152.5,
+     8.0,
+     3.6
+    ],
+    "size": [
+     122.5,
+     34.0,
+     0.10000000000000009
+    ]
+   },
+   "volume_mm3": 330.7500000000001,
+   "mass_g": 0.4101
+  },
+  "mtime": 1793563040.5066736,
+  "mass_g": 0.4101,
+  "mass_source": "built",
+  "mass_note": "331 mm3 x 1.24 g/cm3 (PLA, build default)"
+ },
+ {
+  "id": "spar_rod_left",
+  "project_id": "000b9ce75f54",
+  "label": "spar_rod_left",
+  "parent_id": null,
+  "order": 18,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "CF plate",
+  "part_id": "spar_rod_left",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#1e2024",
+   "metalness": 0.0,
+   "roughness": 0.55,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": -1.0,
+   "dia": 2.0,
+   "x_in": 17.5,
+   "x_tip": 152.5
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -152.5,
+     -27.0,
+     2.999999999999985
+    ],
+    "max": [
+     -17.5,
+     -25.0,
+     5.000000000000015
+    ],
+    "size": [
+     135.0,
+     2.0,
+     2.00000000000003
+    ]
+   },
+   "volume_mm3": 424.115008234622,
+   "mass_g": 0.6574
+  },
+  "mtime": 1793563040.5126293,
+  "mass_g": 0.6574,
+  "mass_source": "built",
+  "mass_note": "424 mm3 x 1.55 g/cm3 (CF plate)"
+ },
+ {
+  "id": "spar_rod_right",
+  "project_id": "000b9ce75f54",
+  "label": "spar_rod_right",
+  "parent_id": null,
+  "order": 19,
+  "color": null,
+  "kind": "part",
+  "version": 3,
+  "appearance": null,
+  "material": "CF plate",
+  "part_id": "spar_rod_right",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#1e2024",
+   "metalness": 0.0,
+   "roughness": 0.55,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": 1.0,
+   "dia": 2.0,
+   "x_in": 17.5,
+   "x_tip": 152.5
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     17.5,
+     -27.0,
+     2.999999999999985
+    ],
+    "max": [
+     152.5,
+     -25.0,
+     5.000000000000015
+    ],
+    "size": [
+     135.0,
+     2.0,
+     2.00000000000003
+    ]
+   },
+   "volume_mm3": 424.115008234622,
+   "mass_g": 0.6574
+  },
+  "mtime": 1793563040.5186055,
+  "mass_g": 0.6574,
+  "mass_source": "built",
+  "mass_note": "424 mm3 x 1.55 g/cm3 (CF plate)"
+ },
+ {
+  "id": "coreless_motor",
+  "project_id": "000b9ce75f54",
+  "label": "coreless_motor",
+  "parent_id": null,
+  "order": 20,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "Al 6061-T6",
+  "part_id": "coreless_motor",
+  "default_appearance": {
+   "preset": "brushed_aluminum",
+   "color": "#c4c8cc",
+   "metalness": 1.0,
+   "roughness": 0.42,
+   "opacity": 1.0
+  },
+  "vars": {
+   "body_d": 8.5,
+   "body_len": 20.0,
+   "shaft_d": 1.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -8.25,
+     -73.0,
+     -1.4800000000000022
+    ],
+    "max": [
+     0.25,
+     -47.0,
+     7.020000000000002
+    ],
+    "size": [
+     8.5,
+     26.0,
+     8.500000000000004
+    ]
+   },
+   "volume_mm3": 1145.8959203968768,
+   "mass_g": 3.0939
+  },
+  "mtime": 1793563040.5246937,
+  "mass_g": 3.0939,
+  "mass_source": "built",
+  "mass_note": "1146 mm3 x 2.7 g/cm3 (Al 6061-T6)"
+ },
+ {
+  "id": "battery_lipo",
+  "project_id": "000b9ce75f54",
+  "label": "battery_lipo",
+  "parent_id": null,
+  "order": 21,
+  "color": null,
+  "kind": "part",
+  "version": 3,
+  "appearance": null,
+  "material": null,
+  "part_id": "battery_lipo",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#2c3e5c",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "length": 26.0,
+   "width": 10.0,
+   "height": 6.0,
+   "y_center": 47.5
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -5.0,
+     34.5,
+     -12.0
+    ],
+    "max": [
+     5.0,
+     60.5,
+     -6.0
+    ],
+    "size": [
+     10.0,
+     26.0,
+     6.0
+    ]
+   },
+   "volume_mm3": 1560.0,
+   "mass_g": 1.9344
+  },
+  "mtime": 1793563040.5308385,
+  "mass_g": 1.9344,
+  "mass_source": "built",
+  "mass_note": "1560 mm3 x 1.24 g/cm3 (PLA, build default)"
+ },
+ {
+  "id": "receiver_board",
+  "project_id": "000b9ce75f54",
+  "label": "receiver_board",
+  "parent_id": null,
+  "order": 22,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": null,
+  "part_id": "receiver_board",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#1f5c3a",
+   "metalness": 0.0,
+   "roughness": 0.85,
+   "opacity": 1.0
+  },
+  "vars": {
+   "length": 22.0,
+   "width": 12.0,
+   "height": 3.0,
+   "y_center": 47.5
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -6.0,
+     36.5,
+     -5.799999999999999
+    ],
+    "max": [
+     6.0,
+     58.5,
+     -2.799999999999999
+    ],
+    "size": [
+     12.0,
+     22.0,
+     3.0
+    ]
+   },
+   "volume_mm3": 792.0,
+   "mass_g": 0.9821
+  },
+  "mtime": 1793563040.537934,
+  "mass_g": 0.9821,
+  "mass_source": "built",
+  "mass_note": "792 mm3 x 1.24 g/cm3 (PLA, build default)"
+ },
+ {
+  "id": "crank_rod_left",
+  "project_id": "000b9ce75f54",
+  "label": "crank_rod_left",
+  "parent_id": null,
+  "order": 23,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "CF plate",
+  "part_id": "crank_rod_left",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#1e2024",
+   "metalness": 0.0,
+   "roughness": 0.55,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": -1.0,
+   "dia": 3.0,
+   "y0": -38.5,
+   "y1": 32.8
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -5.5,
+     -38.5,
+     -6.730000000000008
+    ],
+    "max": [
+     -2.5,
+     32.8,
+     -3.7299999999999924
+    ],
+    "size": [
+     3.0,
+     71.3,
+     3.000000000000016
+    ]
+   },
+   "volume_mm3": 503.99000145214245,
+   "mass_g": 0.7812
+  },
+  "mtime": 1793563040.544258,
+  "mass_g": 0.7812,
+  "mass_source": "built",
+  "mass_note": "504 mm3 x 1.55 g/cm3 (CF plate)"
+ },
+ {
+  "id": "crank_rod_right",
+  "project_id": "000b9ce75f54",
+  "label": "crank_rod_right",
+  "parent_id": null,
+  "order": 24,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "CF plate",
+  "part_id": "crank_rod_right",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#1e2024",
+   "metalness": 0.0,
+   "roughness": 0.55,
+   "opacity": 1.0
+  },
+  "vars": {
+   "side": 1.0,
+   "dia": 3.0,
+   "y0": -33.6,
+   "y1": 32.8
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     2.5,
+     -33.60000000000001,
+     -6.7300000000000075
+    ],
+    "max": [
+     5.5,
+     32.8,
+     -3.7299999999999924
+    ],
+    "size": [
+     3.0,
+     66.4,
+     3.000000000000015
+    ]
+   },
+   "volume_mm3": 469.35394244631505,
+   "mass_g": 0.7275
+  },
+  "mtime": 1793563040.5509758,
+  "mass_g": 0.7275,
+  "mass_source": "built",
+  "mass_note": "469 mm3 x 1.55 g/cm3 (CF plate)"
+ },
+ {
+  "id": "boom_tube",
+  "project_id": "000b9ce75f54",
+  "label": "boom_tube",
+  "parent_id": null,
+  "order": 25,
+  "color": null,
+  "kind": "part",
+  "version": 1,
+  "appearance": null,
+  "material": "CF plate",
+  "part_id": "boom_tube",
+  "default_appearance": {
+   "preset": "matte_plastic",
+   "color": "#1e2024",
+   "metalness": 0.0,
+   "roughness": 0.55,
+   "opacity": 1.0
+  },
+  "vars": {
+   "od": 5.0,
+   "id": 3.0,
+   "y0": 62.0,
+   "length": 100.0
+  },
+  "metrics": {
+   "bbox": {
+    "min": [
+     -2.5,
+     62.0,
+     -2.500000000000011
+    ],
+    "max": [
+     2.5,
+     162.0,
+     2.500000000000011
+    ],
+    "size": [
+     5.0,
+     100.0,
+     5.000000000000022
+    ]
+   },
+   "volume_mm3": 1256.637061435917,
+   "mass_g": 1.9478
+  },
+  "mtime": 1793563040.5573256,
+  "mass_g": 1.9478,
+  "mass_source": "built",
+  "mass_note": "1257 mm3 x 1.55 g/cm3 (CF plate)"
+ }
+]

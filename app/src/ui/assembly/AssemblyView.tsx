@@ -252,7 +252,8 @@ export function AssemblyView(): JSX.Element {
   useEffect(() => {
     let seen: string | null = null;
     return effect(() => {
-      const key = storeParts.value.map((p) => `${p.part_id}@${p.mtime}@${p.version ?? 0}@${p.color ?? ""}`).join(",");
+      // (a new look too: an appearance set, or a material that changes the default one, G4)
+      const key = storeParts.value.map((p) => `${p.part_id}@${p.mtime}@${p.version ?? 0}@${p.color ?? ""}@${JSON.stringify(p.appearance ?? p.default_appearance ?? null)}`).join(",");
       const loaded = ctl.data.value !== null;
       if (!loaded) return;
       if (seen && seen !== key) void ctl.reloadParts();     // an empty list was just not loaded yet
@@ -342,7 +343,9 @@ export function AssemblyView(): JSX.Element {
       animate.current = true;
       assemblyModes.value = { ...beforeImm.current, explode: 1 };
     } else if (imm.mode === "animation") {
-      assemblyModes.value = { ...beforeImm.current, explode: 0, section: MODES_OFF.section };
+      // G5: the section and X-ray the user had stay on (and stay usable in the bar): the cut
+      // is a world plane the moving parts pass through
+      assemblyModes.value = { ...beforeImm.current, explode: 0, layout: 0 };
       if (loaded) ctl.openMotion(imm.steps, { loop: imm.loop, autoplay: !prefersReducedMotion() });
     } else {
       // the sweep bar drives the section (its first cut is already on); nothing exploded

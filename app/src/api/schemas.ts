@@ -192,6 +192,8 @@ export const partSummarySchema = z.object({
   version: z.number().int().optional(),
   // a malformed appearance falls back to the drafting look (the row is never dropped)
   appearance: appearanceSchema.nullish().catch(null),
+  // G4 (core mises/looks.py): the look it shows while nobody gave it one (material, concept CMF)
+  default_appearance: appearanceSchema.nullish().catch(null),
   // Plan 9 B2: the tree mass (volume x the part's material; groups sum their subtree), or null
   // with the reason in mass_note. Absent from older cores (the app falls back to metrics.mass_g).
   mass_g: z.number().nullish().catch(null), mass_source: z.enum(MASS_SOURCES).nullish().catch(null),

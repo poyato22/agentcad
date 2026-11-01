@@ -74,6 +74,8 @@ export const assemblyPartSchema = z.object({
   metrics: partMetricsSchema.nullable(), mtime: z.number().nullish().transform((v) => v ?? 0),   // the layout skeleton row has none (G3): one row must not fail the list
   // U8 finish, so Assembly view draws a polished part shiny as the Part viewer does (I5)
   appearance: appearanceSchema.nullish().catch(null),
+  // G4: the look it shows while nobody gave it one (its material, the approved concept's CMF)
+  default_appearance: appearanceSchema.nullish().catch(null),
 });
 export type AssemblyPart = z.infer<typeof assemblyPartSchema>;
 

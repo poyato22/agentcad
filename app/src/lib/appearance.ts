@@ -36,8 +36,10 @@ export function presetOf(id: string | null | undefined): Preset | undefined {
  *  plain parts keep the drafting look). */
 export interface MaterialParams { color: string | null; metalness: number; roughness: number; opacity: number; shiny: boolean }
 
-export function materialOf(p: { color?: string | null; appearance?: Appearance | null }): MaterialParams {
-  const a = p.appearance;
+export function materialOf(p: { color?: string | null; appearance?: Appearance | null; default_appearance?: Appearance | null }): MaterialParams {
+  // G4: a part nobody gave a look shows its default one (its material, the concept's CMF);
+  // a color the user picked on the row still wins over the default's
+  const a = p.appearance ?? (p.default_appearance ? { ...p.default_appearance, color: p.color ?? p.default_appearance.color } : null);
   if (!a) return { color: p.color ?? null, ...DEFAULT_MATERIAL, shiny: false };
   return { color: a.color ?? p.color ?? null, metalness: a.metalness, roughness: a.roughness, opacity: a.opacity, shiny: true };
 }

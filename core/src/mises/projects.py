@@ -508,10 +508,15 @@ def part_version(home: Path, row: Part) -> int:
     return v
 
 
-def _row_view(home: Path, r: Part, disk: dict | None, version: bool = True) -> dict:
+def _row_view(home: Path, r: Part, disk: dict | None, version: bool = True,
+              cmf: list[dict] | None = None) -> dict:
     # `part_id` is kept beside the contract's `id` so older UI code keeps working
+    from .looks import default_look
+    # G4: what the part shows while nobody gave it a look (its material, the concept's CMF)
+    look = None if r.appearance or r.kind != "part" else \
+        default_look(r.id, r.label, r.material, cmf or [])
     return {**r.model_dump(), "version": part_version(home, r) if version else r.version,
-            "part_id": r.id, **(disk or _NO_DISK)}
+            "part_id": r.id, "default_appearance": look, **(disk or _NO_DISK)}
 
 
 def mass_rows(store: Store, home: Path, project_id: str | None,
@@ -523,12 +528,14 @@ def mass_rows(store: Store, home: Path, project_id: str | None,
     `versions=False` skips the version lookup (it can migrate a version file) for rows other
     than `only`; mass alone never needs it."""
     from . import mass
+    from .looks import concept_cmf
     rows, has_disk = [], set()
+    cmf = concept_cmf(store, project_id)
     for r in store.list_part_rows(project_id):
         disk = _part_disk(home, r.id)
         if disk is not None:
             has_disk.add(r.id)
-        rows.append(_row_view(home, r, disk, versions or r.id == only))
+        rows.append(_row_view(home, r, disk, versions or r.id == only, cmf))
     return mass.annotate(rows, home, has_disk=has_disk, default_mat=default_material)
 
 
@@ -558,12 +565,14 @@ def part_view(store: Store, home: Path, row: Part) -> dict:
     """One tree row with its mass. Only the row and its descendants (a group's or parent's
     sum) are read from disk, never the whole build: a leaf costs one part-dir read."""
     from . import mass
+    from .looks import concept_cmf
     rows, has_disk = [], set()
+    cmf = concept_cmf(store, row.project_id)
     for i, r in enumerate(_subtree(store, row)):
         disk = _part_disk(home, r.id)
         if disk is not None:
             has_disk.add(r.id)
-        rows.append(_row_view(home, r, disk, version=i == 0))
+        rows.append(_row_view(home, r, disk, version=i == 0, cmf=cmf))
     return _public(mass.annotate(rows, home, has_disk=has_disk)[0])
 
 

@@ -6,7 +6,7 @@
 // another build than the one on screen is ignored. Event values are untrusted: numbers only.
 import { signal, type Signal } from "@preact/signals";
 import { onCoreEvent } from "../api/events";
-import type { AnimateSpec, AnimateStep, MisesEvent } from "../api/types";
+import type { AnimateFollow, AnimateSpec, AnimateStep, MisesEvent } from "../api/types";
 import { activeBuildId } from "./builds";
 
 /** `playing`: the viewer shows it now; false: the assembly isn't on screen — the chip offers Watch. */
@@ -47,7 +47,27 @@ function step(raw: unknown): AnimateStep | null {
   const to = value(d.to);
   if (!joint || to === null) return null;
   const dur = typeof d.duration_s === "number" && d.duration_s > 0 ? Math.min(60, d.duration_s) : 2;
-  return { joint_id: joint, from: from ?? to, to, duration_s: dur };
+  const follow = followOf(d.follow, joint);
+  return { joint_id: joint, from: from ?? to, to, duration_s: dur, ...(follow.length ? { follow } : {}) };
+}
+
+/** G4: the joints a step carries along (gear trains, closed linkages), each with ≥ 2 samples;
+ *  anything that doesn't parse is dropped (untrusted), the driver itself never follows. */
+const MAX_FOLLOW = 64;
+const MAX_SAMPLES = 129;
+function followOf(raw: unknown, driver: string): AnimateFollow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AnimateFollow[] = [];
+  for (const f of raw.slice(0, MAX_FOLLOW)) {
+    if (typeof f !== "object" || f === null) continue;
+    const r = f as Record<string, unknown>;
+    const id = str(r.joint_id);
+    if (!id || id === driver || !Array.isArray(r.values) || r.values.length < 2 || r.values.length > MAX_SAMPLES) continue;
+    const values = r.values.map(value);
+    if (values.some((v) => v === null)) continue;
+    out.push({ joint_id: id, values: values as (number | number[])[] });
+  }
+  return out;
 }
 
 /** An `assembly_animate` event → steps and a loop count, or null when it names no playable step. */
