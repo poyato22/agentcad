@@ -1,0 +1,116 @@
+[
+  {
+    "id": 1,
+    "run_id": "b0d3adb3c527",
+    "ts": 1793552352.2599769,
+    "kind": "decision",
+    "payload": {
+      "effort": {
+        "at": 1793552352.259907,
+        "choice": "max",
+        "control": {
+          "param": "output_config.effort",
+          "runtime": "anthropic",
+          "value": "max"
+        },
+        "label": "Max",
+        "level": "max",
+        "reasons": [
+          "the user picked Max"
+        ],
+        "source": "user"
+      }
+    },
+    "evidence_hash": "7edffab1383576520e757bff686241eb889a276890f6f8ac35340943d39e9344",
+    "prev_hash": null,
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 2,
+    "run_id": "b0d3adb3c527",
+    "ts": 1793552352.26095,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "text": "Make a lid for the box"
+    },
+    "evidence_hash": "1bb725d98abb781365922f5cddaa881eaa1b668a003aa110cf4cb9dd95bb2de2",
+    "prev_hash": "7edffab1383576520e757bff686241eb889a276890f6f8ac35340943d39e9344",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 3,
+    "run_id": "b0d3adb3c527",
+    "ts": 1793552352.293091,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "ok",
+      "tool_calls": []
+    },
+    "evidence_hash": "17fa126f6b5431adc2575500e309855662a210ae021827f3f64a8ebb096a9508",
+    "prev_hash": "1bb725d98abb781365922f5cddaa881eaa1b668a003aa110cf4cb9dd95bb2de2",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 4,
+    "run_id": "b0d3adb3c527",
+    "ts": 1793552352.296216,
+    "kind": "decision",
+    "payload": {
+      "effort": {
+        "at": 1793552352.2961988,
+        "choice": "auto",
+        "control": {
+          "param": "output_config.effort",
+          "runtime": "anthropic",
+          "value": "max"
+        },
+        "label": "Max",
+        "level": "max",
+        "reasons": [
+          "open-ended: an egg-drop challenge"
+        ],
+        "source": "auto"
+      }
+    },
+    "evidence_hash": "59a94d137e732fdcd8557b5ee8fa91e6b0c30b2b21dfca98c3f5197e23d6c337",
+    "prev_hash": "17fa126f6b5431adc2575500e309855662a210ae021827f3f64a8ebb096a9508",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 5,
+    "run_id": "b0d3adb3c527",
+    "ts": 1793552352.296753,
+    "kind": "message",
+    "payload": {
+      "role": "user",
+      "text": "for the egg drop challenge it keeps making the same boring cage but I want something really interesting"
+    },
+    "evidence_hash": "31f466b60894fdee7cc8f72905e9fada02d34b1940251c6f74ef8f6ab5c07179",
+    "prev_hash": "59a94d137e732fdcd8557b5ee8fa91e6b0c30b2b21dfca98c3f5197e23d6c337",
+    "collapsed": false,
+    "stream": "text"
+  },
+  {
+    "id": 6,
+    "run_id": "b0d3adb3c527",
+    "ts": 1793552352.4043179,
+    "kind": "message",
+    "payload": {
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "text": "ok",
+      "tool_calls": []
+    },
+    "evidence_hash": "d229bb3403032aba2b5bed6695c5ef43952b58a70f8198a63a3acf2ed1dd63d8",
+    "prev_hash": "31f466b60894fdee7cc8f72905e9fada02d34b1940251c6f74ef8f6ab5c07179",
+    "collapsed": false,
+    "stream": "text"
+  }
+]

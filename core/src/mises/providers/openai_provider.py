@@ -100,6 +100,11 @@ class OpenAICompatProvider:
                 for t in req.tools]
         if req.temperature is not None:
             p["temperature"] = req.temperature
+        if req.effort and self.name == "openai":
+            from mises.effort import openai_effort
+            level = openai_effort(req.model, req.effort)
+            if level:
+                p["reasoning_effort"] = level
         return p
 
     async def _events(self, req: ModelRequest) -> AsyncIterator[StreamEvent]:

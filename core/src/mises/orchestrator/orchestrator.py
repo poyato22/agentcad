@@ -5,7 +5,7 @@ import asyncio
 import contextlib
 import re
 import secrets
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
@@ -306,6 +306,10 @@ class SpawnArgs(BaseModel):
                     "\"Design motor mount\"). Default: the prompt's first line.")
     edit_scope: list[str] | None = Field(
         default=None, description="Optional narrower edit scope (parts); never wider than yours.")
+    effort: Literal["low", "medium", "high", "max"] | None = Field(
+        default=None, description="Plan 11 F8: how hard the sub-agent thinks. Default: picked "
+        "from its task (high or max for open-ended design work and after failures, low for "
+        "routine edits and measurements).")
     wait: bool = Field(
         default=True, description="Wait for the subagent and return its answer (the default). "
         "With wait:false the call returns at once with the run id; collect it later with "
@@ -360,7 +364,8 @@ async def _start_sub(rt: Runtime, ctx: ToolContext, args: SpawnArgs) -> str:
     title = task_title(args.task, args.prompt)
     rid = await rt.start_run(args.agent, args.prompt, role=SUB, title=title,
                              model_ref=_child_model_ref(rt, ctx.run_id, args.agent),
-                             **child_policy(rt, ctx.run_id, args.agent, args.edit_scope))
+                             **child_policy(rt, ctx.run_id, args.agent, args.edit_scope),
+                             **({"effort": args.effort} if args.effort else {}))
     _announce_spawn(rt, ctx.run_id, rid, args.agent, title)
     return rid
 

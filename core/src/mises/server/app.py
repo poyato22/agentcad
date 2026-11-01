@@ -34,6 +34,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..types import ErrorCode, MisesError, finite_json
+from .. import effort as _effort
 from .. import projects as _projects
 from .mcp_server import RUN_HEADER, build_mcp_server
 from ..profile import ClaudeStatusFn, LocalProbeFn, load_profile, probe_local
@@ -61,6 +62,7 @@ from .spec_api import build_spec_router
 from .ui_api import add_cors, build_ui_router
 from .agents_api import build_agents_router
 from ..concept.api import build_concept_router
+from .effort_api import build_effort_router
 from ..orchestrator import lead as _lead
 from ..orchestrator.router import Attachment
 
@@ -209,6 +211,7 @@ class ImageIn(BaseModel):
 
 class ChatBody(BaseModel):
     """E24: one message to the build's lead (the only way the app talks to a build)."""
+    effort: _effort.Think | None = None        # Plan 11 F8: the Think control
     text: str
     images: list[ImageIn] = Field(default_factory=list, max_length=8)
     edits: EditsRef | None = None
@@ -323,6 +326,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_system_router(runtime))
     app.include_router(build_agents_router(runtime))
     app.include_router(build_concept_router(runtime))
+    app.include_router(build_effort_router(runtime))       # Plan 11 F8: the Think control
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
@@ -464,6 +468,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         default model when there is none); the lead delegates on its own. No run selection, no
         model choice."""
         pid = _projects.check_project(runtime.store, project_id)
+        _effort.REQUESTED.set(body.effort)          # Plan 11 F8: lead.submit reads it
         prof = load_profile(runtime.home)
         images = [(i.media_type, i.data_b64) for i in body.images] or None
         log = {"text": body.text, "edits": body.edits} if body.edits else None

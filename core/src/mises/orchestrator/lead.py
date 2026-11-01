@@ -45,7 +45,9 @@ LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "assembly_get", "asse
               "mech_list", "mech_insert", "mech_check", "assembly_add_loop", "material_pick",
               # Plan 10 C3: the engineering pipeline every lead runs before done
               "actuator_size", "electronics_estimate", "power_budget", "dyn_torque",
-              "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks")
+              "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks",
+              # Plan 11 F8: divergent ideation for open-ended challenges, egg-drop estimate
+              "ideate_concepts", "concepts_tried", "egg_drop_estimate")
 
 LEAD_PROMPT = """\
 # You are this build's lead agent
@@ -132,8 +134,10 @@ def lead_definition(defn: AgentDefinition) -> AgentDefinition:
     has_engineering = all(m in defn.body for m in ENGINEERING_MARKERS)
     lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY,
                               engineering="" if has_engineering else LEAD_ENGINEERING)
+    from ..ideation import LEAD_IDEATION        # Plan 11 F8
     return defn.model_copy(update={"tools": tools,
-                                   "body": defn.body.rstrip() + "\n\n" + lead})
+                                   "body": defn.body.rstrip() + "\n\n" + lead + "\n"
+                                   + LEAD_IDEATION})
 
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
@@ -324,14 +328,15 @@ def cancel_queued(rt: Runtime, run_id: str, message_id: str) -> bool:
 
 
 def _enqueue(rt: Runtime, lead_id: str, text: str, log: dict | None, routed: Routed,
-             images: list[tuple[str, str]] | None = None) -> dict:
+             images: list[tuple[str, str]] | None = None, effort: str | None = None) -> dict:
     q = rt.lead_queues.setdefault(lead_id, [])
     if len(q) >= QUEUE_MAX:
         raise QueueFull(len(q))
     mid = "msg_" + secrets.token_hex(6)
     shown = (log or {}).get("text", text)
     q.append({"message_id": mid, "text": text, "log": log, "shown": shown,
-              **({"images": images} if images else {})})
+              **({"images": images} if images else {}),
+              **({"effort": effort} if effort else {})})
     # shown in the thread at once, in a queued state; message_delivered settles it
     rt.store.append_step(lead_id, StepKind.DECISION, {"queued_message": {
         "message_id": mid, "text": shown, "position": len(q), "routed": routed.model_dump(),
@@ -535,11 +540,12 @@ async def _drain(rt: Runtime, lead_id: str) -> None:
                 continue
             rt.note_turns[lead_id] = rt.note_turns.get(lead_id, 0) + 1
         try:
+            more = {"effort": m["effort"]} if m.get("effort") else {}   # Plan 11 F8
             if m.get("images"):
                 await rt.send(lead_id, m["text"], log=m["log"], images=m["images"],
-                              user_turn=not note)
+                              user_turn=not note, **more)
             else:
-                await rt.send(lead_id, m["text"], log=m["log"], user_turn=not note)
+                await rt.send(lead_id, m["text"], log=m["log"], user_turn=not note, **more)
         except MisesError as e:
             if note:
                 rt.note_turns[lead_id] -= 1
@@ -566,13 +572,19 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                  read_scope=("*",), default_agent: str = "engineer",
                  classifier=None, route_text: str | None = None,
                  log: dict | None = None,
-                 images: list[tuple[str, str]] | None = None) -> dict:
+                 images: list[tuple[str, str]] | None = None,
+                 effort: str | None = None) -> dict:
     """Route the prompt (or `route_text`, the user's own words when the prompt wraps them) and
     hand it to the build's lead: sent now when the lead is idle, else queued (delivered in order
     at its turn boundary), else a new lead is started. `log` overrides the stored user step.
     `images` ((media_type, base64) pairs) go with the message to a lead that can see them.
     Returns {run_id, routed, new_lead, queued, position?, message_id?, notes}. The find-or-start
-    runs under a per-build lock, so concurrent first messages make one lead."""
+    runs under a per-build lock, so concurrent first messages make one lead.
+    `effort` (Plan 11 F8): the message's Think choice; None reads the request's
+    (effort.REQUESTED, set by the chat route), else auto."""
+    from .. import effort as effort_mod
+    effort = effort or effort_mod.REQUESTED.get()
+    more = {"effort": effort} if effort else {}
     known = set(rt.definitions) - {"planner"} - set(rt.profile().hidden_agents or ())
     routed = await route(prompt if route_text is None else route_text,
                          attachments=attachments or [], known=known,
@@ -588,7 +600,7 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                 rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref,
                                          edit_scope=edit_scope, read_scope=read_scope,
                                          project_id=project_id, routed=routed.model_dump(),
-                                         log=log)
+                                         log=log, **more)
                 out.update(run_id=rid, role=None, notes=[
                     "narrower scope than the build's lead: started a separate run with it"])
                 return out
@@ -596,17 +608,19 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
             # the lead's own routing (why it is this agent) stays; each message's routing goes
             # on its queued step or in the reply
             if rt.lead_queues.get(lead.id) or rt.run_busy(lead.id):
-                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images))
+                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images,
+                                                   effort))
                 return out
             try:
                 if images:
-                    await rt.send(lead.id, prompt, log=log, images=images)
+                    await rt.send(lead.id, prompt, log=log, images=images, **more)
                 else:
-                    await rt.send(lead.id, prompt, log=log)
+                    await rt.send(lead.id, prompt, log=log, **more)
             except MisesError as e:
                 if not (e.code == ErrorCode.INVALID_INPUT and "still working" in e.message):
                     raise
-                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images))
+                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images,
+                                                   effort))
             return out
         first_context = None
         if lead is not None:
@@ -621,7 +635,7 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                                  edit_scope=edit_scope, read_scope=read_scope,
                                  project_id=project_id, role=LEAD, routed=routed.model_dump(),
                                  log=log, first_context=first_context,
-                                 **({"images": images} if images else {}))
+                                 **({"images": images} if images else {}), **more)
         out.update(run_id=rid, new_lead=True)
         return out
 

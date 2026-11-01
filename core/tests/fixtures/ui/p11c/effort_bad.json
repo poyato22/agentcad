@@ -1,0 +1,19 @@
+{
+  "status": 422,
+  "body": {
+    "detail": [
+      {
+        "type": "literal_error",
+        "loc": [
+          "body",
+          "default"
+        ],
+        "msg": "Input should be 'auto', 'normal', 'hard' or 'max'",
+        "input": "ultra",
+        "ctx": {
+          "expected": "'auto', 'normal', 'hard' or 'max'"
+        }
+      }
+    ]
+  }
+}
