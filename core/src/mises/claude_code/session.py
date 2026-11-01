@@ -273,7 +273,20 @@ class ClaudeCodeSession:
         if self._turn is not None and not self._turn.done():
             raise MisesError(ErrorCode.INVALID_INPUT, "Claude Code is still working",
                              hint="wait for it to finish or cancel it")
-        budget.check_usd(self.runtime.store, self.run_id)   # no new turn past the dollar cap
+        # no new turn past the dollar cap; a raise here is NOT swallowed (E20): the user
+        # message and an error step are recorded and the run is finished with an event, so the
+        # app shows why the message vanished instead of nothing happening
+        try:
+            budget.check_usd(self.runtime.store, self.run_id)
+        except MisesError as e:
+            self._reopen()
+            body = {"role": "user", "text": text, **(log or {})}
+            self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, body)
+            self.runtime.store.append_step(self.run_id, StepKind.ERROR, {
+                **e.to_dict(), "stop_reason": "budget", "source": SOURCE})
+            self._failed = True
+            self._finish("failed")
+            raise
         self._reopen()
         content = text
         body: dict = {"role": "user", "text": text}

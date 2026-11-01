@@ -1775,6 +1775,32 @@ class Runtime:
             return
         if run.role == "lead":
             budget_mod.start_turn(self.store, run_id)
+        elif run.parent_id is not None:
+            # E20: a direct user message to a sub-agent is its own user turn, so it gets a
+            # fresh dollar budget (its last turn, or a lead turn, may have spent the family cap)
+            self._open_sub_window(run_id)
+
+    def _open_sub_window(self, run_id: str) -> None:
+        """A direct user message to a sub-agent opens a fresh dollar window for it (E20): raise
+        its own per-run cap past what it has spent, and reset the root family window when the
+        root is a lead, so a user driving a sub directly is never blocked by a spent cap."""
+        from .types import Caps
+        try:
+            run = self.store.get_run(run_id)
+            pol = self.store.current_policy(run_id)
+        except KeyError:
+            return
+        fresh = run.usd + Caps().usd_run
+        if pol.caps.usd_run < fresh:
+            self.store.create_policy(run_id, list(pol.edit_scope), list(pol.read_scope),
+                                     pol.caps.model_copy(update={"usd_run": fresh}),
+                                     pol.allowed_classes)
+        try:
+            root, _family = self.store.run_family(run_id)
+            if root != run_id and self.store.get_run(root).role == "lead":
+                budget_mod.start_turn(self.store, root)
+        except KeyError:
+            pass
 
     def _raise_design_class(self, run_id: str, text: str) -> None:
         """A follow-up message may change the class (design_intensity.follow_up): it rises on

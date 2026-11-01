@@ -126,6 +126,25 @@ def task_title(task: str | None, prompt: str) -> str:
     return cut.rstrip(",;:") + "…"
 
 
+def _last_assistant_text(rt: Runtime, run_id: str) -> str | None:
+    """The retired lead's last assistant message, so the new lead starts with its thread's
+    gist (E20 forced-retire)."""
+    try:
+        steps = rt.store.steps(run_id, [StepKind.MESSAGE])
+    except Exception:  # noqa: BLE001
+        return None
+    for s in reversed(steps):
+        if s.payload.get("role") == "assistant" and str(s.payload.get("text") or "").strip():
+            return str(s.payload["text"]).strip()[:4000]
+    return None
+
+
+def _retire_context(rt: Runtime, lead: AgentRun) -> dict | None:
+    """A first_context block for the replacement lead carrying the retired lead's last word."""
+    text = _last_assistant_text(rt, lead.id)
+    return {"previous_lead": text} if text else None
+
+
 def find_lead(store, project_id: str) -> AgentRun | None:
     """The build's newest lead run (archived ones are retired)."""
     for r in store.list_runs(100_000, project_id=project_id):
@@ -143,12 +162,16 @@ def _reachable(rt: Runtime, run: AgentRun) -> bool:
 
 
 def _spent(rt: Runtime, lead: AgentRun) -> bool:
-    """An idle lead that failed, or whose last message used up its dollar cap: a new message
-    would only fail again, so submit replaces it. A busy lead keeps its queue."""
+    """A lead so broken that a new message could only fail again, so submit replaces it (E20).
+    A busy lead keeps its queue. A Claude Code lead is never spent: its session resumes and its
+    dollar window resets on the next message. The dollar cap alone never retires a lead either
+    (new_user_turn -> budget.start_turn opens a fresh window on the next message); only a native
+    run left `failed`, with no turn to resume, is replaced."""
     if rt.lead_queues.get(lead.id) or rt.run_busy(lead.id):
         return False
-    from .. import budget
-    return lead.status == "failed" or budget.usd_exhausted(rt.store, lead.id) is not None
+    if rt._is_claude_run(lead.id):
+        return False
+    return lead.status == "failed"
 
 
 def _covers(wide, narrow) -> bool:
@@ -494,14 +517,20 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                     raise
                 out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images))
             return out
+        first_context = None
         if lead is not None:
-            # a lead this process cannot talk to any more, or one that failed or spent its
-            # whole budget on its last message: retire it (archived) and start a fresh one
+            # a lead this process cannot talk to any more, or one that failed: retire it
+            # (archived) and start a fresh one that inherits its model and the gist of its
+            # thread (E20), so the user does not lose the agent they were talking to
             rt.store.update_run(lead.id, archived=True)
+            if model_ref is None:
+                model_ref = f"{lead.provider}/{lead.model}"
+            first_context = _retire_context(rt, lead)
         rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref,
                                  edit_scope=edit_scope, read_scope=read_scope,
                                  project_id=project_id, role=LEAD, routed=routed.model_dump(),
-                                 log=log, **({"images": images} if images else {}))
+                                 log=log, first_context=first_context,
+                                 **({"images": images} if images else {}))
         out.update(run_id=rid, new_lead=True)
         return out
 
