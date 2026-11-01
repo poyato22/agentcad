@@ -17,6 +17,7 @@ import { legendGradient, legendTicks, sig3, unitText, type Marker } from "./mode
 import type { Path } from "./formSchema";
 import { faceAnchor, type Channel, type V3 } from "./scene/fields";
 import { createStudyScene, type ResultInfo, type StudySceneDeps, type StudySceneHandle } from "./scene/studyScene";
+import { FIXTURE_ACCENT, LOAD_ACCENT } from "./scene/markers";
 import "../../viewer/viewer.css";
 
 export interface StudyViewDeps extends StudySceneDeps {
@@ -177,7 +178,9 @@ export function StudyView(props: StudyViewProps): JSX.Element {
     const out: { key: string; x: number; y: number; text: string }[] = [];
     (props.markers ?? []).forEach((m, i) => {
       if (m.role !== "load" || m.magnitude === null) return;
-      const at = faceAnchor(m.face, b, props.faces ?? []);
+      // at the arrow's tail (where the load comes from), else the load face
+      const tail = s.labelPoint?.(i) ?? null;
+      const at = tail ? { center: tail } : faceAnchor(m.face, b, props.faces ?? []);
       const p = at ? s.project(at.center) : null;
       if (p) out.push({ key: `${i}`, x: p[0], y: p[1], text: `${sig3(m.magnitude)} ${m.unit}${dirText(m.direction)}` });
     });
@@ -353,7 +356,7 @@ export function dirText(d: Marker["direction"]): string {
 }
 
 const ROLE_TEXT: Partial<Record<Marker["role"], string>> = {
-  load: "Load: the arrow points the way it acts; longer is larger", support: "Fixed support (hatched)",
+  load: "Load: the arrow points the way it acts, longer is larger; its size at the tail", support: "Fixed face (hatched plate)",
   temperature: "Fixed temperature", heat: "Heat input", convection: "Convection", impact: "Impact face", contact: "Contact pair",
 };
 
@@ -365,8 +368,8 @@ function MarkerLegend({ markers }: { markers: readonly Marker[] }): JSX.Element 
       {roles.map((r) => (
         <li key={r} data-role={r}>
           <svg width="22" height="14" viewBox="0 0 22 14" aria-hidden="true">
-            {r === "load" ? <><path d="M2 7h14" stroke="currentColor" stroke-width="1.5" /><path d="M14 3l6 4-6 4z" fill="currentColor" /></>
-              : r === "support" ? <><rect x="6" y="2" width="10" height="8" fill="none" stroke="currentColor" /><path d="M6 10l-3 3M11 10l-3 3M16 10l-3 3" stroke="currentColor" /></>
+            {r === "load" ? <><path d="M2 7h13" stroke="#111318" stroke-width="5" /><path d="M13 2l8 5-8 5z" fill="#111318" /><path d="M3 7h11" stroke={LOAD_ACCENT} stroke-width="3" /><path d="M14 3.5l5.5 3.5-5.5 3.5z" fill={LOAD_ACCENT} /></>
+              : r === "support" ? <><rect x="5" y="1" width="12" height="12" fill="#111318" fill-opacity="0.75" stroke={FIXTURE_ACCENT} stroke-width="1.5" /><path d="M5 9l4 4M5 5l8 8M5 1l12 12M9 1l8 8M13 1l4 4" stroke={FIXTURE_ACCENT} stroke-width="1.2" /></>
                 : <path d="M11 1l6 6-6 6-6-6z" fill="none" stroke="currentColor" />}
           </svg>
           <span>{ROLE_TEXT[r]}</span>

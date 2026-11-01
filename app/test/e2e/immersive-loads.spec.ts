@@ -31,7 +31,7 @@ test("the immersive study shows its loads, fixtures and a legend over the result
   await expect(canvas).not.toHaveAttribute("data-markers", "0");
   const legend = imm.getByTestId("marker-legend");
   await expect(legend.locator("[data-role=load]")).toContainText("Load");
-  await expect(legend.locator("[data-role=support]")).toContainText("Fixed support");
+  await expect(legend.locator("[data-role=support]")).toContainText("Fixed face");
   await expect(imm.getByTestId("load-label").first()).toHaveText(/^\S+ N · /);
   await imm.getByTestId("legend").waitFor();
   await page.waitForTimeout(400);

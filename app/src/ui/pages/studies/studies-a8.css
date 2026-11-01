@@ -116,3 +116,4 @@ span.sf-item-name { cursor: default; }
 }
 .sv-mlegend li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .sv-mlegend svg { flex: none; color: var(--ink); }
+.sv-mlabel { border-left: 3px solid #ff3dbb; }
