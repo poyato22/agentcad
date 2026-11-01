@@ -32,7 +32,8 @@ def _lookup(material: str | None, home: Path | None) -> tuple[str, float] | None
     key = (material or "").strip().lower()
     if not key:
         return None
-    from .sim.materials import MATERIALS, load_custom
+    from .sim.materials import ALIASES, MATERIALS, load_custom
+    key = ALIASES.get(key, key).lower()
     for m in [*MATERIALS.values(), *load_custom(home)]:
         if m.name.lower() == key:
             return m.name, float(m.density_g_cm3)
