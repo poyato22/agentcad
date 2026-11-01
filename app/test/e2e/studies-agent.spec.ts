@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, test, useDefaultDock } from "./fixtures";
 
 const FX = resolve(import.meta.dirname, "../../../core/tests/fixtures/ui");
 const read = (n: string): unknown => JSON.parse(readFileSync(resolve(FX, n), "utf8"));
@@ -134,6 +134,7 @@ test("manual_setup_still_runs_a_study", async ({ page, fake }) => {
 });
 
 test("the_composer_starts_the_builds_studies_agent_and_shows_its_reply", async ({ page, fake }) => {
+  await useDefaultDock(page);              // the Studies page keeps its width (P10 E6: one dock column)
   await fake.reset(scenario() as never);
   await open(page);
   const pane = page.getByTestId("studies-agent");

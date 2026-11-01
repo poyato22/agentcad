@@ -1493,7 +1493,7 @@ class PresentViewArgs(BaseModel):
     target: TargetSpec | str = Field(..., description="{kind: part|project, id, parts?, ghost?}; "
                                      "a bare string is a part id (or this run's project id).")
     kind: Literal["orbit", "internal", "section", "exploded", "subset", "animation",
-                  "section_sweep"]
+                  "section_sweep", "laid_out"]
     animation: AnimationRef | None = Field(default=None, description="For kind 'animation'.")
     sweep: SweepSpec | None = Field(default=None, description="For kind 'section_sweep'.")
     parts: list[str] | None = Field(default=None, max_length=64,
@@ -1517,7 +1517,7 @@ class PresentViewArgs(BaseModel):
 
 _VIEW_LABEL = {"orbit": "Orbit", "internal": "X-ray", "section": "Section",
                "exploded": "Exploded", "subset": "Subset", "animation": "Animation",
-               "section_sweep": "Section sweep"}
+               "section_sweep": "Section sweep", "laid_out": "Laid out"}
 _AXIS = {"x": [1.0, 0.0, 0.0], "y": [0.0, 1.0, 0.0], "z": [0.0, 0.0, 1.0]}
 #: where along a sweep its thumbnail cuts (0 = `from`, 1 = `to`)
 SWEEP_THUMB_AT = 0.45
@@ -1608,7 +1608,9 @@ def _section_view(normal: list[float]) -> str:
       scope_keys=_ids_scope("target", "parts", "xray_parts"),
       description="Present a live view of the build in your reply: an orbiting shot (kind "
                   "'orbit'), an x-ray internal shot ('internal'), a section cutaway ('section'), "
-                  "an exploded view ('exploded'), or a subset of parts ('subset', drawn with the "
+                  "an exploded view ('exploded'), every part laid flat in a grid with its name "
+                  "('laid_out': a knolling shot of what the build is made of), or a subset of "
+                  "parts ('subset', drawn with the "
                   "rest of the build ghosted for context). For the assembly (target = the "
                   "build): 'animation' plays a motion the user can scrub, loop and speed up "
                   "(`animation` = {animation_id} saved by assembly_animate `name`, or inline "

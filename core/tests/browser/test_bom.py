@@ -80,6 +80,23 @@ def test_catalog_parts_are_bought_rows(env):
     assert row["unit_cost"] is None and not row["estimate"] and row["specs"]
 
 
+def test_rows_name_the_part_that_draws_them(env):
+    # Plan 10 E14: a row says which part in the build has its 3D model (the catalog part an
+    # agent inserted for a bought row, the part itself for a made one) and the item's geometry
+    make_part(env, "servo_1", kind="catalog", label="MG996R",
+              meta={"kind": "catalog", "catalog_item_id": "servo_mg996r_standard"})
+    make_part(env, "bracket")
+    agent = bom_mod.add_row(env.bom, env.project, BomItemIn(
+        name="Servo (agent pick)", catalog_id="servo_mg996r_standard").model_dump(), "agent")
+    loose = bom_mod.add_row(env.bom, env.project, BomItemIn(name="Zip ties").model_dump(), "user")
+    by = {i["id"]: i for i in v(env)["items"]}
+    assert by["auto_bracket"]["geometry_part_id"] == "bracket"
+    assert by["auto_servo_1"]["geometry_part_id"] == "servo_1"
+    assert by[agent["id"]]["geometry_part_id"] == "servo_1"
+    assert by[agent["id"]]["geometry"] == env.catalog.get("servo_mg996r_standard")["geometry"]
+    assert by[loose["id"]]["geometry_part_id"] is None and by[loose["id"]]["geometry"] is None
+
+
 # ---- edits
 
 def test_add_patch_delete_and_totals(env):

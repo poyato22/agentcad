@@ -3,7 +3,7 @@
 //
 //   npx tsx test/smoke/drive-smoke.ts [--model <vendor/model>] [--task <text>] [--approve] [--timeout <s>]
 //
-// Checks: the core light goes green, a run starts from the dialog, tool rows appear, the part
+// Checks: the core light goes green, a run starts from the first chat message, tool rows appear, the part
 // shows in the part list (with mass) and in the viewer (bbox), and, with --approve, the approval
 // card is approved by a trusted key press while focused and the run finishes.
 import { chromium } from "@playwright/test";
@@ -22,6 +22,8 @@ const log = (...a: unknown[]) => console.log(`[smoke ${new Date().toISOString().
 async function main(): Promise<void> {
   const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // the roster (Full log) names the run the message started
+  await page.addInitScript(() => { try { localStorage.setItem("mises.console.view", "details"); } catch { /* none */ } });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
@@ -36,22 +38,17 @@ async function main(): Promise<void> {
     log("connected; core light:", await page.locator('[data-light="core"] .led').getAttribute("data-tone"));
     log("status lights:", (await page.locator(".lights").innerText()).replace(/\s+/g, " "));
 
-    await page.keyboard.press("Meta+n");
-    const dialog = page.getByRole("dialog", { name: "New run" });
-    await dialog.waitFor();
-    await dialog.getByLabel("Agent").selectOption("designer");
-    if (MODEL) {
-      const [vendor, ...rest] = MODEL.split("/");
-      await dialog.getByLabel("Vendor").selectOption(vendor);
-      await dialog.getByLabel("Model").fill(rest.join("/"));
-    }
-    await dialog.getByLabel("Task").fill(TASK);
-    log("starting designer with", MODEL ?? "(default model)", "·", JSON.stringify(TASK));
+    // P10 E24: one chat per build — the first message starts the build's lead on the default
+    // model (set the profile's default model for --model)
+    if (MODEL) log("--model is the profile's default model now; set it in Profile before the smoke");
+    const cmd = page.getByLabel("Command line");
+    await cmd.fill(TASK);
+    log("messaging the build's lead ·", JSON.stringify(TASK));
     const before = new Set(await page.locator("[data-roster] [data-run]").evaluateAll((els) => els.map((e) => e.getAttribute("data-run"))));
-    await dialog.getByRole("button", { name: "Start" }).click();
-    const err = dialog.getByRole("alert");
-    await Promise.race([dialog.waitFor({ state: "hidden" }), err.waitFor()]);
-    if (await dialog.isVisible()) throw new Error(`dialog error: ${await err.innerText()}`);
+    await cmd.press("Enter");
+    const err = page.locator("[data-command-line] [role=alert]");
+    await Promise.race([page.waitForFunction(() => (document.querySelector("[aria-label='Command line']") as HTMLTextAreaElement | null)?.value === ""), err.waitFor()]);
+    if (await err.isVisible()) throw new Error(`send error: ${await err.innerText()}`);
 
     await page.waitForFunction((old) => { const id = document.querySelector("[data-roster] [data-run][aria-selected=true]")?.getAttribute("data-run"); return !!id && !old.includes(id); }, [...before]);
     const runId = await page.locator("[data-roster] [data-run][aria-selected=true]").getAttribute("data-run");

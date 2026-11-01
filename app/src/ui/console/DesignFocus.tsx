@@ -1,9 +1,9 @@
 // The build's design focus (Plan 9 G-B, D27): a small segmented chip in the Conversation header,
-// "Design focus: Engineering · Mixed · Design". It shows the class the core gave the build (from
+// a segmented Eng | Mixed | Design (P10 E23: compact, full names in the tooltips). It shows the class the core gave the build (from
 // the user's own words) and lets the user set it (PATCH /projects/{id} {design_class}); the
 // user's choice always wins over the classifier. Clicking the active, user-set class hands it
 // back to the classifier ("auto").
-import { Fragment, type JSX } from "preact";
+import type { JSX } from "preact";
 import { signal } from "@preact/signals";
 import type { AgentRun } from "../../api/types";
 import { actions } from "../../state/store";
@@ -11,6 +11,8 @@ import { actions } from "../../state/store";
 export type DesignCls = "engineering" | "mixed" | "design";
 const ORDER: DesignCls[] = ["engineering", "mixed", "design"];
 const LABEL: Record<DesignCls, string> = { engineering: "Engineering", mixed: "Mixed", design: "Design" };
+/** P10 E23: what the compact segments say (the full name is the button's label and tooltip). */
+const SHORT: Record<DesignCls, string> = { engineering: "Eng", mixed: "Mixed", design: "Design" };
 
 interface Shown { cls: DesignCls; byUser: boolean }
 
@@ -47,20 +49,19 @@ export function DesignFocus({ run, buildId }: { run: AgentRun | null; buildId: s
       /* the core refused (offline, unknown build): the chip keeps showing the current class */
     }
   };
+  const who = shown.byUser ? "set by you (click the active one to let Mises decide)" : "chosen by Mises from your request (click to set it)";
   return (
-    <span class="dock-focus" role="group" aria-label="Design focus" data-design-focus={shown.cls}
-      title={shown.byUser ? "Design focus set by you (click the active one to let Mises decide)" : "Design focus chosen by Mises from your request (click to set it)"}>
-      <span class="dock-focus-l dim">Design focus</span>
-      {ORDER.map((c, i) => (
-        <Fragment key={c}>
-          {i > 0 && <span class="dock-focus-sep dim" aria-hidden="true">·</span>}
-          <button type="button" class={`dock-focus-b${shown.cls === c ? " on" : ""}`} aria-pressed={shown.cls === c}
-            data-focus={c} onClick={() => void pick(c)}>
-            {LABEL[c]}
+    <span class="dock-focus" role="group" aria-label="Design focus" data-design-focus={shown.cls}>
+      <span class="dock-focus-l dim" aria-hidden="true">Focus</span>
+      <span class="dock-seg">
+        {ORDER.map((c) => (
+          <button key={c} type="button" class={`dock-focus-b${shown.cls === c ? " on" : ""}`} aria-pressed={shown.cls === c}
+            aria-label={LABEL[c]} title={`Design focus: ${LABEL[c]}${shown.cls === c ? ` · ${who}` : ""}`} data-focus={c} onClick={() => void pick(c)}>
+            {SHORT[c]}
           </button>
-        </Fragment>
-      ))}
-      {shown.byUser && <span class="dock-focus-you dim" data-focus-by-user>you</span>}
+        ))}
+      </span>
+      {shown.byUser && <span class="dock-focus-you" data-focus-by-user title="Set by you" aria-label="set by you" role="img" />}
     </span>
   );
 }

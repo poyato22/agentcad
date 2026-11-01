@@ -39,8 +39,6 @@ export const follow: Signal<boolean> = signal<boolean>(true);
 export const corePid: Signal<number | null> = signal<number | null>(null);
 /** Runs this UI saw start (run_started, not resumed) since it connected to the current core. */
 export const sessionRuns: Signal<ReadonlySet<string>> = signal<ReadonlySet<string>>(new Set());
-/** Whether the new-run dialog is open (opened by ⌘N, "+ new run" in the roster, or /new). */
-export const newRunOpen: Signal<boolean> = signal<boolean>(false);
 
 let boundClient: CoreClient | null = null;
 
@@ -77,8 +75,6 @@ export const actions = {
   /** Runs the core deleted (DELETE /runs/{id}, Clean up, or a `run_deleted` event): they leave
    *  History, the switcher and the command line, and can no longer be opened or messaged (C-6). */
   forgetRuns(ids: readonly string[]): void { commitForgottenRuns(ids); },
-  openNewRun(): void { newRunOpen.value = true; },
-  closeNewRun(): void { newRunOpen.value = false; },
   client(): CoreClient {
     if (!boundClient) throw new Error("core client not ready");
     return boundClient;
@@ -157,7 +153,6 @@ export function resetStore(): void {
     focusedStepId.value = null;
     filter.value = DEFAULT_FILTER;
     follow.value = true;
-    newRunOpen.value = false;
     corePid.value = null;
     sessionRuns.value = new Set();
   });

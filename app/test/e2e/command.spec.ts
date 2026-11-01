@@ -8,30 +8,21 @@ test.beforeEach(async ({ fake, page }) => {
   await useDetailsView(page);
 });
 
-test("new_run_flow", async ({ page, fake }) => {
+test("one_chat_per_build_the_first_message_starts_the_lead", async ({ page, fake }) => {
   await page.goto("/");
-  await page.locator("[data-region=console]").waitFor();
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
+  // P10 E24: no ⌘N, no New run; the composer talks to the build's lead
   await page.keyboard.press("Meta+n");
-  const dialog = page.getByRole("dialog", { name: "New run" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "More options" }).click();   // R8: override the router
-  await dialog.getByRole("menuitem", { name: "Use a specific agent…" }).click();
-  await dialog.getByLabel("Choose an agent").selectOption("designer");
-  await expect(dialog.getByRole("button", { name: /^Model: anthropic · claude-sonnet-5-5/ })).toBeVisible();
-  await dialog.getByLabel("Task").fill("stiffen the upright");
-  await dialog.getByRole("button", { name: "Start" }).click();
-  await expect(dialog).toBeHidden();
-
+  await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill("stiffen the upright");
+  await cmd.press("Enter");
+  await expect(cmd).toHaveValue("");
   const calls = await fake.calls();
-  const post = calls.filter((c) => c.method === "POST" && c.path === "/runs");
-  expect(post).toHaveLength(1);
-  expect(post[0].body).toEqual({
-    agent: "designer", prompt: "stiffen the upright", model_ref: "anthropic/claude-sonnet-5-5", edit_scope: ["*"], read_scope: ["*"],
-    project_id: expect.any(String),   // a new run always names its build (final review I-2)
-  });
-
-  // the new run shows up in the roster as "designer · stiffen upright", selected
-  const row = page.locator("[data-roster] [data-run]", { hasText: "designer · stiffen upright" });
+  const chat = calls.filter((c) => c.method === "POST" && /^\/projects\/[^/]+\/chat$/.test(c.path));
+  expect(chat.map((c) => c.body)).toEqual([{ text: "stiffen the upright" }]);
+  // the new lead shows up in the roster, selected
+  const row = page.locator("[data-roster] [data-run]", { hasText: "stiffen upright" });
   await expect(row).toHaveCount(1);
   await expect(row).toHaveAttribute("aria-selected", "true");
 });

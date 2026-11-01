@@ -87,6 +87,18 @@ describe("CritiqueCard", () => {
     expect(more.textContent).toContain("0.91");
     expect(more.textContent).toContain("stopped: the score passed");
   });
+
+  it("large (the View column, P10 E18): the before / after fill a stage above the summary", async () => {
+    render(<CritiqueCard round={round} large />);
+    const card = screen.getByTestId("critique-card");
+    expect(card.hasAttribute("data-large")).toBe(true);
+    const stage = card.querySelector("[data-crit-stage]") as HTMLElement;
+    await waitFor(() => expect(stage.querySelectorAll("img")).toHaveLength(2));
+    // the summary button carries no thumbnails of its own; it still expands
+    expect(card.querySelector(".crit-sum .crit-shots")).toBeNull();
+    fireEvent.click(card.querySelector(".crit-sum")!);
+    expect(screen.getByTestId("critique-details").textContent).toContain("straight trailing edge");
+  });
 });
 
 describe("ViewCard", () => {

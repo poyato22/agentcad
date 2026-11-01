@@ -263,6 +263,9 @@ const SPECIAL = new Set(["`", "[", "=", "*", "_", "~"]);
 const PART_RE = /\[\[part:([a-z][a-z0-9_]{1,40})(?:\|([^\][\n]{0,200}))?\]\]/y;
 const LINK_RE = /\[([^[\]\n]{0,500})\]\(([^)\s]{1,2048})\)/y;
 const isSpace = (ch: string | undefined) => ch === undefined || /\s/.test(ch);
+/** A letter or digit: a `_` next to one is part of a word (snake_case, TLS error codes such as
+ *  UNABLE_TO_GET_ISSUER_CERT_LOCALLY), never emphasis (CommonMark's intraword rule for `_`). */
+const isWord = (ch: string | undefined) => ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
 
 function parseInlineRaw(src: string, depth: number): Inline[] {
   if (depth >= MAX_DEPTH) return src ? [{ type: "text", text: src }] : [];
@@ -281,7 +284,7 @@ function parseInlineRaw(src: string, depth: number): Inline[] {
     for (;;) {
       const k = src.indexOf(d, j);
       if (k < 0) { dead.add(d); return -1; }
-      if (!needNonSpaceBefore || !isSpace(src[k - 1])) return k;
+      if ((!needNonSpaceBefore || !isSpace(src[k - 1])) && !(d[0] === "_" && isWord(src[k + d.length]))) return k;
       j = k + 1;
     }
   };
@@ -340,6 +343,8 @@ function parseInlineRaw(src: string, depth: number): Inline[] {
       }
     } else if (c === "=" && src[i + 1] === "=") {
       next = pair("==", "highlight");
+    } else if (c === "_" && isWord(src[i - 1])) {
+      next = -1;                                  // intraword: plain text
     } else if ((c === "*" || c === "_") && src[i + 1] === c) {
       next = pair(c + c, "strong");
       if (next < 0) next = pair(c, "em");

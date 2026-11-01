@@ -20,13 +20,19 @@ export const atHome: Signal<boolean> = signal<boolean>(initialHome());
 
 export function goHome(): void { homeView.value = "builds"; atHome.value = true; }
 
-/** What Home shows (D22): the build grid, or a sub-view that is not part of any one build — the
- *  Onshape page and the parts library. */
-export type HomeView = "builds" | "onshape" | "library";
+/** What Home shows (D22): the build grid, the Trash, or a sub-view that is not part of any one
+ *  build — the Onshape page and the parts library (all four under Home's Settings menu, Plan 10 E2). */
+export type HomeView = "builds" | "trash" | "onshape" | "library";
 export const homeView: Signal<HomeView> = signal<HomeView>("builds");
 
 /** Go to Home and show one of its views (the top bar's Onshape meter opens "onshape"). */
 export function showHome(view: HomeView): void { homeView.value = view; atHome.value = true; }
+
+/** E7: the Settings menu's Trash / Onshape / Parts library items are toggles — choosing the view
+ *  that is already showing goes back to the build grid. */
+export function toggleHomeView(view: Exclude<HomeView, "builds">): void {
+  homeView.value = homeView.peek() === view ? "builds" : view;
+}
 
 
 /** Open a build as a tab and leave the grid. */

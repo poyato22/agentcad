@@ -3,7 +3,7 @@
 // the parts library as Home sub-views (D22), and Trash with Undo / Delete forever (D30).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, openHome, test } from "./fixtures";
+import { expect, homeMenu, openHome, test } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("base");
@@ -121,13 +121,13 @@ test("home_agents_button_opens_the_agents_panel", async ({ page }) => {
 test("onshape_and_the_parts_library_are_home_sub_views", async ({ page }) => {
   await page.goto("/");
   const home = page.locator('[data-testid="home"]');
-  await home.getByRole("button", { name: "Onshape", exact: true }).click();
+  await homeMenu(page, "Onshape");
   await expect(home).toHaveAttribute("data-home-view", "onshape");
   await expect(page.locator('[data-page-shell][aria-label="Onshape"]')).toBeVisible();
   await expect(page.locator('[data-region="topbar"]')).toHaveCount(0);
   await home.getByRole("button", { name: /Builds/ }).click();
   await expect(home).toHaveAttribute("data-home-view", "builds");
-  await home.getByRole("button", { name: "Parts library" }).click();
+  await homeMenu(page, "Parts library");
   await expect(page.locator('[data-page-shell][aria-label="Parts directory"]')).toBeVisible();
   // ⌘0 lands back on the build grid
   await page.keyboard.press("Meta+0");
@@ -155,7 +155,7 @@ test("delete_a_build_then_undo_then_delete_forever", async ({ page, fake }) => {
   await home.locator("[data-build]", { hasText: "Scrap rig" }).hover();
   await home.getByRole("button", { name: "More for Scrap rig" }).click();
   await page.getByRole("menuitem", { name: "Move to Trash" }).click();
-  await home.getByRole("button", { name: /^Trash/ }).click();
+  await homeMenu(page, "Trash");
   const trashed = home.locator("[data-build]", { hasText: "Scrap rig" });
   await trashed.getByRole("button", { name: "Delete forever" }).click();
   await trashed.getByRole("button", { name: "Delete", exact: true }).click();

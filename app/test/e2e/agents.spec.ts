@@ -3,7 +3,7 @@
 // then done with Cancel and delete, and the live activity indicators in the thread.
 import type { Page } from "@playwright/test";
 import type { AgentRun } from "../../src/api/types";
-import { consoleMenu, expect, showRun, test } from "./fixtures";
+import { expect, showRun, test } from "./fixtures";
 import { CORE_URL } from "./ports";
 
 const DES = "b7c79a57cbb4";       // the scenario's running designer run
@@ -55,11 +55,11 @@ test("cmd_shift_a_opens_the_manager_with_the_orchestrator_worker_tree_and_esc_cl
 test("the_build_lead_with_its_titled_sub_agent_and_a_message_queued_while_it_works", async ({ page, fake }) => {
   await open(page);
   // a routed prompt starts the build's lead; it spawns a titled sub-agent and keeps working
-  await consoleMenu(page, "New run…");
-  const form = page.getByRole("form", { name: "New run" });
-  await form.getByLabel("Task").fill("Build me a drone");
-  await form.getByRole("button", { name: "Start" }).click();     // waits for the model to prefill
-  await expect(form).toHaveCount(0);
+  // P10 E24: one chat per build — the first message starts the build's lead
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill("Build me a drone");
+  await cmd.press("Enter");
+  await expect(cmd).toHaveValue("");
   const runs = await (await fetch(`${CORE_URL}/runs?limit=50`, { headers: { Authorization: `Bearer ${fake.token}` } })).json() as AgentRun[];
   const leadRun = runs.find((r) => r.role === "lead") as AgentRun;
   await fake.emit({ type: "agent_announce", run_id: leadRun.id, data: { run_id: leadRun.id, kind: "agent_spawned", title: "Spawned designer: Design motor mount", detail: "", ref: { agent: "designer", parent_id: leadRun.id, run_id: "sub01" } } },
@@ -67,9 +67,8 @@ test("the_build_lead_with_its_titled_sub_agent_and_a_message_queued_while_it_wor
   // R16: the card shows in the lead's thread
   await expect(page.locator("[data-announce=agent_spawned]")).toContainText("Started an agent");
   // I2: the lead is still working — the composer stays usable and the message queues
-  await consoleMenu(page, "New run…");
-  await form.getByLabel("Task").fill("paint it red");
-  await form.getByRole("button", { name: "Start" }).click();
+  await cmd.fill("paint it red");
+  await cmd.press("Enter");
   const queued = page.locator("[data-kind=queued]", { hasText: "paint it red" });
   await expect(queued.locator("[data-queued-chip]")).toContainText("queued · delivered when the agent finishes this step");
   // the lead finishes its step: the message is delivered, in place

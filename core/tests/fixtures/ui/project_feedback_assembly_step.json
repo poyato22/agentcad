@@ -1,0 +1,41 @@
+{
+  "id": 6,
+  "run_id": "48dec8d530e9",
+  "ts": 1793522742.654529,
+  "kind": "decision",
+  "payload": {
+    "feedback": {
+      "face_id": "f2",
+      "instance": "plate",
+      "instance_id": "62759d6be43d",
+      "nearby_feature": {
+        "area_mm2": 772.291,
+        "center": [
+          0.0,
+          0.0,
+          2.5
+        ],
+        "face_id": "f2",
+        "type": "plane"
+      },
+      "nearby_hole": "Ø4.2 hole, 0.9 mm away",
+      "part": "mount_plate",
+      "part_id": "mount_plate",
+      "point": [
+        7.0,
+        0.0,
+        2.5
+      ],
+      "text": "add a fillet here",
+      "world_point": [
+        37.0,
+        0.0,
+        2.5
+      ]
+    }
+  },
+  "evidence_hash": "568bc437caae07fe2c86fdb68aebe803bc5981a25f81ad1cbfdc6a40c2d6082b",
+  "prev_hash": "cac79c5a3f7452f70c836afbf639294402a49ddfb2b6c9a3467d6cbdb95f6198",
+  "collapsed": false,
+  "stream": "text"
+}

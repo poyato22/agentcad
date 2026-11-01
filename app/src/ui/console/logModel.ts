@@ -28,7 +28,7 @@ type LogItemBody =
   | { kind: "fold"; calls: (CallItem & Labelled)[]; names: string[] }               // "▸ N more tool calls · a · b · c"
   | { kind: "diff"; step: Step; partId: string | null; vars: { name: string; prev: number | null; now: number }[];
       delta: { volume_mm3?: number; mass_g?: number; bbox_size?: number[] } }
-  | { kind: "error"; step: Step; code: string; message: string; hint: string | null }
+  | { kind: "error"; step: Step; code: string; message: string; hint: string | null; cause?: string | null }
   | { kind: "file"; step: Step; callId: string | null; path: string; added: number; removed: number }  // ACP file edit
   | { kind: "decision"; step: Step } | { kind: "note"; text: string; ts: number; stepId: number | null }
   | { kind: "approval"; approval: Approval } | { kind: "question"; question: Question }
@@ -284,7 +284,7 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
         continue;
       }
       case "error":
-        push({ kind: "error", step: s, code: str(p.error) ?? str(p.code) ?? "error", message: str(p.message) ?? "", hint: str(p.hint) }, s.ts);
+        push({ kind: "error", step: s, code: str(p.error) ?? str(p.code) ?? "error", message: str(p.message) ?? "", hint: str(p.hint), cause: str(p.cause) }, s.ts);
         break;
       case "decision": case "plan":
         push({ kind: "decision", step: s }, s.ts);

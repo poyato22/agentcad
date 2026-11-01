@@ -20,5 +20,7 @@
   "source": "user",
   "estimate": false,
   "estimate_note": null,
-  "line_total": 23.8
+  "line_total": 23.8,
+  "geometry_part_id": null,
+  "geometry": null
 }

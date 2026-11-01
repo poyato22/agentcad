@@ -4,23 +4,28 @@
 //
 // The grid: one tile per build, its cover (D24: a render of the build's assembly, 16:10,
 // full-bleed) over its name, mass (when known) and when it was last edited, with a lead-agent
-// status dot; every grid slot is a build. Search, sort, the agents panel, the Onshape page and
-// the parts library (Home sub-views, D22), the Trash, "Import drawing…" and the primary New build
-// sit in the header, and a drawing dropped anywhere on Home starts a part. A tile's ⋯ button and its context menu move it
-// to the Trash, with a 5 s Undo (D30); the Trash shows Restore and "Delete forever" per tile, and
-// Empty trash. Opening a tile opens that build.
+// status dot; every grid slot is a build. The header holds ← / → (history, Plan 10 E11), search,
+// sort, Agents (a toggle, E1), one Settings menu (E2: the parts library, Onshape, the Trash and
+// Profile & settings — each view's item closes it again, E7), "Import drawing…" and the primary
+// New build; a drawing dropped anywhere on Home starts a part. A tile's ⋯ button and its context
+// menu move it to the Trash, with a 5 s Undo (D30); the Trash shows Restore and "Delete forever"
+// per tile, and Empty trash. Opening a tile opens that build.
 import type { JSX } from "preact";
 import { type MutableRef, useEffect, useRef, useState } from "preact/hooks";
 import { lastEditedAt, type Build } from "../../../api/builds";
 import { buildActions, builds, buildsError } from "../../../state/builds";
-import { atHome, homeView, openBuild } from "../../../state/home";
+import { atHome, goHome, homeView, openBuild, toggleHomeView } from "../../../state/home";
 import { actions, conn, runs } from "../../../state/store";
 import { CubeMark } from "../../boot/CubeMark";
 import { Led } from "../../common/Led";
 import { Thumb } from "../../common/Thumb";
 import { useDismiss } from "../../common/dismiss";
 import { DrawingDrop, ImportCards, ImportDrawingButton } from "../../imports";
-import { openAgentManager } from "../../agents/manager";
+import { agentManagerOpen, closeAgentManager, openAgentManager } from "../../agents/manager";
+import { NavButtons } from "../../common/NavButtons";
+import { OverflowMenu } from "../../common/OverflowMenu";
+import { useToggleOpener } from "../../common/toggle";
+import { openProfile } from "../../profile/open";
 import { DirectoryPage } from "../directory";
 import { OnshapePage } from "../onshape";
 import { buildStatus, DEFAULT_VIEW, fmtLastEdited, fmtMass, partsLabel, SORTS, type HomeSort, viewBuilds } from "./model";
@@ -41,13 +46,62 @@ function HomeSubView({ title, children }: { title: string; children: JSX.Element
   return (
     <section class="home home-sub" data-testid="home" data-home-view={homeView.value} aria-label={title}>
       <header class="home-bar" data-tauri-drag-region>
-        <button type="button" class="home-back" onClick={() => { homeView.value = "builds"; }}>
-          <span aria-hidden="true">←</span> Builds
-        </button>
+        <NavButtons />
+        <BackToBuilds />
         <h1 class="home-title" data-tauri-drag-region>{title}</h1>
+        <div class="home-tools"><SettingsMenu /></div>
       </header>
       <div class="home-sub-body">{children}</div>
     </section>
+  );
+}
+
+function BackToBuilds(): JSX.Element {
+  return (
+    <button type="button" class="home-back" onClick={() => goHome()}>
+      <span aria-hidden="true">←</span> Builds
+    </button>
+  );
+}
+
+function GearIcon(): JSX.Element {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+      <path d="M13.3 6.95 14.94 7.11v1.78l-1.64.16-.81 1.95 1.05 1.28-1.26 1.26-1.28-1.05-1.95.81-.16 1.64H7.11l-.16-1.64-1.95-.81-1.28 1.05-1.26-1.26 1.05-1.28-.81-1.95-1.64-.16V7.11l1.64-.16.81-1.95-1.05-1.28 1.26-1.26 1.28 1.05 1.95-.81.16-1.64h1.78l.16 1.64 1.95.81 1.28-1.05 1.26 1.26-1.05 1.28Z"
+        fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
+    </svg>
+  );
+}
+
+/** E2: one Settings button for what isn't a build — the parts library, Onshape, the Trash — and
+ *  Profile & settings. A view's item is checked while it shows; choosing it again closes it. */
+function SettingsMenu(): JSX.Element {
+  const view = homeView.value;
+  const trashCount = builds.value.filter((b) => b.trashed_at !== null).length;
+  return (
+    <OverflowMenu label="Settings" title="Parts library, Onshape, Trash and settings" class="ovm-float home-settings"
+      btnClass="home-tool home-settings-btn" trigger={<><GearIcon /><span>Settings</span></>}
+      items={[
+        { label: "Parts library", checked: view === "library", onSelect: () => toggleHomeView("library") },
+        { label: "Onshape", checked: view === "onshape", onSelect: () => toggleHomeView("onshape") },
+        { label: "Trash", checked: view === "trash", note: trashCount ? String(trashCount) : undefined, onSelect: () => toggleHomeView("trash") },
+        { label: "Profile & settings", divider: true, onSelect: () => openProfile() },
+      ]} />
+  );
+}
+
+/** E1: Agents opens the agent manager, and clicking it again closes it (the header sits above
+ *  the manager's scrim). */
+function AgentsButton({ working }: { working: number }): JSX.Element {
+  const opener = useToggleOpener(agentManagerOpen.value, () => openAgentManager(), closeAgentManager);
+  return (
+    // I7: the one easy view of every build's agents, reachable from Home (also ⇧⌘A)
+    <button type="button" class={agentManagerOpen.value ? "home-tool home-agents on" : "home-tool home-agents"}
+      title="Every build's lead and sub-agents (⇧⌘A)" {...opener}>
+      {working > 0 && <span class="home-working-dot" aria-hidden="true" />}
+      {`Agents${working ? ` · ${working} working` : ""}`}
+    </button>
   );
 }
 
@@ -56,9 +110,10 @@ interface Undo { id: string; name: string }
 function BuildGrid(): JSX.Element {
   const [query, setQuery] = useState(DEFAULT_VIEW.query);
   const [sort, setSort] = useState<HomeSort>(DEFAULT_VIEW.sort);
-  const [trash, setTrash] = useState(DEFAULT_VIEW.trash);
+  const trash = homeView.value === "trash";
   const [creating, setCreating] = useState(false);
   const [confirmEmpty, setConfirmEmpty] = useState(false);
+  useEffect(() => { setConfirmEmpty(false); }, [trash]);
   const [undo, setUndo] = useState<Undo | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // m1: the tiles (part count, last edited) are refetched every time Home shows, so returning with
@@ -88,6 +143,8 @@ function BuildGrid(): JSX.Element {
   return (
     <section class="home" data-testid="home" data-home-view="builds" aria-label="Builds">
       <header class="home-bar" data-tauri-drag-region>
+        <NavButtons />
+        {trash && <BackToBuilds />}
         <h1 class="home-title" data-tauri-drag-region>{trash ? "Trash" : "Builds"}</h1>
         <div class="home-tools">
           <input class="home-search" type="search" placeholder="Search builds" aria-label="Search builds"
@@ -99,19 +156,8 @@ function BuildGrid(): JSX.Element {
             </select>
           </label>
           <span class="home-sep" aria-hidden="true" />
-          {/* I7: the one easy view of every build's agents, reachable from Home (also ⇧⌘A) */}
-          <button type="button" class="home-tool home-agents" title="Every build's lead and sub-agents (⇧⌘A)"
-            onClick={() => openAgentManager()}>
-            {working > 0 && <span class="home-working-dot" aria-hidden="true" />}
-            {`Agents${working ? ` · ${working} working` : ""}`}
-          </button>
-          {/* D22: Onshape and the parts library are not part of one build */}
-          <button type="button" class="home-tool" onClick={() => { homeView.value = "onshape"; }}>Onshape</button>
-          <button type="button" class="home-tool" onClick={() => { homeView.value = "library"; }}>Parts library</button>
-          <button type="button" class={trash ? "home-tool on" : "home-tool"} aria-pressed={trash}
-            title="Show trashed builds" onClick={() => { setTrash((t) => !t); setConfirmEmpty(false); }}>
-            {`Trash${trashCount ? ` · ${trashCount}` : ""}`}
-          </button>
+          <AgentsButton working={working} />
+          <SettingsMenu />
           <span class="home-sep" aria-hidden="true" />
           {/* U5 / review m1: a drawing becomes a part — this button, or drop one anywhere on Home */}
           <ImportDrawingButton />

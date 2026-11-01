@@ -39,8 +39,9 @@ describe("design focus chip", () => {
     bind();
     const { container } = render(<DesignFocus run={withClass("design")} buildId="b1" />);
     const chip = container.querySelector("[data-design-focus]") as HTMLElement;
-    expect(chip.textContent).toContain("Design focus");
-    expect([...chip.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Engineering", "Mixed", "Design"]);
+    expect(chip.getAttribute("aria-label")).toBe("Design focus");
+    expect([...chip.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Eng", "Mixed", "Design"]);
+    expect([...chip.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Engineering", "Mixed", "Design"]);
     expect(chip.querySelector("[data-focus=design]")?.getAttribute("aria-pressed")).toBe("true");
     expect(chip.querySelector("[data-focus-by-user]")).toBeNull();
   });

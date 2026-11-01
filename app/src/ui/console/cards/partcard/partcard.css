@@ -18,8 +18,9 @@
 
 .pcard-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pcard-open { text-decoration: none; }
-.pcard-outcome { margin: 0; }
-.pcard-outcome.pcard-ok { color: var(--green); }
+/* P10 E15: what the core did with the part (it inserts and lists it by itself) */
+.pcard-status { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-small); color: var(--dim); }
+.pcard-status::before { content: "✓"; color: var(--green); }
 
 /* proxied-image placeholder (shared with the browser panel) */
 .proxy-img-empty { display: grid; place-items: center; color: var(--faint); background: var(--vp); border: 1px solid var(--line); font-size: 18px; }

@@ -1,0 +1,12 @@
+{
+  "run_id": "48dec8d530e9",
+  "step_id": 6,
+  "routed": {
+    "agent": "designer",
+    "reason": "single part",
+    "confidence": 0.75
+  },
+  "queued": false,
+  "position": null,
+  "message_id": null
+}

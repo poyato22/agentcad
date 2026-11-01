@@ -114,6 +114,10 @@ export interface BomRow {
   /** The cost is a live estimate (a made part: mass × material $/kg); `estimate_note` says how. */
   estimate: boolean; estimate_note: string | null;
   line_total: number | null;
+  /** Plan 10 E14: the part in this build that draws it (its own part, or the catalog part an
+   *  agent inserted for it), and the catalog item's geometry. Older cores: absent. */
+  geometry_part_id?: string | null;
+  geometry?: string | null;
 }
 export const bomRowSchema: z.ZodType<BomRow> = z.object({
   id: z.string(), kind: z.enum(["made", "bought"]), part_id: nstr, catalog_id: nstr,
@@ -121,6 +125,7 @@ export const bomRowSchema: z.ZodType<BomRow> = z.object({
   vendor: nstr, url: nstr, specs: z.array(partSpecSchema), notes: z.string(),
   source: z.enum(["user", "agent", "auto"]),
   estimate: z.boolean(), estimate_note: nstr, line_total: z.number().nullable(),
+  geometry_part_id: z.string().nullish(), geometry: z.string().nullish(),
 });
 
 /** Per-currency amounts ("USD", "EUR", …, and "unknown" for rows nobody gave a currency).

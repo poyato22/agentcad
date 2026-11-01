@@ -59,7 +59,7 @@ function ViewStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Ele
 function Large({ item, agent, runId }: { item: ThreadItem; agent: AgentRun["agent"]; runId: string }): JSX.Element {
   switch (item.kind) {
     case "view": return <ViewCard view={item.view} group={item.group} />;
-    case "critique": return <CritiqueCard round={item.round} />;
+    case "critique": return <CritiqueCard round={item.round} large />;
     case "announce": return <AnnouncementCard announcement={item.announcement} />;
     default: return <Item item={item} agent={agent} runId={runId} />;
   }

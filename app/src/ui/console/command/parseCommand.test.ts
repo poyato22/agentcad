@@ -28,7 +28,7 @@ describe("parseCommand", () => {
     expect(parseCommand("   ", runs).kind).toBe("invalid");
   });
   it("parse_slash_commands", () => {
-    for (const name of ["new", "stop", "stopall", "follow", "filter", "clear", "help"] as const) {
+    for (const name of ["stop", "stopall", "follow", "filter", "clear", "help"] as const) {
       expect(parseCommand(`/${name}`, runs)).toEqual({ kind: "slash", name, arg: "" });
     }
     expect(parseCommand("/filter  errors ", runs)).toEqual({ kind: "slash", name: "filter", arg: "errors" });
@@ -43,7 +43,7 @@ describe("parseCommand", () => {
     expect(parseCommand("/new\n/stop", runs).kind).toBe("message");
   });
   it("no_arg_commands_reject_arguments", () => {
-    for (const n of ["stop", "stopall", "new", "clear"]) expect(parseCommand(`/${n} now`, runs).kind).toBe("invalid");
+    for (const n of ["stop", "stopall", "clear"]) expect(parseCommand(`/${n} now`, runs).kind).toBe("invalid");
     expect(parseCommand("/follow off", runs).kind).toBe("slash");
   });
   it("same_agent_prefers_idle_run", () => {

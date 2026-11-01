@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, openManualStudySetup, test, type FakeCall, type FakeControl } from "./fixtures";
+import { expect, type FakeCall, type FakeControl, homeMenu, openManualStudySetup, test } from "./fixtures";
 
 const QUAD = "q0quadframe0";
 const BENCH = "b0benchrig00";
@@ -53,14 +53,13 @@ test("I-2: a run started right after a build switch is filed under the new build
   await fake.reset("builds");
   await openBuilds(page);
   await switchViaHome(page, "Bench rig");
-  await page.keyboard.press("Meta+n");
-  const dialog = page.getByRole("dialog", { name: "New run" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Task").fill("a bracket for the bench");
-  await dialog.getByRole("button", { name: "Start" }).click();
-  await expect(dialog).toBeHidden();
-  const post = (await callsTo(fake, "POST", "/runs")).at(-1);
-  expect((post?.body as { project_id?: string }).project_id).toBe(BENCH);
+  // P10 E24: the build's chat — the message goes to the build on screen
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill("a bracket for the bench");
+  await cmd.press("Enter");
+  await expect(cmd).toHaveValue("");
+  const post = await callsTo(fake, "POST", `/projects/${BENCH}/chat`);
+  expect(post.map((c) => c.body)).toEqual([{ text: "a bracket for the bench" }]);
 });
 
 test("I-3: Replay intro closes Profile and plays above every panel", async ({ page }) => {
@@ -182,7 +181,7 @@ test("M-3: the Into build picker follows a build switch after a pick", async ({ 
   const picker = async () => {
     // D22: the parts library is a Home sub-view
     if (await page.locator("[data-region=topbar]").count()) await page.getByRole("button", { name: "Home" }).click();
-    await page.locator('[data-testid="home"]').getByRole("button", { name: "Parts library", exact: true }).click();
+    await homeMenu(page, "Parts library");
     await page.getByRole("button", { name: "Motors" }).click();
     const card = page.locator('[data-item="motor_2207_class"]');
     if (await page.locator('[data-detail="motor_2207_class"]').count() === 0) await card.click();
