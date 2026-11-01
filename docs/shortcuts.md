@@ -35,7 +35,7 @@ noted (the viewer or the parts list focused, a focused approval card).
 | ⌘[ | Show / hide the parts surface (it folds to a slim "Parts" tab) |
 | F | Fit the assembly in the view (or double-click empty space) |
 | Esc | Back to the assembly from an open part / close Play |
-| R | Reset the selected instance to the origin (undo with ⌘Z; not for a part a joint places) |
+| R | Reset the selected instance to the origin (undo with ⌘Z; not for a part a joint places). Only with the assembly or nothing focused: on a focused approval card R is Reject |
 | M | Measure (viewer focused; again for Select) |
 | Esc | Back to Select / close a menu or an immersive view |
 
@@ -60,7 +60,7 @@ View ▾ menu: ↓ / ↑ open it, ↑ ↓ Home End move, Enter / Space pick, Esc
 | Keys | Action |
 |---|---|
 | M | Approve (a focused approval card, after it arms) |
-| R | Reject (a focused approval card) |
+| R | Reject (a focused approval card; never resets the selected part) |
 | K | Keep the branch (a focused approval card) |
 
 ## Immersive views

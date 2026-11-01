@@ -36,8 +36,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { combo: "Meta+[", keys: "⌘[", action: "Show / hide the parts surface", scope: "design" },
   { combo: "F", keys: "F", action: "Fit the assembly in the view (or double-click empty space)", scope: "design" },
   { combo: "Escape", keys: "Esc", action: "Back to the assembly from an open part / close Play", scope: "design" },
-  // Plan 10 E19: not for a part a joint places (the caption says why)
-  { combo: "R", keys: "R", action: "Reset the selected instance to the origin (undo with ⌘Z)", scope: "design" },
+  // Plan 10 E19: not for a part a joint places (the caption says why). Only with the assembly or
+  // nothing focused (AssemblyView): a focused approval card's R is its Reject (robot.spec)
+  { combo: "R", keys: "R", action: "Reset the selected instance to the origin (undo with ⌘Z; a focused approval card's R is Reject)", scope: "design" },
   { combo: "M", keys: "M", action: "Measure (viewer focused; again for Select)", scope: "viewer" },
   { combo: "Escape", keys: "Esc", action: "Back to Select / close a menu or an immersive view", scope: "viewer" },
   { combo: "F2", keys: "F2", action: "Rename the part", scope: "parts" },

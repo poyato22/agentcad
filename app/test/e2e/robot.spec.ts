@@ -123,9 +123,12 @@ test("the origin and R: the selected part's offset shows; R puts it on the origi
   await expect(page.getByTestId("assembly-selection")).toContainText("battery");
   await expect(page.getByTestId("origin-delta")).toHaveText("Δ 0, 0, 18.5 mm");
   await shots(page, "robot-origin");
+  const decides = async () => (await fake.calls()).filter((c) => c.path.endsWith("/decide")).length;
+  await expect(page.locator("[data-approval]").first()).toBeVisible();      // a card waits in the dock
   await page.keyboard.press("r");
   await expect(page.getByTestId("assembly-note")).toContainText("battery is at the origin");
   await expect(page.getByTestId("origin-delta")).toHaveCount(0);
+  expect(await decides()).toBe(0);                                          // R on the assembly never rejects the card
   await page.keyboard.press("Meta+z");
   await expect(page.getByTestId("undo-status")).toHaveText("Undid: Reset battery to the origin");
   await expect(page.getByTestId("origin-delta")).toHaveText("Δ 0, 0, 18.5 mm");
@@ -133,7 +136,10 @@ test("the origin and R: the selected part's offset shows; R puts it on the origi
   await page.locator("[data-approval]").first().focus();
   const patches = async () => (await fake.calls()).filter((c) => c.method === "PATCH" && /\/assembly\/instances\//.test(c.path)).length;
   const before = await patches();
+  await page.waitForTimeout(450);                                           // the card's letters arm
   await page.keyboard.press("r");
+  await expect(page.locator("[data-approval]").first()).toHaveAttribute("data-status", "rejected");
+  expect(await decides()).toBe(1);                                          // the card's R: Reject, once
   await page.waitForTimeout(300);
   expect(await patches()).toBe(before);
   await expect(page.getByTestId("assembly-note")).toHaveCount(0);

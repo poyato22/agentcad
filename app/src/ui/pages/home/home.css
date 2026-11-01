@@ -319,7 +319,10 @@
 
 /* E2: the Settings menu button reads like the other header tools (gear + label) */
 .home-tools .home-settings-btn { gap: 7px; padding: 0 11px; border: 0; font: 500 var(--fs)/1 var(--font-ui); line-height: 1; }
-.home-tools .home-settings-btn[aria-expanded="true"] { color: var(--ink); background: var(--raised); }
+/* open: pressed like an "on" tool (P10 M3: the open state read as plain hover), so the menu below
+   clearly hangs from it */
+.home-tools .home-settings-btn[aria-expanded="true"] { color: var(--ink); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line2); }
+.home-tools .home-settings-btn[aria-expanded="true"] svg { color: var(--blue); }
 .home-back:hover { color: var(--ink); background: var(--raised); }
 .home-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
