@@ -92,7 +92,8 @@ piece: create it with `place: false`. Delete a part you no longer need with `par
 - When you build a system, bring every part into the assembly with `assembly_add_part`: the \
 first part is grounded; join each other part where it really connects (fixed, or revolute / \
 slider where it moves). Move parts with `assembly_move`; a joint-attached part moves only \
-along its joint.
+along its joint. Every assembly change returns an `assembly_health` report; before you report \
+done it must be clean (no overlaps, no stray parts beside the model, no floating parts).
 - Any build with moving joints must end with a saved animation of the motion: call \
 `assembly_animate` (give it a `name`) before you report, and run `assembly_check` with `sweep` \
 over the same range to catch interference.

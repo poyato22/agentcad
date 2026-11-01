@@ -76,6 +76,29 @@ def _changed(ctx: ToolContext, project_id: str) -> None:
     ctx.events.publish(Event(type="assembly_changed", data={"project_id": project_id}))
 
 
+def _health(ctx: ToolContext, project_id: str) -> tuple[dict, list[str]]:
+    """E33: a cheap bbox health report (overlaps, stray, floating, extents) for the build's
+    current assembly, plus warning lines. Never raises — a missing bbox just skips that part."""
+    from ..cad import safe_io
+    from .health import health, warnings_from
+    asm = _store(ctx).get(project_id)
+    res = solve(asm, resolve_face=face_resolver(_parts_root(ctx)))
+    root = _parts_root(ctx)
+    bboxes: dict[str, dict] = {}
+    for inst in asm.instances:
+        if inst.part_id in bboxes:
+            continue
+        try:
+            m = safe_io.read_json(root / inst.part_id, "metrics.json")
+        except (OSError, ValueError, safe_io.UnsafePath):
+            continue
+        bbox = m.get("bbox") if isinstance(m, dict) else None
+        if isinstance(bbox, dict) and "min" in bbox and "max" in bbox:
+            bboxes[inst.part_id] = bbox
+    report = health(asm.instances, res.transforms, bboxes, joints=asm.joints)
+    return report, warnings_from(report)
+
+
 def _asm_data(asm, res: SolveResult) -> dict:
     return {
         "instances": [{**i.model_dump(), "world_transform": res.transforms[i.id]}
@@ -240,23 +263,41 @@ async def assembly_check(ctx: ToolContext, args: CheckArgs) -> ToolOutput:
     sweep = getattr(args, "sweep", None)
     if sweep is not None:
         return await _check_sweep(ctx, _resolve_build(ctx, args.project_id), sweep)
-    asm, res = _solve(ctx, _resolve_build(ctx, args.project_id))
+    pid = _resolve_build(ctx, args.project_id)
+    asm, res = _solve(ctx, pid)
     interferences: list[dict] = []
+    checked = True
     try:
         geo = await run_geometry(_parts_root(ctx), asm, res, want="interference")
         interferences = geo.interferences
     except MisesError as e:
-        if e.code != ErrorCode.NOT_FOUND:  # NOT_FOUND = no built parts yet; report dof only
+        if e.code != ErrorCode.NOT_FOUND:
             raise
+        checked = False       # no built parts: do NOT report "0 interferences" (E33)
     n = len(interferences)
-    summary = f"{n} interference(s), {res.dof_remaining} dof left"
+    warnings: list[str] = []
+    if not checked:
+        # fail loudly rather than imply the assembly is clear
+        summary = f"interference NOT checked: {'no instances' if not asm.instances else 'no built parts in the assembly — build them first'}"
+        if asm.instances:
+            warnings.append("build the parts before trusting this check: nothing was compared")
+    else:
+        summary = f"{n} interference(s)"
+    summary += f", {res.dof_remaining} dof left"
     if res.overconstrained:
         groups = "; ".join(", ".join(g) for g in res.overconstrained)
         summary += f"; over-constrained (fixed instances joined by joints): {groups}"
+    # a cheap bbox view too, so the agent also sees stray/floating parts it must fix (E33)
+    report, hwarns = _health(ctx, pid)
+    if not report["ok"]:
+        summary += f"; {report['summary']}"
+        warnings += hwarns
     return ToolOutput(summary=summary,
-                      data={"interferences": interferences, "dof_remaining": res.dof_remaining,
-                            "overconstrained": res.overconstrained},
-                      step_kind=StepKind.MEASURE)
+                      data={"interferences": interferences, "checked": checked,
+                            "dof_remaining": res.dof_remaining,
+                            "overconstrained": res.overconstrained,
+                            "assembly_health": report},
+                      warnings=warnings, step_kind=StepKind.MEASURE)
 
 
 async def _check_sweep(ctx: ToolContext, pid: str, sweep: SweepArgs) -> ToolOutput:
@@ -470,12 +511,15 @@ async def assembly_add_part(ctx: ToolContext, args: AddPartArgs) -> ToolOutput:
         store.add_instance(pid, inst)
     store.add_joint(pid, joint)
     _changed(ctx, pid)
+    report, warns = _health(ctx, pid)
     return ToolOutput(summary=f"added {args.part_id} as instance {inst.name} ({inst.id}), "
-                              f"{joint.kind} joint {joint.id} to {target.name} ({target.id})",
+                              f"{joint.kind} joint {joint.id} to {target.name} ({target.id})"
+                              + ("" if report["ok"] else f"; {report['summary']}"),
                       data={"project_id": pid, "instance": inst.model_dump(),
                             "joint": {**joint.model_dump(), "target": target.id},
-                            "world_transform": motion.round_mat(res.transforms[inst.id])},
-                      step_kind=StepKind.DIFF)
+                            "world_transform": motion.round_mat(res.transforms[inst.id]),
+                            "assembly_health": report},
+                      warnings=warns, step_kind=StepKind.DIFF)
 
 
 class Rotate(BaseModel):
@@ -532,10 +576,13 @@ async def assembly_move(ctx: ToolContext, args: MoveArgs) -> ToolOutput:
         store.update_instance(pid, inst.id, transform=new_t)
         asm2, res2 = _solve(ctx, pid)
         _changed(ctx, pid)
-        return ToolOutput(summary=f"moved free instance {inst.name} ({inst.id})",
+        report, warns = _health(ctx, pid)
+        return ToolOutput(summary=f"moved free instance {inst.name} ({inst.id})"
+                                  + ("" if report["ok"] else f"; {report['summary']}"),
                           data={"instance_id": inst.id, "joint_id": None,
-                                "world_transform": motion.round_mat(res2.transforms[inst.id])},
-                          step_kind=StepKind.DIFF)
+                                "world_transform": motion.round_mat(res2.transforms[inst.id]),
+                                "assembly_health": report},
+                          warnings=warns, step_kind=StepKind.DIFF)
     joint, value, warnings = motion.joint_move(asm, inst.id, res.transforms,
                                                translate_by=args.translate, rotate=rot,
                                                relative=args.relative, resolve_face=resolver)
@@ -546,11 +593,14 @@ async def assembly_move(ctx: ToolContext, args: MoveArgs) -> ToolOutput:
     store.update_joint(pid, joint.id, value=applied)
     asm2, res2 = _solve(ctx, pid)
     _changed(ctx, pid)
+    report, warns = _health(ctx, pid)
     return ToolOutput(summary=f"moved {inst.name} ({inst.id}) along {joint.kind} joint "
-                              f"{joint.id}: value {applied}",
+                              f"{joint.id}: value {applied}"
+                              + ("" if report["ok"] else f"; {report['summary']}"),
                       data={"instance_id": inst.id, "joint_id": joint.id, "value": applied,
-                            "world_transform": motion.round_mat(res2.transforms[inst.id])},
-                      warnings=warnings, step_kind=StepKind.DIFF)
+                            "world_transform": motion.round_mat(res2.transforms[inst.id]),
+                            "assembly_health": report},
+                      warnings=warnings + warns, step_kind=StepKind.DIFF)
 
 
 MAX_LOOPS = 10               # a looping animation plays at most this many times

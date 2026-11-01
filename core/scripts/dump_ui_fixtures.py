@@ -151,6 +151,12 @@ async def dump(out: Path, only: str = "all") -> None:
     runtime_mod.keychain_get = lambda *a: None
     for spec_env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
         os.environ.pop(spec_env, None)
+    # E34: this env simulates Claude Code signed in; give it an Anthropic key too so the fake
+    # provider resolves the default model natively. Without a key, default_model_ref now routes
+    # a signed-in-no-key build to Claude Code, which needs the running MCP server. Never used
+    # for a request (the provider_resolver below is a fake), and invisible to the keys fixture
+    # (that section installs its own Keychain stub).
+    os.environ["ANTHROPIC_API_KEY"] = "fixture-not-used"
 
     # never the user's real `claude`: a signed-in stand-in, so /models and /claude-code/* show
     # the signed-in shapes (the fields are the same when signed out)
