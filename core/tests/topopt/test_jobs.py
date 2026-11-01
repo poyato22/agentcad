@@ -356,14 +356,20 @@ async def test_an_accepted_new_part_is_made_of_the_optimized_material(tmp_path, 
     assert view["mass_g"] == pytest.approx(900.0 / 1000 * 1.27) and view["mass_source"] == "built"
 
 
-async def test_topopt_on_a_material_without_sim_data_is_refused(tmp_path, fake):
+async def test_topopt_on_a_material_without_sim_data_is_refused(tmp_path, fake, monkeypatch):
+    import dataclasses
+
+    from mises.print import slicer
     from mises.store import Store
+    # a filament the sim table lacks (FWC I4: TPU is now the table's TPU 95A)
+    monkeypatch.setitem(slicer.MATERIALS, "PVA",
+                        dataclasses.replace(slicer.MATERIALS["TPU"]))
     _part(tmp_path)
     store = Store(":memory:")
     store.register_part("bracket", store.ensure_default_project().id)
-    store.update_part("bracket", material="TPU")
+    store.update_part("bracket", material="PVA")
     ctx = _ctx(tmp_path)
     ctx.store = store
     with pytest.raises(MisesError) as e:
         await tools.topopt_run.handler(ctx, TopoptRunArgs(**BASE))
-    assert "TPU has no simulation data" in e.value.message
+    assert "PVA has no simulation data" in e.value.message

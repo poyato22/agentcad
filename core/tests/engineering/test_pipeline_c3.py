@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from mises.agent.definitions import load_definitions
 from mises.assembly.model import AssemblyStore
 from mises.engineering import pipeline
-from mises.orchestrator.lead import LEAD_PROMPT, LEAD_TOOLS
+from mises.orchestrator.lead import LEAD_ENGINEERING, LEAD_PROMPT, LEAD_TOOLS
 from mises.runtime import Runtime
 from mises.types import StepKind
 
@@ -123,7 +123,7 @@ def test_prompts_and_tools_carry_the_pipeline():
     for name in ("actuator_size", "electronics_estimate", "power_budget", "dyn_torque",
                  "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks"):
         assert name in LEAD_TOOLS
-        assert name in LEAD_PROMPT
+        assert name in LEAD_PROMPT + LEAD_ENGINEERING     # FWC M4: the block moved
     eng = load_definitions([])["engineer"]
     assert "BEGIN p10-c3" in eng.body and "dyn_to_fem" in eng.body
     sim = load_definitions([])["simulation"]
