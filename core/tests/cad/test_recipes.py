@@ -46,7 +46,7 @@ def test_index_comes_from_source_without_importing_build123d_on_the_host():
     # every public recipe has a one-line docstring summary for the prompt index
     for name, _sig, summary, _doc in recipes._catalog():
         assert summary and len(summary) < 120, name
-    assert recipes.recipe_index().count("\n") == len(ms.__all__) - 1
+    assert recipes.recipe_index().count("\n") == len(ms.__all__) - 1 - len(recipes.INDEX_HIDDEN)
 
 
 @pytest.mark.parametrize("agent", ["designer", "engineer"])

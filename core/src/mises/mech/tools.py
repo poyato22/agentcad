@@ -14,7 +14,9 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, model_validator
 
 from ..events import Event
 from ..tools.registry import ToolContext, ToolRegistry, tool
@@ -59,10 +61,22 @@ async def mech_list(ctx: ToolContext, args: ListArgs) -> ToolOutput:
 
 # ---------------------------------------------------------------- mech_insert
 
+MAX_AT_MM = 1e5          # a mechanism is placed within 100 m of the origin
+
+_Coord = Annotated[float, Field(allow_inf_nan=False, ge=-MAX_AT_MM, le=MAX_AT_MM)]
+
+
 class At(BaseModel):
-    origin: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
-    axis: list[float] = Field(default_factory=lambda: [0.0, 0.0, 1.0],
-                              description="The mechanism's +Z goes along this.")
+    origin: list[_Coord] = Field(default_factory=lambda: [0.0, 0.0, 0.0], min_length=3,
+                                 max_length=3, description="[x, y, z] mm")
+    axis: list[_Coord] = Field(default_factory=lambda: [0.0, 0.0, 1.0], min_length=3,
+                               max_length=3, description="The mechanism's +Z goes along this.")
+
+    @model_validator(mode="after")
+    def _nonzero(self) -> "At":
+        if math.sqrt(sum(c * c for c in self.axis)) < 1e-9:
+            raise ValueError("at.axis must be a non-zero direction")
+        return self
 
 
 class InsertArgs(BaseModel):
@@ -144,8 +158,13 @@ async def _build_parts(ctx: ToolContext, pid: str, mech_id: str, gid: str, plan,
                                             {}, meta, density_g_cm3=dens)
             return spec.key, {**out, "existing": False}
 
-    results = await asyncio.gather(*(one(s) for s in plan.parts))
-    return dict(results)
+    results = await asyncio.gather(*(one(s) for s in plan.parts), return_exceptions=True)
+    done = {r[0]: r[1] for r in results if not isinstance(r, BaseException)}
+    errors = [r for r in results if isinstance(r, BaseException)]
+    if errors:
+        _remove_new_parts(parts_root, done)
+        raise errors[0]
+    return done
 
 
 def _register(ctx: ToolContext, pid: str, plan, built: dict, group_label: str,
@@ -187,9 +206,6 @@ def _register(ctx: ToolContext, pid: str, plan, built: dict, group_label: str,
                   "sizing results and warnings. Then run mech_check.")
 async def mech_insert(ctx: ToolContext, args: InsertArgs) -> ToolOutput:
     from ..assembly import tools as atools
-    from ..assembly.geometry import face_resolver
-    from ..assembly.model import Frame, Joint, JointRef
-    from ..assembly.solve import solve
     pid = atools._build_of(ctx, args.project_id)
     store = atools._store(ctx)
     m, params, plan = library.plan_for(args.mech_id, args.params)
@@ -200,10 +216,43 @@ async def mech_insert(ctx: ToolContext, args: InsertArgs) -> ToolOutput:
         attach = atools._instance_or_404(asm, args.attach_to)
     gid = uuid.uuid4().hex[:8]
     parts_root = Path(ctx.workdir) / "parts"
-    built = await _build_parts(ctx, pid, m.id, gid, plan, parts_root)
-    part_ids = {k: v["part_id"] for k, v in built.items()}
-    inst_ids = {i.key: uuid.uuid4().hex[:12] for i in plan.instances}
+    # everything that can be refused is checked before a single part is built
     root = root_transform(args.at.model_dump()) if attach is None else None
+    inst_ids = {i.key: uuid.uuid4().hex[:12] for i in plan.instances}
+    built = await _build_parts(ctx, pid, m.id, gid, plan, parts_root)   # cleans up itself
+    try:
+        return await _insert_rows(ctx, pid, m, params, plan, card, args, attach, gid, built,
+                                  inst_ids, root, parts_root)
+    except BaseException:
+        # atomic: the rows this call added go, and so do the parts it built
+        for iid in inst_ids.values():
+            try:
+                store.delete_instance(pid, iid)
+            except KeyError:
+                pass
+        _remove_new_parts(parts_root, built)
+        raise
+
+
+def _remove_new_parts(parts_root: Path, built: dict) -> None:
+    """Delete part dirs this insert created (never one that already existed)."""
+    import shutil
+    for out in (built or {}).values():
+        if out and not out.get("existing") and out.get("part_id"):
+            d = parts_root / out["part_id"]
+            if d.is_dir() and not d.is_symlink():
+                shutil.rmtree(d, ignore_errors=True)
+
+
+async def _insert_rows(ctx, pid, m, params, plan, card, args, attach, gid, built, inst_ids,
+                       root, parts_root) -> ToolOutput:
+    from ..assembly import tools as atools
+    from ..assembly.geometry import face_resolver
+    from ..assembly.model import Frame, Joint, JointRef
+    from ..assembly.solve import solve
+    store = atools._store(ctx)
+    asm = store.get(pid)
+    part_ids = {k: v["part_id"] for k, v in built.items()}
     ins, js, lps = to_models(plan, inst_ids, part_ids, root, fixed_root=attach is None)
     if attach is not None:
         js.insert(0, Joint(id=f"{inst_ids[plan.root][:6]}_attach", kind="fixed",
@@ -541,24 +590,23 @@ async def drivetrain_plan(ctx: ToolContext, args: PlanArgs) -> ToolOutput:
 # ---------------------------------------------------------------- material_pick
 
 class MaterialArgs(BaseModel):
-    part_id: str | None = Field(default=None, description="The part to pick for (with apply, "
-                                "its material is set).")
+    part_id: str | None = Field(default=None, description="The part the pick is for (only "
+                                "echoed back; set it with part_set_material).")
     requirements: dict = Field(default_factory=dict, description="priority (stiffness | "
                                "strength | mass | cost | balanced), max_temp_c, printable, "
                                "processes [fdm, sls_mjf, machined, sheet, laminate], flexible, "
                                "min_yield_mpa, min_e_mpa, conductive (false for RF windows), "
                                "low_friction, form (plate | shaft | block | shell).")
-    apply: bool = Field(default=False, description="Set the top pick as the part's material.")
     limit: int = Field(default=6, ge=1, le=30)
 
 
-@tool("material_pick", safety=SafetyClass.READ, scope_arg="part_id",
+@tool("material_pick", safety=SafetyClass.READ,
       description="Rank materials for a part from the one materials table (PLA, PETG, ABS, "
                   "ASA, PC, PA12, PA6-CF, PA-CF, TPU 95A, POM, Al 6061-T6 / 7075-T6, steels "
                   "1018 / 4140, 304 stainless, brass C360, CF plate, plus custom ones) by "
                   "specific stiffness / strength, service temperature, process, cost and "
-                  "failure mode, with the reasons. apply=true sets the top pick on the part "
-                  "(mass, studies and the BOM follow).")
+                  "failure mode, with the reasons. It only ranks: set the pick on the part with "
+                  "part_set_material (mass, studies and the BOM follow).")
 async def material_pick(ctx: ToolContext, args: MaterialArgs) -> ToolOutput:
     from ..sim.materials import rank_materials
     home = Path(ctx.workdir) if getattr(ctx, "workdir", None) else None
@@ -567,16 +615,10 @@ async def material_pick(ctx: ToolContext, args: MaterialArgs) -> ToolOutput:
     data = {"ranked": rows}
     summary = (f"top pick {ok[0]['name']} ({ok[0]['process']}; " + "; ".join(ok[0]["reasons"])
                + ")") if ok else "no material meets every requirement"
-    if args.apply and args.part_id and ok:
-        policy = getattr(ctx, "policy", None)
-        if policy is not None and SafetyClass.LOCAL_MUTATE not in policy.allowed_classes:
-            raise MisesError(ErrorCode.OUT_OF_SCOPE, "setting a material changes the part; "
-                             "this run may only read", hint="call without apply")
-        from ..mass import SetMaterialArgs, part_set_material
-        out = await part_set_material.handler(ctx, SetMaterialArgs(part_id=args.part_id,
-                                                                    material=ok[0]["name"]))
-        data["applied"] = out.data
-        summary += f"; applied to {args.part_id}"
+    if args.part_id and ok:
+        data["part_id"] = args.part_id
+        summary += f"; set it with part_set_material(part_id={args.part_id!r}, " \
+                   f"material={ok[0]['name']!r})"
     return ToolOutput(summary=summary, data=data, step_kind=StepKind.TOOL_RESULT)
 
 

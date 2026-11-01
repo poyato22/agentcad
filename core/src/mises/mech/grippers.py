@@ -103,10 +103,12 @@ def linkage_gripper(p: dict):
     k.part("gear_r", "gear_spur", f"sync gear {z}T (phased)", "POM", module=m, teeth=z,
            width=4.0, bore=3.3, phase_deg=round(mesh_phase(z, 0.0, z, 0.0) - aR, 6))
     gl, gr_ = k.inst("gear_l"), k.inst("gear_r")
-    top = (len(links) + 1) * info["pitch"]          # one layer above every link
+    # one layer under the palm (z = -pitch .. -pitch + 4), on the crank pivots: each gear is
+    # pinned to its crank through the palm, like a gearbox under the palm plate
+    under = -info["pitch"]
     for gi, crank in ((gl, "crank_l"), (gr_, "crank_r")):
-        k.fixed(f"{gi}_on_crank", crank, fr((0, 0, top - info["layer"][crank] * info["pitch"])),
-                gi, fr())
+        k.fixed(f"{gi}_on_crank", crank,
+                fr((0, 0, under - info["layer"][crank] * info["pitch"])), gi, fr())
     k.plan.contacts += [("gear_l", "gear_r"), ("gear_l", "crank_l"), ("gear_r", "crank_r"),
                         ("palm", "gear_l"), ("palm", "gear_r")]
     k.port("input", "rot", "crank_l", (*PL, 0.0), Z, "servo on the left gear")

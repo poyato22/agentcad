@@ -17,7 +17,7 @@ from .. import mass as mass_mod
 from ..assembly.geometry import face_resolver, part_dir, run_geometry
 from ..assembly.model import (Coupling, Instance, Joint, JointDesign, JointKind, JointRef,
                               check_part_id)
-from ..assembly.solve import solve, solve_from
+from ..assembly.solve import SolveResult, solve, solve_from
 from ..events import Event
 from ..types import ErrorCode, MisesError, canonical_json, sha256_hex
 from .ui_api import _contained, _etag_matches
@@ -102,7 +102,14 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
 
     @router.get("/projects/{project_id}/assembly")
     async def get_assembly(project_id: str):
-        asm, res = _solved(project_id)
+        try:
+            asm, res = _solved(project_id)
+            solve_error = None
+        except Exception as e:  # noqa: BLE001 - Plan 10: a bad joint never blanks the view
+            asm = store.get(project_id)
+            res = SolveResult(transforms={i.id: i.transform for i in asm.instances},
+                              dof_remaining=0)
+            solve_error = getattr(e, "message", None) or str(e)
         return {
             "instances": [{"id": i.id, "part_id": i.part_id, "name": i.name,
                            "transform": res.transforms[i.id], "fixed": i.fixed}
@@ -113,6 +120,7 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
                 "loop_errors": res.loop_errors} if asm.loops else {}),
             "dof_remaining": res.dof_remaining,
             "overconstrained": res.overconstrained,
+            **({"solve_error": solve_error} if solve_error else {}),
             # Plan 9 B2: each instance x its part's tree mass; parts with no known mass listed
             **await run_in_threadpool(mass_mod.assembly_total, runtime.store,
                                       Path(runtime.home), project_id, asm.instances),

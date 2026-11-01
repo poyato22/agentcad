@@ -151,13 +151,46 @@ async def test_drivetrain_plan_finds_options_with_margin(ctx):
     assert {r["mechanism"] for r in lock.data["options"]} <= {"worm_drive", None}
 
 
-async def test_material_pick_ranks_and_refuses_apply_on_read_only(ctx):
+async def test_material_pick_only_ranks(ctx):
     out = await mt.material_pick.handler(ctx, mt.MaterialArgs(
+        part_id="shaft_main",
         requirements={"priority": "strength", "printable": False, "form": "shaft"}))
     assert out.data["ranked"][0]["name"] in ("Al 7075-T6", "Steel 4140 QT")
-    ro = SimpleNamespace(**vars(ctx), policy=SimpleNamespace(allowed_classes={SafetyClass.READ}))
-    with pytest.raises(MisesError, match="only read"):
-        await mt.material_pick.handler(ro, mt.MaterialArgs(part_id="arm", apply=True))
+    assert "part_set_material" in out.summary and "applied" not in out.data
+    assert "apply" not in mt.MaterialArgs.model_fields
+    assert mt.material_pick.scope_arg is None
+
+
+async def test_at_is_validated_before_any_part_is_built(ctx, fake_build):
+    for bad in ({"origin": [0]}, {"origin": [float("nan"), 0, 0]}, {"origin": [1e308, 0, 0]},
+                {"axis": [0, 0, 0]}):
+        with pytest.raises(Exception):
+            await mt.mech_insert.handler(ctx, mt.InsertArgs.model_validate(
+                {"project_id": "p", "mech_id": "spur_pair", "at": bad}))
+    assert fake_build == []
+
+
+async def test_a_failed_insert_leaves_nothing_behind(ctx, monkeypatch, tmp_path):
+    made = []
+
+    async def build(ctx_, pid, mech_id, gid, plan, parts_root):
+        out = {}
+        for p in plan.parts:
+            d = parts_root / f"x_{p.key}"
+            d.mkdir(parents=True, exist_ok=True)
+            made.append(d)
+            out[p.key] = {"part_id": f"x_{p.key}".replace("608", "a"), "existing": False}
+        return out
+    monkeypatch.setattr(mt, "_build_parts", build)
+
+    def boom(*a, **k):
+        raise RuntimeError("store down")
+    monkeypatch.setattr(ctx.services["assembly"], "add_loop", boom)
+    with pytest.raises(RuntimeError):
+        await mt.mech_insert.handler(ctx, mt.InsertArgs(project_id="p", mech_id="four_bar"))
+    st = ctx.services["assembly"]
+    assert st.get("p").instances == [] and st.get("p").joints == []
+    assert all(not d.exists() for d in made if d.name.replace("608", "a") == d.name)
 
 
 def test_scripts_only_carry_literals():

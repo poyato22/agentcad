@@ -82,9 +82,33 @@ def test_loop_that_cannot_close_is_reported():
 
 
 def test_loops_count_in_the_dof():
-    res = solve(four_bar(10.0))
-    # spatial count: 3 bodies x 6 - 3 revolute x 5 - 1 revolute loop x 5 (planar overconstraint)
-    assert res.dof_remaining == 0
+    # the loop removes only its independent closure equations (planar: 2 of 6): a crank-rocker
+    # keeps one freedom, not the spatial count's 0
+    res = solve(four_bar(10.0, guess_coupler=coupler_analytic(10.0),
+                         guess_rocker=rocker_analytic(10.0)))
+    assert res.dof_remaining == 1
+
+
+def test_a_locked_loop_joint_never_crashes_the_solve():
+    asm = four_bar(30.0, guess_coupler=coupler_analytic(30.0), guess_rocker=rocker_analytic(30.0))
+    j = asm.joints[2].model_copy(update={"limits": [50.0, 50.0]})
+    res = solve(asm.model_copy(update={"joints": [asm.joints[0], asm.joints[1], j]}))
+    assert res.applied["j_r"] == 50.0          # locked; the loop then cannot close: reported
+    assert res.loop_errors
+
+
+def test_a_loop_that_cannot_close_keeps_the_stored_values():
+    asm = four_bar(0.0, guess_coupler=10.0, guess_rocker=90.0)
+    asm.loops[0] = asm.loops[0].model_copy(update={"frame_a": Frame(origin=[5, 0, 0],
+                                                                     axis=[0, 0, 1])})
+    res = solve(asm)
+    assert res.loop_errors and "kept" in res.loop_errors[0]["reason"]
+    assert res.solved == {} and res.applied["j_r"] == 90.0
+
+
+def test_nan_joint_values_are_refused():
+    with pytest.raises(ValueError):
+        Joint(kind="revolute", a=_ref("a", (0, 0, 0)), b=_ref("b", (0, 0, 0)), value=float("nan"))
 
 
 def _pair(ratio=-0.5, offset=0.0, partner="j1"):

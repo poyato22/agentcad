@@ -563,7 +563,7 @@ def motor_mount(frame: str = "NEMA17", plate: float = 4.0, slots: float = 0.0,
 
 
 def stepper_motor(frame: str = "Nema17", length: float = 0.0):
-    """Stepper motor (bd_warehouse OpenBuilds StepperMotor: body z -length..0, shaft on +Z to
+    """Stepper motor (bd_warehouse geometry: body z -length..0, shaft on +Z to
     +24 for NEMA17), the mounting face at z = 0."""
     from bd_warehouse.open_builds import StepperMotor
     name = {"NEMA17": "Nema17", "NEMA23": "Nema23"}.get(frame.upper(), frame)
@@ -574,7 +574,7 @@ def stepper_motor(frame: str = "Nema17", length: float = 0.0):
 def servo_body(l: float = 40.7, w: float = 19.7, h: float = 42.9, tab_l: float = 54.0,
                tab_t: float = 2.5, tab_z: float = 29.0, spacing: float = 49.5,
                hole_d: float = 4.5, output_x: float = 10.2, spline_d: float = 6.0):
-    """Hobby servo envelope (MG996R defaults) with its output spline on +Z: the output axis is
+    """Hobby servo envelope (standard size) with its output spline on +Z: the output axis is
     +Z through the origin, the body hangs below (top face at z = 0, output boss above)."""
     body = bd.Pos(l / 2 - output_x, 0, -h / 2) * bd.Box(l, w, h)
     tabs = bd.Pos(l / 2 - output_x, 0, -h + tab_z + tab_t / 2) * bd.Box(tab_l, w, tab_t)
@@ -605,7 +605,7 @@ def servo_bracket(servo_w: float = 19.7, servo_h: float = 42.9, wall: float = 3.
 
 def bldc_actuator(d: float = 96.0, h: float = 40.0, output_d: float = 50.0,
                   output_h: float = 4.0, bolt_circle_d: float = 40.0, bolt_d: float = 3.4):
-    """Quasi-direct-drive actuator envelope (Mini-Cheetah class: BLDC + planetary): a can of
+    """Quasi-direct-drive actuator envelope (BLDC + planetary): a can of
     d x h (z = -h..0) with an output flange on +Z (z = 0..output_h), output axis +Z."""
     can = _cyl(d / 2, h, (0, 0, -h))
     flange = _cyl(output_d / 2, output_h, (0, 0, 0))
@@ -696,7 +696,7 @@ _MGN = {"MGN9": (9.0, 6.5, 20.0, 39.9, 10.0), "MGN12": (12.0, 8.0, 27.0, 45.4, 1
 
 
 def linear_rail(rail: str = "MGN12", length: float = 200.0, hole_pitch: float = 25.0):
-    """Miniature linear guide rail (Hiwin MGN size, typical catalogue dims) along +X from x = 0,
+    """Miniature linear guide rail (MGN size, typical catalogue dims) along +X from x = 0,
     z = 0..rail height, with M-screw holes every `hole_pitch`."""
     if rail.upper() not in _MGN:
         raise ValueError(f"rail is one of {', '.join(_MGN)}")
@@ -863,15 +863,22 @@ def ball_stud(ball_d: float = 12.0, neck_d: float = 6.0, neck_l: float = 12.0,
 
 def ball_socket(ball_d: float = 12.0, wall: float = 3.0, clearance: float = 0.25,
                 cone_deg: float = 30.0, length: float = 20.0):
-    """Ball socket around a ball centred at the origin: a body along +Z, the spherical seat
-    (ball + clearance) and an opening cone toward -Z that allows `cone_deg` of tilt."""
+    """Ball socket (a cup) around a ball centred at the origin: a spherical shell cut open on
+    top just past the equator (the snap lip, so the ball shows), a cone opening toward -Z for
+    the stud's neck that allows `cone_deg` of tilt, and a mounting arm `length` along +X."""
     R = ball_d / 2 + clearance
-    body = _cyl(R + wall, length, (0, 0, -R * 0.6))
+    Ro = R + wall
+    lip = 0.3 * R                                  # the cup rises this far past the equator
+    shell = bd.Sphere(Ro) - bd.Pos(0, 0, lip + Ro) * bd.Box(4 * Ro, 4 * Ro, 2 * Ro)
+    arm_t = min(2 * wall + 2, Ro)
+    arm = bd.Pos(Ro * 0.5 + length / 2, 0, -Ro * 0.35) * bd.Box(length + Ro, arm_t * 2, arm_t)
+    body = shell + arm
     seat = bd.Sphere(R)
-    open_r = (ball_d / 2) * 0.85 + math.tan(math.radians(cone_deg)) * R
-    cone = bd.Pos(0, 0, -R * 0.6 - 0.01) * bd.Cone(open_r + 1, ball_d * 0.3, R * 0.6 + 0.02,
-                                                   align=(bd.Align.CENTER, bd.Align.CENTER,
-                                                          bd.Align.MIN))
+    neck = ball_d * 0.25 + 0.6                     # the stud neck radius plus clearance
+    depth = Ro + 1.0
+    cone = bd.Pos(0, 0, -depth) * bd.Cone(neck + math.tan(math.radians(cone_deg)) * depth,
+                                          neck, depth,
+                                          align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
     return _check(body - seat - cone, "ball_socket")
 
 

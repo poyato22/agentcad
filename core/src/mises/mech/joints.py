@@ -118,7 +118,7 @@ def ball_joint(p: dict):
     bd_, cone = p["ball_d"], p["cone_deg"]
     k = Kit("socket")
     k.part("socket", "ball_socket", "socket", "PETG", ball_d=bd_, wall=max(2.5, bd_ * 0.25),
-           clearance=p["clearance"], cone_deg=cone, length=bd_ * 1.6)
+           clearance=p["clearance"], cone_deg=cone, length=bd_ * 1.2)
     k.inst("socket", "socket", "socket (grounded)")
     k.part("stud", "ball_stud", "ball stud", "Steel 1018", ball_d=bd_, neck_d=bd_ * 0.5,
            neck_l=bd_, flange_d=bd_ * 1.3)

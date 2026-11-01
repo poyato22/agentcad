@@ -390,7 +390,7 @@ def _loop_residual(tree: _Tree, lp, transforms: dict[str, Mat]) -> list[float]:
     return r
 
 
-def _solve_loops(tree: _Tree, values: dict[str, object], result: "SolveResult") -> None:
+def _solve_loops(tree: _Tree, values: dict[str, object], result: "SolveResult") -> list[str]:
     """Adjust the non-driver joints on each loop's path (scipy least squares, from the current
     values so a mechanism stays on its branch) until every loop closes."""
     by_id = {j.id: j for j in tree.joints}
@@ -427,9 +427,12 @@ def _solve_loops(tree: _Tree, values: dict[str, object], result: "SolveResult") 
             default=path[0])]
         held.update(drivers)
         free.extend(jid for jid in path if jid not in free)
+    # a joint whose limits pin it (lo == hi) is locked: held, never a variable
+    held.update(jid for jid in free if by_id[jid].limits is not None
+                and by_id[jid].limits[0] >= by_id[jid].limits[1])
     free = [jid for jid in free if jid not in held]
     if not free:
-        return
+        return []
     import numpy as np
     from scipy.optimize import least_squares
 
@@ -472,6 +475,7 @@ def _solve_loops(tree: _Tree, values: dict[str, object], result: "SolveResult") 
         values[jid] = solved[jid]
     for j in tree.order:
         values[j.id] = solved[j.id]
+    return free
 
 
 CONTINUATION_DEG = 5.0       # a loop solve follows a driver in steps no larger than this
@@ -530,8 +534,9 @@ def solve(assembly, *, resolve_face: FaceResolver | None = None) -> SolveResult:
     values: dict[str, object] = {j.id: j.value for j in tree.joints}
     apply_couplings(tree.order, values)
     result = SolveResult(transforms={}, dof_remaining=0)
+    free: list[str] = []
     if tree.loops:
-        _solve_loops(tree, values, result)
+        free = _solve_loops(tree, values, result) or []
     transforms, applied, _via = tree.place(values)
     for lp in tree.loops:
         if any(e["loop_id"] == lp.id for e in result.loop_errors):
@@ -545,16 +550,63 @@ def solve(assembly, *, resolve_face: FaceResolver | None = None) -> SolveResult:
                 "reason": "the loop cannot close at this input (out of range or past a "
                           "toggle position)"})
     stored = {j.id: j.value for j in tree.joints}
+    if result.loop_errors and free:
+        # a loop that did not close: the optimizer's best effort is NOT a pose to keep. Draw and
+        # report it, but never hand it back to be stored (the last good values stay)
+        for e in result.loop_errors:
+            e["reason"] += "; the stored joint values were kept (the last good pose)"
+        values = {**values, **{jid: stored[jid] for jid in free}}
+        apply_couplings(tree.order, values)
+        transforms, applied, _via = tree.place(values)
     loop_moved = {jid for jid in values if jid in applied and values[jid] != stored[jid]}
     overconstrained = [sorted(m for m in members if instances[m].fixed)
                        for members in tree.components.values()
                        if sum(1 for m in members if instances[m].fixed) > 1]
     movable = sum(1 for inst in assembly.instances if not inst.fixed)
     dof = (6 * movable - sum(CONSTRAINTS.get(j.kind, 0) for j in tree.joints)
-           - len(tree.order) - sum(LOOP_CONSTRAINTS[lp.type] for lp in tree.loops))
+           - len(tree.order))
+    if tree.loops:
+        # a loop removes only as many freedoms as its closure equations are independent (a
+        # planar or spherical loop counted spatially would over-count): the Jacobian's rank
+        dof -= _loop_rank(tree, values)
     result.transforms = transforms
     result.dof_remaining = max(dof, 0)
     result.applied = applied
     result.overconstrained = overconstrained
     result.solved = {jid: applied[jid] for jid in loop_moved}
     return result
+
+
+def _loop_rank(tree: _Tree, values: dict[str, object]) -> int:
+    """Rank of the loop-closure equations w.r.t. every non-coupled tree joint value."""
+    import numpy as np
+    coupled = {j.id for j in tree.order}
+    slots = [(j, k) for j in tree.joints if j.id not in coupled for k in range(_NCOMP[j.kind])]
+    if not slots:
+        return 0
+
+    def res(dx):
+        vals = dict(values)
+        for (j, k), d in zip(slots, dx):
+            v = vals[j.id]
+            if isinstance(v, (list, tuple)):
+                v = [float(c) for c in (list(v) + [0.0] * _NCOMP[j.kind])[:_NCOMP[j.kind]]]
+                v[k] += d
+                vals[j.id] = v
+            else:
+                vals[j.id] = float(v) + d
+        apply_couplings(tree.order, vals)
+        tr, _a, _v = tree.place(vals)
+        out: list[float] = []
+        for lp in tree.loops:
+            out += _loop_residual(tree, lp, tr)
+        return np.array(out)
+    h = 1e-4
+    r0 = res(np.zeros(len(slots)))
+    jac = np.zeros((len(r0), len(slots)))
+    for c in range(len(slots)):
+        e = np.zeros(len(slots))
+        e[c] = h
+        jac[:, c] = (res(e) - r0) / h
+    sv = np.linalg.svd(jac, compute_uv=False)
+    return int(np.sum(sv > 1e-5 * max(1.0, sv[0] if len(sv) else 1.0)))

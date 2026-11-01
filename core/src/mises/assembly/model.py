@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import uuid
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_serializer, model_validator
 
@@ -89,7 +89,8 @@ class Coupling(BaseModel):
     mm per deg for rack and screw driven by a revolute, deg per mm for a revolute following a
     slider). An external gear pair has a negative ratio (-z1/z2). `offset` is the follower's
     value when the partner is at 0 (e.g. a planet's mesh phase). C3's MJCF export maps it to
-    `equality joint polycoef = [offset, ratio]` (converted to radians / metres)."""
+    `equality joint polycoef = [offset, ratio]` converted to rad / m: see mises.mech.contract
+    (the one statement of these units, with polycoef())."""
     kind: CouplingKind
     ratio: float = Field(allow_inf_nan=False)
     partner_joint: str = Field(min_length=1, max_length=64)
@@ -122,12 +123,15 @@ class JointDesign(BaseModel):
     fastener: str | None = Field(default=None, max_length=32, description='e.g. "M3"')
 
 
+_Finite = Annotated[float, Field(allow_inf_nan=False)]
+
+
 class Joint(BaseModel):
     id: str = Field(default_factory=_new_id)
     kind: JointKind
     a: JointRef
     b: JointRef
-    value: float | list[float] = 0.0
+    value: _Finite | list[_Finite] = 0.0
     limits: list[float] | None = None
     coupling: Coupling | None = None
     design: JointDesign | None = None

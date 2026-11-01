@@ -67,9 +67,16 @@ def recipe_names() -> list[str]:
     return [c[0] for c in _catalog()]
 
 
+#: recipes and mechanisms left out of the always-on prompt index (D26: no vehicle-specific
+#: wording in every build's context); recipes_list / recipe_doc / mech_list still return them
+INDEX_HIDDEN = frozenset({"prop_mount"})
+MECH_INDEX_HIDDEN = frozenset({"prop_motor_mount"})
+
+
 def recipe_index() -> str:
     """The one-line-per-recipe index the designer and engineer prompts carry."""
-    return "\n".join(f"- `ms.{name}`: {summary}" for name, _sig, summary, _doc in _catalog())
+    return "\n".join(f"- `ms.{name}`: {summary}" for name, _sig, summary, _doc in _catalog()
+                     if name not in INDEX_HIDDEN)
 
 
 PROMPT_BEGIN = "<!-- mises-shapes:begin (generated: recipes.prompt_section) -->"
@@ -99,7 +106,8 @@ def mechanism_index() -> str:
     from ..mech import library
     by: dict[str, list[str]] = {}
     for m in library.all_mechanisms():
-        by.setdefault(m.category, []).append(m.id)
+        if m.id not in MECH_INDEX_HIDDEN:
+            by.setdefault(m.category, []).append(m.id)
     lines = ["Mechanisms (`mech_list` by function, `mech_insert` builds parts + joints + "
              "couplings + loops and returns the card, then `mech_check`):"]
     lines += [f"- {cat}: {', '.join(ids)}" for cat, ids in sorted(by.items())]

@@ -146,7 +146,17 @@ class RemoveArgs(BaseModel):
       description="Read a build's assembly: its instances (with solved world transforms), its "
                   "joints and the degrees of freedom left.")
 async def assembly_get(ctx: ToolContext, args: ProjectArgs) -> ToolOutput:
-    asm, res = _solve(ctx, _resolve_build(ctx, args.project_id))
+    pid = _resolve_build(ctx, args.project_id)
+    try:
+        asm, res = _solve(ctx, pid)
+    except MisesError as e:     # Plan 10: report a solver error, never fail the read
+        asm = _store(ctx).get(pid)
+        res = SolveResult(transforms={i.id: i.transform for i in asm.instances},
+                          dof_remaining=0)
+        data = {**_asm_data(asm, res), "solve_error": e.message}
+        return ToolOutput(summary=f"{len(asm.instances)} instance(s), {len(asm.joints)} "
+                                  f"joint(s); the solve failed: {e.message}", data=data,
+                          warnings=[e.message], step_kind=StepKind.MEASURE)
     return ToolOutput(summary=f"{len(asm.instances)} instance(s), {len(asm.joints)} joint(s), "
                               f"{res.dof_remaining} dof left",
                       data=_asm_data(asm, res), step_kind=StepKind.MEASURE)

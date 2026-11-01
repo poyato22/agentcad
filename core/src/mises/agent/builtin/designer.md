@@ -68,17 +68,17 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.bearing_block`: Pillow block for a ball bearing: the bearing axis runs along +Y through
 - `ms.frame_plate`: Flat frame plate in XY (z = -thickness..0, top face at z = 0) carrying bearing seats or
 - `ms.motor_mount`: Stepper motor mount plate in XY (z = 0..plate): pilot hole, 4 screw holes on the frame's
-- `ms.stepper_motor`: Stepper motor (bd_warehouse OpenBuilds StepperMotor: body z -length..0, shaft on +Z to
-- `ms.servo_body`: Hobby servo envelope (MG996R defaults) with its output spline on +Z: the output axis is
+- `ms.stepper_motor`: Stepper motor (bd_warehouse geometry: body z -length..0, shaft on +Z to
+- `ms.servo_body`: Hobby servo envelope (standard size) with its output spline on +Z: the output axis is
 - `ms.servo_bracket`: U bracket that wraps a servo for pan-tilt or arm joints: a base in XY (z = 0..wall) and
-- `ms.bldc_actuator`: Quasi-direct-drive actuator envelope (Mini-Cheetah class: BLDC + planetary): a can of
+- `ms.bldc_actuator`: Quasi-direct-drive actuator envelope (BLDC + planetary): a can of
 - `ms.link_bar`: Straight link with a bore at each end: from (0, 0) to (length, 0), z = 0..thickness.
 - `ms.link_plate`: Ternary (or larger) link: the convex hull of round pads at `points` (local x, y), a bore
 - `ms.pin`: Hinge or link pin on +Z (z = 0..length), optional head below z = 0.
 - `ms.slider_block`: Slider (crosshead) block centred on the origin in XY, z = 0..height, a pin hole on +Z
 - `ms.lead_screw`: Lead screw blank (Tr8x8 default) on +Z, z = 0..length (thread not modelled: the major
 - `ms.lead_nut`: Flanged lead-screw nut on +Z (z = 0..length), flange at z = 0, 4 bolt holes.
-- `ms.linear_rail`: Miniature linear guide rail (Hiwin MGN size, typical catalogue dims) along +X from x = 0,
+- `ms.linear_rail`: Miniature linear guide rail (MGN size, typical catalogue dims) along +X from x = 0,
 - `ms.rail_carriage`: Carriage block for a MGN rail, centred at the origin, riding z = 3..3+height over the
 - `ms.cam_disc`: Plate cam with a cycloidal rise - dwell - cycloidal fall - dwell profile (no jerk
 - `ms.follower`: Translating roller follower: a rod on +Z (z = 0..length) with a roller boss at the
@@ -88,14 +88,13 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.pawl`: Ratchet pawl: a pivoting tongue from its bore at the origin toward +X with a tip.
 - `ms.hinge_leaf`: One leaf of a pin hinge: the hinge axis is +X through the origin (z = 0), the leaf lies
 - `ms.ball_stud`: Ball stud: a ball centred at the origin on a neck down -Z to a mounting flange.
-- `ms.ball_socket`: Ball socket around a ball centred at the origin: a body along +Z, the spherical seat
+- `ms.ball_socket`: Ball socket (a cup) around a ball centred at the origin: a spherical shell cut open on
 - `ms.u_yoke`: Universal-joint yoke: a hub on -Z (z = -hub_l..0, shaft bore) and two arms up +Z whose
 - `ms.cross_spider`: The cross of a universal joint, centred at the origin: pins along X and Y, each
 - `ms.flexure_hinge`: Living hinge (one printed part): two pads along X joined by a thin web of flex_t x flex_l
 - `ms.snap_cantilever`: Cantilever snap-fit hook: a beam t x width rising +Z from a base block (z = 0..base) to
 - `ms.gripper_jaw`: Parallel-gripper jaw: a rack (teeth +Y, pitch line y = 0, along X from 0) on a carrier
 - `ms.wheel`: Wheel on +Z (z = 0..width): a tyre ring of `tread` over a rim with a hub and bore.
-- `ms.prop_mount`: Motor mount at the end of a rotor arm: a pad for an outrunner motor of motor_d (pattern
 - `ms.extrusion`: Aluminium T-slot extrusion envelope (2020 default) along +X from x = 0, centred on the X
 Mechanisms (`mech_list` by function, `mech_insert` builds parts + joints + couplings + loops and returns the card, then `mech_check`):
 - belt: belt_drive_gt2, belt_drive_htd
@@ -106,7 +105,7 @@ Mechanisms (`mech_list` by function, `mech_insert` builds parts + joints + coupl
 - leg: quadruped_leg_belt, quadruped_leg_linkage, jansen_leg
 - linear: belt_linear_axis, lead_screw_axis, ball_screw_axis, linear_rail_carriage, vslot_wheel_carriage
 - linkage: four_bar, parallelogram_linkage, watt_linkage, chebyshev_linkage, slider_crank, scotch_yoke
-- mobility: wheel_gearmotor, prop_motor_mount
+- mobility: wheel_gearmotor
 - motor: stepper_coupler_shaft
 - reducer: planetary, planetary_compound, cycloidal_reducer, strain_wave
 - support: pillow_block_shaft
@@ -140,7 +139,7 @@ For anything that moves, use the mechanism library (`mech_list`, `mech_insert`, 
 real gears, pulleys and belts, bearings, shafts and linkages with their joints, couplings and
 loop closures, so the motion works. Every revolute joint needs a bearing or bushing, a retained
 shaft or pin and a printed clearance of 0.2-0.4 mm; model the motor, its mount and the coupler
-too (no floating servos). Pick each part's material with `material_pick`.
+too (no floating servos). Pick each part's material with `material_pick`, then set it with `part_set_material`.
 
 ## How a part looks
 When the user asks for a color or a finish (shiny, metal, chrome, rubber, clear), call `part_set_appearance` with a preset and/or a color. It changes only the look, never the geometry or the mass.

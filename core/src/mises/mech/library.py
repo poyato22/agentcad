@@ -40,8 +40,10 @@ class P:
         if num != num or num in (float("inf"), float("-inf")):
             raise MisesError(ErrorCode.INVALID_INPUT, f"{name} must be finite")
         if (self.lo is not None and num < self.lo) or (self.hi is not None and num > self.hi):
+            lo = "-inf" if self.lo is None else f"{self.lo:g}"
+            hi = "inf" if self.hi is None else f"{self.hi:g}"
             raise MisesError(ErrorCode.INVALID_INPUT,
-                             f"{name}={num:g} is outside {self.lo:g}..{self.hi:g} {self.unit}",
+                             f"{name}={num:g} is outside {lo}..{hi} {self.unit}",
                              hint=self.doc or None)
         return int(round(num)) if isinstance(self.default, int) else num
 
