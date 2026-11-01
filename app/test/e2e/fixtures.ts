@@ -99,6 +99,7 @@ export async function openBuildShell(page: import("@playwright/test").Page): Pro
 /** Plan 9 D7: the Design page shows the build's assembly; a part opens alone from the left tree.
  *  Opens `partId` (default: the first row) in the part viewer, as a click on its row does. */
 export async function openPartView(page: import("@playwright/test").Page, partId?: string): Promise<void> {
+  await showParts(page);
   const row = partId ? page.locator(`[data-part="${partId}"] .tree-name`) : page.locator("[data-part] .tree-name").first();
   await row.click();
   await page.getByTestId("viewer-canvas").waitFor();
@@ -127,6 +128,15 @@ export async function openAllDockColumns(page: import("@playwright/test").Page):
       if (!localStorage.getItem("mises.dock.columns")) localStorage.setItem("mises.dock.columns", JSON.stringify({ collapsed: { view: false, sim: false, text: false } }));
     } catch { /* none */ }
   });
+}
+/** P10 FWA: with three dock columns open the Parts surface folds to its tab by itself so the
+ *  model keeps 520 px (ui/shell/room); a spec that works the part tree opens it, as a user would. */
+export async function showParts(page: import("@playwright/test").Page): Promise<void> {
+  await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");   // the room has settled
+  await page.locator("[data-region=left]").first().waitFor();
+  const tab = page.getByRole("button", { name: "Show the parts" });
+  if (await tab.isVisible()) await tab.click();
+  await expect(page.locator(".app")).toHaveAttribute("data-left", "open");
 }
 export async function useDefaultDock(page: import("@playwright/test").Page): Promise<void> {
   await page.addInitScript(() => {

@@ -468,9 +468,10 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
         markers.add(line);
       }
       // a marker past what the camera framed (a fixed face's plate, an arrow's tail): frame again.
-      // Markers inside it (Show loads back on) leave the user's view alone.
+      // Markers inside it (Show loads back on) leave the user's view alone, and so does the setup
+      // view: there the user is placing loads and picking faces, and the part must not jump.
       const mb = markerBox();
-      if (mb && !(fitted?.containsBox(mb) ?? false)) fit();
+      if (result && mb && !(fitted?.containsBox(mb) ?? false)) fit();
       requestRender();
     },
 

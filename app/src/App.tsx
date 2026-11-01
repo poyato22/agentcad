@@ -10,7 +10,7 @@
 // buttons). The dock starts open on Design only (router DOCK_OPEN_DEFAULT).
 // The new-run dialog, the Profile panel and the setup gate mount at the root.
 import type { JSX } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import { conn } from "./state/store";
 import { atHome, goHome } from "./state/home";
 import { installNav } from "./state/nav";
@@ -136,7 +136,7 @@ export function App(): JSX.Element {
   const page = activePage.value;
   const folded = consoleCollapsed.value;
   // P10 FWA: the model keeps 520 px whatever the dock (ui/shell/room)
-  useEffect(() => installRoom(), []);
+  useLayoutEffect(() => installRoom(), []);
   const leftFolded = leftFoldedSignal.value;
   const partOpen = openPartId.value !== null;
   // the floating surfaces' footprint on the build view (re-measured as they mount, fold or resize)

@@ -2,7 +2,7 @@
 // topopt fixtures) — from a part's menu: the setup, the density converging live, the variant
 // grid with CalculiX's numbers and ✓ / ✗, Accept adding the new part; and the Studies entry.
 import type { Page } from "@playwright/test";
-import { expect, test, type FakeCall, type FakeControl } from "./fixtures";
+import { expect, showParts, test, type FakeCall, type FakeControl } from "./fixtures";
 
 test.beforeEach(async ({ fake }) => { await fake.reset("builds"); });
 test.afterEach(async ({ fake }) => { await fake.reset("base"); });
@@ -14,6 +14,7 @@ const callsTo = async (fake: FakeControl, method: string, path: string | RegExp)
 
 test("generative_design_from_the_part_menu_runs_and_accepts_a_variant", async ({ page, fake }) => {
   await page.goto("/");
+  await showParts(page);
   await expect(tree(page).getByRole("button", { name: "top plate", exact: true })).toBeVisible();
   await rowOf(page, "top_plate").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Generative design…" }).click();
@@ -75,6 +76,7 @@ test("generative_design_from_the_part_menu_runs_and_accepts_a_variant", async ({
 
 test("generative_design_can_be_cancelled_and_opened_from_studies", async ({ page, fake }) => {
   await page.goto("/");
+  await showParts(page);
   await expect(tree(page).getByRole("button", { name: "top plate", exact: true })).toBeVisible();
   await tree(page).getByRole("button", { name: "top plate", exact: true }).click();
   await page.keyboard.press("Meta+2");

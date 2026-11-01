@@ -2,7 +2,7 @@
 // and the Profile Browsing editor, against the fake core's "parts-list" scenario: the base run
 // plus the real core's dumped snapshots, part cards and parts list (scenarios/make_parts_list.py).
 import type { Page } from "@playwright/test";
-import { consoleMenu, expect, test } from "./fixtures";
+import { consoleMenu, expect, showParts, test } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("parts-list");
@@ -12,6 +12,7 @@ test.beforeEach(async ({ fake, page }) => {
 });
 
 test("the parts list shows one total per currency, estimates and the unpriced count, edits and exports", async ({ page, fake }) => {
+  await showParts(page);                                   // three dock columns fold it (P10 FWA)
   await page.getByTestId("bom-summary").getByRole("button", { name: "Open" }).click();   // Plan 9 D9: the left surface's BOM section
   await expect(page.locator("[data-bom-page]")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Made in-house" })).toBeVisible();
@@ -55,6 +56,10 @@ test("the parts list shows one total per currency, estimates and the unpriced co
 test("the part card loads from the core and is display-only (the core inserts and lists it)", async ({ page, fake }) => {
   const card = page.locator('[data-part-card][data-state="ready"]');
   await expect(card).toBeVisible();
+  // two columns, not three, so the card's own layout is what's measured (P10 FWA: the model's
+  // 520 px squeezes three columns at 1440)
+  await page.locator("[data-region=console] [data-dock] [data-stream=sim] .dock-t").click();
+  await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", "2");
   await expect(card).toContainText("Micro servo - TowerPro SG92R");
   await expect(card).toContainText("$5.95");
   // C1: the All-parts overview once shared .pcard-* classes and squeezed the card's info column to
