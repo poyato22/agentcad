@@ -10,7 +10,8 @@ import type { AgentRun } from "../../api/types";
 import { activityByRun } from "../../state/activity";
 import { actions, steps } from "../../state/store";
 import { Button } from "../common/Button";
-import { editMessage, isStalled, sendChat, STALL_S } from "./chat";
+import { editMessage, isStalled, quietSince, seenRunningAt, sendChat, STALL_S } from "./chat";
+import { needsYou } from "../../state/selection";
 import { explainError } from "./errorText";
 import { startErrorText } from "./startError";
 
@@ -121,8 +122,13 @@ export function StallNote({ run, lastText }: { run: AgentRun; lastText: string |
   }, [running]);
   const list = steps.value.get(run.id);
   const lastTs = list && list.length ? list[list.length - 1].ts : null;
-  if (!isStalled(run, activityByRun.value.get(run.id) ?? null, lastTs, now)) return null;
-  const quiet = Math.floor(now / 1000 - Math.max(run.updated_at ?? 0, lastTs ?? 0, activityByRun.value.get(run.id)?.since ?? 0));
+  // waiting on you (an approval or a question) is never "stuck"; quiet time counts from when this
+  // window saw it running at the earliest
+  const waiting = needsYou.value.runIds.has(run.id);
+  const seen = seenRunningAt(run.id, running);
+  const activity = activityByRun.value.get(run.id) ?? null;
+  if (!isStalled(run, activity, lastTs, now, { waiting, seenRunningS: seen })) return null;
+  const quiet = Math.floor(now / 1000 - quietSince(run, activity, lastTs, seen));
   return (
     <div class="cv-stall" data-stalled role="status">
       <span class="text">{`No sign of the agent for ${quiet >= 120 ? `${Math.floor(quiet / 60)} min` : `${Math.max(quiet, STALL_S)} s`}. It may be stuck.`}</span>

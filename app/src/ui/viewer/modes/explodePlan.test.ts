@@ -1,7 +1,7 @@
 // Golden tests of the exploded layout (Plan 10 E4) on a three-level assembly and an enclosure.
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { CHILD_SHARE, explodeParents, explodePlan, MIN_SHARE, OWN_SHARE, PARENT_SHARE, type ExplodeUnit } from "./explodePlan";
+import { CHILD_SHARE, explodeParents, explodePlan, MIN_SHARE, MOUNT_GAP, OWN_SHARE, PARENT_SHARE, type ExplodeUnit } from "./explodePlan";
 
 const box = (min: [number, number, number], max: [number, number, number]) => new THREE.Box3(new THREE.Vector3(...min), new THREE.Vector3(...max));
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -76,9 +76,27 @@ describe("explodePlan (E4)", () => {
     // the turret's step: the larger of its share of the base's height and of its own size
     const whole = new THREE.Box3(); for (const x of u) whole.union(x.box);
     const D = whole.getSize(new THREE.Vector3()).length();
-    expect(o.turret.length()).toBeCloseTo(Math.max(PARENT_SHARE * 20, CHILD_SHARE * Math.hypot(30, 30, 30), MIN_SHARE * D), 5);
+    // (+ the mount gap: it sits on the base, so it ends a quarter of its own height clear of it)
+    expect(o.turret.length()).toBeCloseTo(Math.max(PARENT_SHARE * 20, CHILD_SHARE * Math.hypot(30, 30, 30), MIN_SHARE * D) + MOUNT_GAP * 30, 5);
     // OWN_SHARE still sets the roots' radial step
     expect(OWN_SHARE).toBeGreaterThan(0);
+  });
+
+  it("parts mounted on a chassis end visibly clear of it, and of each other when stacked", () => {
+    const u: ExplodeUnit[] = [
+      { id: "chassis", box: box([-60, -40, 0], [60, 40, 30]) },
+      { id: "battery", box: box([-30, -20, 11], [30, 20, 26]) },                 // in the pocket
+      { id: "turret", box: box([5, -25, 30], [55, 25, 50]), parent: "chassis", axis: v(0, 0, 1), origin: v(30, 0, 30) },
+      { id: "lidar", box: box([-52, -10, 30], [-32, 10, 42]), parent: "chassis", axis: v(0, 0, 1), origin: v(-42, 0, 30) },
+    ];
+    const o = byId(u, explodePlan(u));
+    const at = (id: string) => u.find((x) => x.id === id)!.box.clone().translate(o[id]);
+    for (const id of ["battery", "turret", "lidar"]) {
+      const h = u.find((x) => x.id === id)!.box.getSize(v(0, 0, 0)).z;
+      expect(at(id).min.z - 30, id).toBeGreaterThanOrEqual(MOUNT_GAP * h - 1e-6);
+    }
+    // the turret, stacked over the battery, leaves a gap of a quarter of its height too
+    expect(at("turret").min.z - at("battery").max.z).toBeGreaterThanOrEqual(MOUNT_GAP * 20 - 1e-6);
   });
 
   it("a child that overlaps its parent clears the parent's box along its way first", () => {

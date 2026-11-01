@@ -119,17 +119,35 @@ export async function sendChat(text: string, target: AgentRun | null = null): Pr
 /** P10 E9: with no sign of life for this long, a working run counts as stalled (Retry shows). */
 export const STALL_S = 90;
 
-/** A running run with no new step or activity for STALL_S. A run waiting for you, or running a
- *  tool (its line counts the seconds, and a study may take minutes), is not stalled. */
-export function isStalled(run: Pick<AgentRun, "status" | "updated_at">, activity: AgentActivity | null, lastStepTs: number | null, nowMs: number = Date.now()): boolean {
-  if (run.status !== "running") return false;
+/** A running run with no new step or activity for STALL_S. A run waiting for you (a pending
+ *  approval or question: `waiting`), or running a tool (its line counts the seconds, and a study
+ *  may take minutes), is not stalled. The quiet time never starts before `seenRunningS`, when
+ *  this window first saw the run running (an old run's stale timestamps don't count). */
+export function isStalled(run: Pick<AgentRun, "status" | "updated_at">, activity: AgentActivity | null, lastStepTs: number | null, nowMs: number = Date.now(),
+  opts: { waiting?: boolean; seenRunningS?: number | null } = {}): boolean {
+  if (run.status !== "running" || opts.waiting) return false;
   if (activity && (activity.state === "tool" || activity.state === "waiting_approval" || activity.state === "waiting_user")) return false;
-  const last = Math.max(run.updated_at ?? 0, lastStepTs ?? 0, activity?.since ?? 0);
+  const last = quietSince(run, activity, lastStepTs, opts.seenRunningS ?? null);
   return last > 0 && nowMs / 1000 - last >= STALL_S;
+}
+
+/** When the run last showed life (s): its last step or activity, never before this window saw it running. */
+export function quietSince(run: Pick<AgentRun, "updated_at">, activity: AgentActivity | null, lastStepTs: number | null, seenRunningS: number | null): number {
+  return Math.max(run.updated_at ?? 0, lastStepTs ?? 0, activity?.since ?? 0, seenRunningS ?? 0);
+}
+
+const seenRunning = new Map<string, number>();
+/** When this window first saw `runId` running (s); `running` false forgets it. */
+export function seenRunningAt(runId: string, running: boolean, nowMs: number = Date.now()): number | null {
+  if (!running) { seenRunning.delete(runId); return null; }
+  let t = seenRunning.get(runId);
+  if (t === undefined) { t = nowMs / 1000; seenRunning.set(runId, t); }
+  return t;
 }
 
 /** Tests. */
 export function resetChat(): void {
+  seenRunning.clear();
   messageTarget.value = null;
   composerDraft.value = null;
   editedKeys.value = new Set();

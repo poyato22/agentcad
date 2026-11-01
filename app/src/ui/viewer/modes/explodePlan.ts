@@ -25,6 +25,9 @@ export interface ExplodeUnit {
 
 /** A unit's own move, as a share of its own diagonal. */
 export const OWN_SHARE = 0.35;
+/** A part mounted on (or in) its parent ends at least this share of its own size (along its move)
+ *  clear of it; stacked parts keep it between them too. */
+export const MOUNT_GAP = 0.25;
 /** A child's step: this share of its parent's extent along the way it goes ... */
 export const PARENT_SHARE = 0.25;
 /** ... or this share of its own diagonal, whichever is more. */
@@ -102,9 +105,12 @@ export function explodePlan(units: readonly ExplodeUnit[]): THREE.Vector3[] {
   const childStep = (i: number, p: number) => {
     const step = Math.max(PARENT_SHARE * extent(units[p].box, dirs[i]), CHILD_SHARE * diags[i]) * DEPTH_DAMP ** Math.max(0, depth[i] - 1);
     // clears the parent where it overlaps it (a part sitting on or in it), never more
-    const eps = whole * 1e-4;
-    const clear = overlaps(units[i].box, units[p].box, eps) ? Math.max(0, proj(units[p].box, dirs[i], true) - proj(units[i].box, dirs[i], false)) : 0;
-    return clear + Math.max(step, MIN_SHARE * whole);
+    // mounted on it (touching) or in it: first clear the parent's box along the way, then leave a
+    // visible gap of at least MOUNT_GAP of the child's own size that way
+    const eps = -whole * 1e-3;
+    const mounted = overlaps(units[i].box, units[p].box, eps);
+    const clear = mounted ? Math.max(0, proj(units[p].box, dirs[i], true) - proj(units[i].box, dirs[i], false)) : 0;
+    return clear + Math.max(step, MIN_SHARE * whole) + (mounted ? MOUNT_GAP * extent(units[i].box, dirs[i]) : 0);
   };
 
   // roots: the one holding the most (the frame everything hangs off; else the biggest) stays
@@ -179,7 +185,8 @@ export function explodePlan(units: readonly ExplodeUnit[]): THREE.Vector3[] {
           if (dirs[j].lengthSq() && dirs[j].dot(dirs[i]) < 0.7) continue;
           const other = shifted(j);
           if (!overlaps(me, other, eps)) continue;
-          const sep = STACK_GAP * Math.min(diags[i], diags[j]);
+          // stacked siblings: apart by a share of the smaller and of the mover's own size that way
+          const sep = STACK_GAP * Math.min(diags[i], diags[j]) + MOUNT_GAP * extent(units[i].box, dirs[i]);
           push = Math.max(push, proj(other, dirs[i], true) - proj(me, dirs[i], false) + sep);
         }
         if (push <= eps) break;
