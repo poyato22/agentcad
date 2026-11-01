@@ -186,18 +186,14 @@ def _solved_instances(ctx: ToolContext) -> list[Placed] | None:
     project_id = _run_project_id(ctx)
     if asm_store is None or project_id is None:
         return None
-    from ..assembly.geometry import face_resolver
-    from ..assembly.solve import solve
+    from ..assembly.pose import world_poses                # the one pose (P11 F4)
     try:
         asm = asm_store.get(project_id)
     except Exception:  # noqa: BLE001 - no assembly: render the parts as they are
         return None
     if not asm.instances:
         return None
-    try:
-        tf = solve(asm, resolve_face=face_resolver(Path(ctx.workdir) / "parts")).transforms
-    except MisesError:
-        tf = {}
+    tf, _err = world_poses(asm, Path(ctx.workdir) / "parts")
     out = [(i.part_id, tf.get(i.id) or i.transform) for i in asm.instances
            if PART_ID_RE.match(i.part_id) and safe_io.exists(_part_dir(ctx, i.part_id),
                                                                "model.stl")]

@@ -18,9 +18,9 @@ import re
 from pathlib import Path
 
 from ..types import MisesError, ToolImage
-from .geometry import face_resolver, run_geometry
+from .geometry import run_geometry
 from .health import finalize, health
-from .solve import solve
+
 
 log = logging.getLogger(__name__)
 
@@ -51,8 +51,9 @@ def _bboxes(root: Path, asm) -> dict[str, dict]:
 
 def bbox_report(asm_store, root: Path, project_id: str) -> tuple[dict, object, object]:
     """(bbox health report, assembly, solve result) of a build's assembly."""
+    from .pose import solve_assembly                      # the one pose (P11 F4)
     asm = asm_store.get(project_id)
-    res = solve(asm, resolve_face=face_resolver(root))
+    res = solve_assembly(asm, root)
     return (health(asm.instances, res.transforms, _bboxes(root, asm), joints=asm.joints),
             asm, res)
 
@@ -125,8 +126,9 @@ async def overview_images(home: Path, asm_store, project_id: str, report: dict, 
     from ..cad.views import renders_dir
     root = Path(home) / "parts"
     try:
+        from .pose import world_poses
         asm = asm_store.get(project_id)
-        tf = solve(asm, resolve_face=face_resolver(root)).transforms
+        tf, _err = world_poses(asm, root)
     except Exception:  # noqa: BLE001
         return []
     tint, notes = _tints(report)

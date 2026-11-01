@@ -21,9 +21,9 @@ import math
 from pathlib import Path
 
 from ..cad import safe_io, skeleton
-from .geometry import face_resolver
+
 from .model import AssemblyStore, Instance
-from .solve import solve, transform_point, translate
+from .solve import transform_point, translate
 
 #: the clearance between a placed part and every other placed box
 MIN_GAP_MM = 5.0
@@ -64,10 +64,8 @@ SEARCH_STEPS = 24
 
 def _instance_boxes(parts_root: Path, asm) -> dict[str, tuple[list[float], list[float]]]:
     """Every built instance's world box (part bbox through its solved pose), by instance id."""
-    try:
-        poses = solve(asm, resolve_face=face_resolver(parts_root)).transforms
-    except Exception:  # noqa: BLE001 - a broken joint never stops a placement
-        poses = {}
+    from .pose import world_poses                          # the one pose (P11 F4)
+    poses, _err = world_poses(asm, parts_root)
     out = {}
     for inst in asm.instances:
         bb = _bbox(parts_root, inst.part_id)

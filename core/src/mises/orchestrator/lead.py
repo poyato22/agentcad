@@ -717,11 +717,11 @@ def nearby_hole(home: Path, part_id: str, point: list[float]) -> str | None:
 def _world_of(rt: Runtime, project_id: str, inst, point: list[float]) -> list[float] | None:
     """A part-frame point in assembly (world) mm through the instance's solved pose; None when
     the pose cannot be solved."""
-    from ..assembly.geometry import face_resolver
-    from ..assembly.solve import solve, transform_point
+    from ..assembly.pose import solve_assembly             # the one pose (P11 F4)
+    from ..assembly.solve import transform_point
     try:
         asm = rt.assembly_store.get(project_id)
-        tf = solve(asm, resolve_face=face_resolver(rt.home / "parts")).transforms.get(inst.id)
+        tf = solve_assembly(asm, rt.home / "parts").transforms.get(inst.id)
         return list(transform_point(tf or inst.transform, [float(c) for c in point]))
     except Exception:  # noqa: BLE001 - a broken joint: no world point rather than a wrong one
         return None
@@ -735,15 +735,14 @@ POSE_TOL_MM, POSE_TOL_SHARE = 2.0, 0.02
 def _model_bbox(rt: Runtime, project_id: str, inst, part_id: str) -> dict | None:
     """The instance's world box as the core has it: the part's measured box (metrics.json)
     through the instance's solved pose. None when either is unknown."""
-    from ..assembly.geometry import face_resolver
-    from ..assembly.solve import solve, transform_point
+    from ..assembly.pose import world_poses                # the one pose (P11 F4)
+    from ..assembly.solve import transform_point
     from ..cad import safe_io
     try:
         b = safe_io.read_json(Path(rt.home) / "parts" / part_id, "metrics.json")["bbox"]
         lo, hi = [float(c) for c in b["min"]], [float(c) for c in b["max"]]
         asm = rt.assembly_store.get(project_id)
-        tf = solve(asm, resolve_face=face_resolver(rt.home / "parts")).transforms.get(inst.id)
-        tf = tf or inst.transform
+        tf = world_poses(asm, rt.home / "parts")[0].get(inst.id) or inst.transform
     except Exception:  # noqa: BLE001 - no box rather than a wrong one
         return None
     pts = [transform_point(tf, [x, y, z]) for x in (lo[0], hi[0]) for y in (lo[1], hi[1])

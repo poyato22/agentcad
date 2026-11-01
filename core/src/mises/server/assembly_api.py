@@ -91,8 +91,9 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
         return Path(runtime.home) / "parts"
 
     def _solved(project_id: str):
+        from ..assembly.pose import solve_assembly       # the one pose (P11 F4)
         asm = store.get(project_id)
-        return asm, solve(asm, resolve_face=face_resolver(parts_root()))
+        return asm, solve_assembly(asm, parts_root())
 
     def _changed(project_id: str) -> None:
         runtime.events.publish(Event(type="assembly_changed", data={"project_id": project_id}))

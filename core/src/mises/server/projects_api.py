@@ -129,8 +129,6 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         that fails keeps the stored transforms, as the agents' views do), each in its part's
         finish; with no instance, the build's largest built part (by volume) in its own frame.
         Thumbs skips parts without a mesh."""
-        from ..assembly.geometry import face_resolver
-        from ..assembly.solve import solve
         asm_store = getattr(runtime, "assembly_store", None)
         insts = []
         if asm_store is not None:
@@ -138,10 +136,8 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
             insts = list(asm.instances)
             tf: dict = {}
             if insts:
-                try:
-                    tf = solve(asm, resolve_face=face_resolver(home / "parts")).transforms
-                except Exception:  # noqa: BLE001 - a broken solve still shows the stored layout
-                    tf = {}
+                from ..assembly.pose import world_poses     # the one pose (P11 F4)
+                tf, _err = world_poses(asm, home / "parts")
         rows: dict = {}
 
         def part(pid: str):

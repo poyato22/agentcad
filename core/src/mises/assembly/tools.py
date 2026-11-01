@@ -74,9 +74,10 @@ def _check_part_in_build(ctx: ToolContext, pid: str, part_id: str) -> None:
 
 
 def _solve(ctx: ToolContext, project_id: str) -> tuple:
+    """The build's assembly and its solve: the one pose (assembly/pose.py, P11 F4)."""
+    from .pose import solve_assembly
     asm = _store(ctx).get(project_id)
-    res = solve(asm, resolve_face=face_resolver(_parts_root(ctx)))
-    return asm, res
+    return asm, solve_assembly(asm, _parts_root(ctx))
 
 
 def _changed(ctx: ToolContext, project_id: str) -> None:
