@@ -1,5 +1,12 @@
 [
   {
+    "name": "actuator_size",
+    "description": "Static worst-case torque per joint (no simulation, run it at the skeleton stage): everything distal to the joint at the worst pose across its range, plus, for a legged robot, the moment of its share of the weight on the feet; x a dynamic factor (1.5, legs 2.0) vs each joint's actuator (pass at <= 60% of stall for servos, 80% for BLDC) with lighter/stronger candidates. Confirm with dyn_torque on a real motion before done.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
     "name": "agent_message",
     "description": "Hand a recommendation (a design change a study showed is needed) to this build's lead agent as a message. The user approves the exact text first. It is delivered now when the lead is idle, else queued for its next turn. Refused when the build has no lead, or while your previous message still waits in its queue.",
     "safety": "local_mutate",
@@ -112,6 +119,13 @@
     "open_world": false
   },
   {
+    "name": "cable_route",
+    "description": "Route each net (battery -> switch -> driver -> motor, signal lines) between two instances through the assembly's free space (A* on a voxel grid around the parts' boxes, with clearance): path, length, wire gauge from the current, mass, and a service loop + bend-radius check at every moving joint it crosses (the path should pass within 15 mm of the joint axis). Build the cable with the cable_path recipe from the returned path and add the lengths to the parts list.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
     "name": "calibration_delete",
     "description": "Delete a material calibration by id (studies go back to the data sheet).",
     "safety": "local_mutate",
@@ -176,7 +190,7 @@
   },
   {
     "name": "concept_sketch",
-    "description": "Show the user what the build will look like BEFORE any parts: build a rough massing model (massing_script: VARS + build(v), one simple solid per major volume, true to scale, front facing -Y) in the sandbox and render it as a line sketch: 3/4 front (perspective) + side elevation, with a ground line and a 1.75 m figure for scale. Add `callouts` (normalised x, y on a view, short text, optional leader `to`) for the defining features. Each call is a new version (v1, v2, \u2026) of the build's sketch; pass parent_sketch_id when revising. The user circles, lassos and pins areas with comments and sends them back to you as a message with the marked images; answer with a revised concept_sketch that addresses every numbered mark. Building parts starts after the user approves (concept_status shows where it stands).",
+    "description": "Show the user what the build will look like BEFORE any parts: build a rough massing model (massing_script: VARS + build(v), one simple solid per major volume, true to scale, front facing -Y) in the sandbox and render it as a line sketch: 3/4 front (perspective) + side elevation, with a ground line and a 1.75 m figure for scale. Add `callouts` (normalised x, y on a view, short text, optional leader `to`) for the defining features. Each call is a new version (v1, v2, \u2026) of the build's sketch; pass parent_sketch_id when revising. The user circles, lassos and pins areas with comments and sends them back to you as a message with the marked images; answer with a revised concept_sketch that addresses every numbered mark. Building parts starts after the user approves (concept_status shows where it stands). The massing's solids are checked for interference first: overlapping volumes (over clash_tolerance_pct) refuse the sketch and return the clashes to fix. Look at the returned images yourself before you present the sketch.",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false
@@ -235,6 +249,64 @@
   {
     "name": "drivetrain_plan",
     "description": "Actuator + reduction options for a joint: given its peak torque and speed (from dyn_torque or a static estimate), the catalog actuators (servos, steppers, Dynamixel, BLDC actuators, gearmotors; torque-speed lines) combined with direct drive, a GT2 belt, a planetary, a cycloidal, a compound planetary or a worm reduction, filtered by margin, speed, mass and size, lightest and cheapest first. Insert the chosen reduction with mech_insert.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "dyn_build",
+    "description": "Build the dynamics (MuJoCo) model of the build's assembly and check it: bodies (rigid clusters of fixed-joined parts), joints, actuators, couplings and loops, total mass vs the parts' masses, every moving joint mapped, and parts overlapping at rest (> 1 mm). Run it first when a dyn_* check fails to understand the model. Mass and inertia come from the B-rep (rebuild old parts for exact inertia).",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "dyn_reactions",
+    "description": "Joint reaction loads through a motion: for every link, the force and moment its parent joint transmits (at the joint anchor, world axes), peak and RMS with the time of the peak. These are the loads dyn_to_fem puts on the links' bores; use them to size bearings, pins and shafts.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "dyn_rom_sweep",
+    "description": "Range-of-motion collision sweep: thousands of poses across the joints' limits (Latin hypercube, MuJoCo), every pair of parts that collides (not a part and the part it is jointed to), how deep and at which joint values. Fast and conservative (bounding boxes): confirm a hit with assembly_check sweep (exact) before you redesign. Pairs that already touch at rest are reported apart.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "dyn_stability",
+    "description": "Stability of a free-standing build: centre of mass vs the support polygon of its floor contacts after it settles (margin and static tip angle), a floor-tilt test (the slope at which it tips or slides) and, with a trajectory, the CoP margin along the motion. Pass at >= 20 mm margin and >= 15 deg tip angle. A fixed base reports not applicable.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "dyn_to_fem",
+    "description": "Dynamics -> stress: run the motion, take the peak joint reactions of the most loaded links (or `links`), and study each link's part in CalculiX (one sim_run static study per link: held at its parent joint's bore, the child joints' forces and moments and the floor contacts on their faces). Returns each link's safety factor vs min_safety_factor and writes it into the build's engineering checks. Runs in the background by default (a note arrives; job_wait reads it). Results are a GUIDE ONLY: the FEM error band and the dynamics accuracy notes apply.",
+    "safety": "local_mutate",
+    "implied_classes": [
+      "local_mutate"
+    ],
+    "open_world": false
+  },
+  {
+    "name": "dyn_torque",
+    "description": "Joint torques of the build moving through a motion (MuJoCo rigid-body dynamics): the actuators track the trajectory in a forward simulation (servo forces, speeds, power) and inverse dynamics gives the ideal torque. Per joint: peak and RMS torque, peak speed and power vs its actuator's stall/rated torque and torque-speed line (pass at peak <= 60% of stall for servos, 80% for BLDC; RMS <= rated), with lighter/stronger candidates. Trajectory: squat / stand_up / trot for a legged robot (feet held by IK), reach / sweep / keyframes for an arm, or a saved animation. A guide: state the margins and the accuracy notes.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "electronics_estimate",
+    "description": "Estimate the electronics an engineering build needs (E17): controller (SBC / MCU / flight controller), servo / stepper / BLDC drivers or ESCs, radio + antenna clearance, GPS, IMU, BMS, 5 V and servo rails, main switch, e-stop, connectors and the battery (from the power budget of the build's actuators), each with size, mass, power and the reason. Needs come from the build's actuated joints and the spec's words; pass flags to override. reserve=true packs them into case_part_id's cavity (or cavity_box) with internals_pack and returns the placements to add with assembly_add_instance (reserve the space in the layout before skinning).",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "engineering_checks",
+    "description": "The build's engineering checks before you report done: the skeleton checks (actuator_size, electronics_estimate, power_budget) and, for a build with moving joints, dyn_torque, dyn_stability, dyn_rom_sweep, dyn_to_fem and assembly_health, each pass / warn / fail / missing / stale (the assembly changed since) with its margins. Do not report done while one is missing, failing or stale; state the margins in your final message.",
     "safety": "read",
     "implied_classes": [],
     "open_world": false
@@ -506,6 +578,13 @@
     "open_world": false
   },
   {
+    "name": "power_budget",
+    "description": "Power budget of the build: average power of the actuators (from the latest dyn_torque RMS torques and speeds, else a 30% duty assumption) plus the electronics, energy for runtime_h (80% depth of discharge, 90% DC-DC), peak current, the lightest battery that meets both (C rating x Ah >= 1.25 x peak), the servo rail and the wire gauges (battery main, actuator rail and branch, 5 V logic).",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
     "name": "present_view",
     "description": "Present a live view of the build in your reply: an orbiting shot (kind 'orbit'), an x-ray internal shot ('internal'), a section cutaway ('section'), an exploded view ('exploded'), every part laid flat in a grid with its name ('laid_out': a knolling shot of what the build is made of), or a subset of parts ('subset', drawn with the rest of the build ghosted for context). For the assembly (target = the build): 'animation' plays a motion the user can scrub, loop and speed up (`animation` = {animation_id} saved by assembly_animate `name`, or inline `keyframes` [{joint_id, from?, to, duration_s}]) \u2014 present it when motion matters; 'section_sweep' sweeps a cut plane through it once, then hands the slider to the user (`sweep` = {axis: x|y|z, from?, to? in mm, default the assembly's box}) \u2014 present it when the internals matter (design, packing). `target` = {kind: 'part'|'project', id, parts?, ghost?}. Camera: azimuth in degrees from -Y toward +X with Z up, elevation above the XY plane. It shows as a card the user can open full-window. Pass `caption` to say what it shows. When presenting results show 1-3 well-chosen views and keep the text short.",
     "safety": "read",
@@ -684,6 +763,13 @@
     "name": "study_run",
     "description": "Run a design study on one parametric part: search its variables for the best variant that meets the project spec (Latin-hypercube sampling, then coordinate refinement). Each variant is built as a scratch copy and, if CalculiX is installed, gets a coarse-mesh stress study per load case; the winner is confirmed on the fine mesh. Modal and wind targets (custom avoid_band_hz / min_natural_freq_hz / max_drag_n) are too costly per variant: they are checked on the winners only (best first, at most 3), and a winner that fails one is dropped for the next. The live part is NOT changed: apply a variant with study_apply. Objective: min_mass (default), max:min_sf, min:max_disp_mm, or weights / the user's priorities. Budget capped at 24 evaluations / 20 minutes; a variant whose build or stress study fails is infeasible. Emits study_progress; cancellable (partial results are kept). Runs its stress studies internally under this call's approval. Runs in the background by default (returns {study_id, status: running}; a note arrives when it finishes; wait: true blocks).",
     "safety": "local_mutate",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "thermal_estimate",
+    "description": "Lumped temperature inside an enclosure: T = T_amb + P / (h A), h 5-10 W/m2K natural or 25-50 with a fan; flags the enclosure material's service temperature (PLA ~55 C) and a board's limit. When it warns, run sim_run type thermal on the enclosure.",
+    "safety": "read",
     "implied_classes": [],
     "open_world": false
   },

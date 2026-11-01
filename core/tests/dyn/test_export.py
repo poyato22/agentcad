@@ -92,7 +92,9 @@ def test_fixed_joints_merge_into_one_body_and_loops_become_connects(home):
 def test_coupling_contract_becomes_an_equality_joint(home):
     asm = quad.assembly()
     j = next(x for x in asm.joints if x.id == "fl_knee")
-    object.__setattr__(j, "coupling", {"kind": "belt", "ratio": -2.0, "partner_joint": "fl_hip"})
+    # p10-c2's Joint carries the coupling field itself (Plan 10 shared contract)
+    from mises.assembly.model import Coupling
+    j.coupling = Coupling(kind="belt", ratio=-2.0, partner_joint="fl_hip")
     ex = export.export(home, None, asm)
     eq = [e for e in ex.model["equalities"] if e["type"] == "joint"]
     assert eq == [{"type": "joint", "joint1": "j_fl_knee", "joint2": "j_fl_hip",

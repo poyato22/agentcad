@@ -165,7 +165,8 @@ def resolve(ref) -> Perf | None:
         if ref is None:
             return None
     s = str(ref)
-    hit = _from_catalog(s) or _BY_KEY.get(s) or _BY_KEY.get(_norm(s))
+    # the curated table first (its own ids and aliases), then C2's catalog perf rows
+    hit = _BY_KEY.get(s) or _BY_KEY.get(_norm(s)) or _from_catalog(s)
     if hit is None:
         n = _norm(s)
         for k, p in _BY_KEY.items():
