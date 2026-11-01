@@ -22,6 +22,10 @@ except ImportError:                      # pragma: no cover - the worker injects
 SAMPLE_S = 0.002          # recorded every 2 ms
 SERIES_POINTS = 240       # points per chart series
 PENETRATION_TOL_M = 0.0005
+# MuJoCo enums as plain ints: numpy ints from the model arrays never compare equal to them
+FREE, HINGE, SLIDE = (int(mujoco.mjtJoint.mjJNT_FREE), int(mujoco.mjtJoint.mjJNT_HINGE),
+                      int(mujoco.mjtJoint.mjJNT_SLIDE))
+EQ_CONNECT = int(mujoco.mjtEq.mjEQ_CONNECT)
 
 
 def _thin(xs, n: int = SERIES_POINTS) -> list:
@@ -100,7 +104,7 @@ def task_build(job: dict) -> dict:
     pen = _penetrations(mr, dr, set(), PENETRATION_TOL_M)
     eq_res = []
     for i in range(m.neq):
-        if m.eq_type[i] == mujoco.mjtEq.mjEQ_CONNECT:
+        if int(m.eq_type[i]) == EQ_CONNECT:
             b1, b2 = m.eq_obj1id[i], m.eq_obj2id[i]
             a1 = d.xpos[b1] + d.xmat[b1].reshape(3, 3) @ m.eq_data[i, :3]
             a2 = d.xpos[b2] + d.xmat[b2].reshape(3, 3) @ m.eq_data[i, 3:6]
@@ -306,7 +310,7 @@ def _reactions(m, rec, active) -> list[dict]:
         if m.body_jntnum[b] == 0:
             continue
         jid = int(m.body_jntadr[b])
-        if m.jnt_type[jid] == mujoco.mjtJoint.mjJNT_FREE:
+        if int(m.jnt_type[jid]) == FREE:
             continue
         root = int(m.body_rootid[b])
         mags, vecs = [], []
@@ -335,8 +339,10 @@ def _reactions(m, rec, active) -> list[dict]:
             cf = f6[3:]
             cm = f6[:3] + np.cross(rec["subcom"][k][int(m.body_rootid[cb])] - ca, cf)
             # the child pushes back on this link: minus the parent's force on the child
+            cax = _axis(m, rec, k, cj, cb)
             children.append({"body": m.body(cb).name, "joint": m.joint(cj).name,
-                             "anchor_m": _r(ca), "force_n": _r(-cf), "moment_nm": _r(-cm)})
+                             "anchor_m": _r(ca), "force_n": _r(-cf), "moment_nm": _r(-cm),
+                             "axis": _r(cax) if cax is not None else None})
         contacts = [{"pos_m": _r(c["pos"]), "force_n": _r(c["force"])}
                     for c in rec["contacts"][k] if c["body"] == b]
         out.append({"body": m.body(b).name, "joint": m.joint(jid).name,
@@ -358,7 +364,7 @@ def _anchor(m, rec, k, jid, b) -> np.ndarray:
 
 
 def _axis(m, rec, k, jid, b):
-    if m.jnt_type[jid] not in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
+    if int(m.jnt_type[jid]) not in (HINGE, SLIDE):
         return None
     a = rec["xmat"][k][b].reshape(3, 3) @ m.jnt_axis[jid]
     return a / max(np.linalg.norm(a), 1e-12)
@@ -436,15 +442,14 @@ def task_rom(job: dict) -> dict:
     m, d = mjmodel.compile_model(model, "rom")
     rest = {tuple(p["bodies"]) for p in _penetrations(m, d, set(), PENETRATION_TOL_M)}
     names = job.get("joints") or [m.joint(j).name for j in range(m.njnt)
-                                  if m.jnt_type[j] in (mujoco.mjtJoint.mjJNT_HINGE,
-                                                       mujoco.mjtJoint.mjJNT_SLIDE)]
+                                  if int(m.jnt_type[j]) in (HINGE, SLIDE)]
     n = int(job.get("n", 2000))
     rng = np.random.default_rng(int(job.get("seed", 1)))
     ranges = []
     for j in names:
         jid = m.joint(j).id
         lo, hi = (m.jnt_range[jid] if m.jnt_limited[jid]
-                  else (-math.pi, math.pi) if m.jnt_type[jid] == mujoco.mjtJoint.mjJNT_HINGE
+                  else (-math.pi, math.pi) if int(m.jnt_type[jid]) == HINGE
                   else (-0.05, 0.05))
         ranges.append((float(lo), float(hi)))
     # Latin hypercube: every joint's range cut into n strata, shuffled per joint

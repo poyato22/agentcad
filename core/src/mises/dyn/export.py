@@ -451,3 +451,64 @@ def to_mj(map_: dict, joint_id: str, value: float, dof: int = 0) -> tuple[str, f
 def from_mj(map_: dict, name: str, value: float) -> float:
     v = map_["joints"].get(name) or {}
     return math.degrees(value) if v.get("mj_type") == "hinge" else value * 1000.0
+
+
+def kinematics(home: Path, store, asm, *, base: str = "auto") -> dict:
+    """The assembly as plain kinematics for the static checks (no MuJoCo): instances with
+    mass and world com (m), the spanning tree's joints with world anchor + axis (m), the root
+    instance, whether the base floats and which instances are feet; plus `pose(values)` that
+    re-solves with some joint values changed (deg / mm) and returns (instances, tree)."""
+    home = Path(home)
+    inst = {i.id: i for i in asm.instances}
+    if not inst:
+        raise MisesError(ErrorCode.INVALID_INPUT, "the assembly is empty",
+                         hint="add the build's parts to the assembly first")
+    uf = _UF(inst)
+    tree = [j for j in asm.joints if j.a.instance_id in inst and j.b.instance_id in inst
+            and uf.union(j.a.instance_id, j.b.instance_id)]
+    resolver = face_resolver(home / "parts")
+    notes: list[str] = []
+    metrics = {i.part_id: _metrics(home, i.part_id) for i in asm.instances}
+    own = {iid: inr.of_part(metrics[i.part_id], _mass_kg(store, home, i.part_id,
+                                                         metrics[i.part_id], notes))
+           for iid, i in inst.items()}
+
+    def pose(values: dict | None = None):
+        js = [j.model_copy(update={"value": values[j.id]}) if values and j.id in values else j
+              for j in tree]
+        sub = type(asm)(instances=list(asm.instances), joints=js)
+        res = solve(sub, resolve_face=resolver)
+        T = {i: np.array(res.transforms[i], dtype=float) for i in inst}
+        rows = []
+        for iid, i in inst.items():
+            w = inr.to_world(own[iid], T[iid])
+            _c, _h, _r, zlo, (lo, hi) = _box_world(metrics[i.part_id], T[iid])
+            rows.append({"id": iid, "name": i.name, "part_id": i.part_id, "mass_kg": w.mass,
+                         "com": w.com, "zmin": zlo, "aabb": [lo.tolist(), hi.tolist()],
+                         "foot": [float((lo[0] + hi[0]) / 2), float((lo[1] + hi[1]) / 2), zlo]})
+        jrows = []
+        for j in js:
+            fa = np.array(_resolve_frame(inst[j.a.instance_id].part_id, j.a.frame, resolver))
+            w = T[j.a.instance_id] @ fa
+            jrows.append({"id": j.id, "kind": j.kind, "a": j.a.instance_id,
+                          "b": j.b.instance_id, "anchor": (w[:3, 3] / 1000.0).tolist(),
+                          "axis": (w[:3, 2] / max(np.linalg.norm(w[:3, 2]), 1e-12)).tolist(),
+                          "value": j.value, "limits": j.limits,
+                          "actuator": _get(j, "actuator")})
+        return rows, jrows
+
+    rows, jrows = pose()
+    fixed = [i.id for i in asm.instances if i.fixed]
+    root = fixed[0] if fixed else max(rows, key=lambda r: r["mass_kg"])["id"]
+    # the rigid cluster of the root (fixed joints) decides the base, as export() does
+    cu = _UF(inst)
+    for j in tree:
+        if j.kind == "fixed":
+            cu.union(j.a.instance_id, j.b.instance_id)
+    zmin = min(r["zmin"] for r in rows)
+    root_min = min(r["zmin"] for r in rows if cu.find(r["id"]) == cu.find(root))
+    free = (root_min > zmin + 0.010) if base == "auto" else base == "free"
+    feet = [r["id"] for r in rows if free and cu.find(r["id"]) != cu.find(root)
+            and r["zmin"] <= zmin + FOOT_BAND_M]
+    return {"instances": rows, "tree": jrows, "root": root, "free": free, "feet": feet,
+            "pose": pose, "notes": notes, "total_mass_kg": sum(r["mass_kg"] for r in rows)}
