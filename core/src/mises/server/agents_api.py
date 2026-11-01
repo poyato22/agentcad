@@ -11,7 +11,7 @@ Admin token only, like every app route (app.py's bearer check).
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -24,15 +24,18 @@ if TYPE_CHECKING:
     from ..runtime import Runtime
 
 
+Finite = Annotated[float, Field(allow_inf_nan=False)]
+
+
 class Feedback(BaseModel):
     part_id: str = Field(min_length=1, max_length=80)
-    point: list[float] = Field(min_length=3, max_length=3)
+    point: list[Finite] = Field(min_length=3, max_length=3)
     face_id: str | None = Field(default=None, pattern=r"^f\d{1,6}$")
     text: str = Field(min_length=1, max_length=4000)
     model_ref: str | None = None
     # Plan 10 E35: a pin dropped in the assembly view names the instance and the world point
     instance_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
-    world_point: list[float] | None = Field(default=None, min_length=3, max_length=3)
+    world_point: list[Finite] | None = Field(default=None, min_length=3, max_length=3)
 
 
 def build_agents_router(runtime: Runtime) -> APIRouter:

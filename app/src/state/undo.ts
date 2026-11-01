@@ -5,12 +5,16 @@
 // text field (text fields keep their own native undo) and no dialog is open; a toast says what
 // happened ("Undid: Rename Bracket"). Agents' edits are not on it: they are the agent's.
 import { signal } from "@preact/signals";
+import { activeBuildId, onBuildSwitch } from "./builds";
 
 export interface UndoCommand {
   /** What the user did, in a few words ("Delete Bracket", "Reset arm to the origin"). */
   label: string;
+  /** Each returns false when it found nothing to change (no toast then); anything else is done. */
   undo(): Promise<unknown> | unknown;
   redo(): Promise<unknown> | unknown;
+  /** The build it belongs to (set by pushUndo: the active one). It never runs in another. */
+  build?: string | null;
 }
 
 /** The most commands kept (the oldest drop off). */
@@ -34,6 +38,7 @@ function toast(text: string, error = false): void {
 
 /** Records an action the user just did (it already happened). A new action clears redo. */
 export function pushUndo(cmd: UndoCommand): void {
+  if (cmd.build === undefined) cmd.build = activeBuildId.peek();
   past.push(cmd);
   if (past.length > UNDO_DEPTH) past.shift();
   future.length = 0;
@@ -51,10 +56,13 @@ async function run(from: UndoCommand[], to: UndoCommand[], which: "undo" | "redo
   if (busy) return false;
   const cmd = from.pop();
   if (!cmd) { toast(which === "undo" ? "Nothing to undo" : "Nothing to redo"); undoTick.value++; return false; }
+  // a command of another build never runs here (the stack is cleared on a build switch anyway)
+  if (cmd.build != null && cmd.build !== activeBuildId.peek()) { undoTick.value++; return false; }
   busy = true;
   try {
-    await cmd[which]();
+    const r = await cmd[which]();
     to.push(cmd);
+    if (r === false) return false;      // nothing changed: no "Undid" for a no-op
     toast(`${which === "undo" ? "Undid" : "Redid"}: ${cmd.label}`);
     return true;
   } catch (e) {
@@ -69,6 +77,9 @@ async function run(from: UndoCommand[], to: UndoCommand[], which: "undo" | "redo
 
 export function undo(): Promise<boolean> { return run(past, future, "undo"); }
 export function redo(): Promise<boolean> { return run(future, past, "redo"); }
+
+// another build's edits are not this build's to undo
+onBuildSwitch(() => { past.length = 0; future.length = 0; undoTick.value++; });
 
 /** Tests: an empty stack. */
 export function clearUndo(): void {

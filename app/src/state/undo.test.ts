@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { activeBuildId } from "./builds";
 import { canRedo, canUndo, clearUndo, inTextField, installUndoKeys, pushUndo, redo, topUndo, undo, undoToast, UNDO_DEPTH } from "./undo";
 
 afterEach(() => { clearUndo(); vi.useRealTimers(); });
@@ -64,6 +65,21 @@ describe("undo stack (E11)", () => {
     await vi.waitFor(() => expect(log).toEqual(["undo a", "redo a"]));
     off();
     input.remove();
+  });
+
+  it("never runs a command in another build, and a no-op says nothing", async () => {
+    const { log, cmd } = counter();
+    activeBuildId.value = "b1";
+    pushUndo(cmd("a"));
+    activeBuildId.value = "b2";
+    expect(await undo()).toBe(false);
+    expect(log).toEqual([]);
+    activeBuildId.value = "b1";
+    undoToast.value = null;
+    pushUndo({ label: "Hide a part", undo: () => false, redo: () => true });
+    expect(await undo()).toBe(false);
+    expect(undoToast.value).toBeNull();
+    activeBuildId.value = null;
   });
 
   it("knows a text field from a button", () => {

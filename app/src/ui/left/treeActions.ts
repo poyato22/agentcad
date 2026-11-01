@@ -7,7 +7,7 @@ import { onCoreEvent } from "../../api/events";
 import type { MisesEvent, PartSummary } from "../../api/types";
 import { fromPreset, withColor, type Appearance, type PresetId } from "../../lib/appearance";
 import { partName } from "../../lib/names";
-import { activeBuildId, builds, isActiveBuild, loadParts } from "../../state/builds";
+import { activeBuildId, builds, isActiveBuild, loadParts, onBuildSwitch } from "../../state/builds";
 import { actions, parts } from "../../state/store";
 import { pushUndo, topUndo, undo, type UndoCommand } from "../../state/undo";
 import { applyMove, type Move } from "./tree";
@@ -188,6 +188,9 @@ export function onAgentDeleted(ev: MisesEvent): void {
   };
 }
 onCoreEvent(onAgentDeleted);
+// E11: a build switch clears the undo stack, so the user's own delete toast goes with it (an agent's,
+// which names its build, stays)
+onBuildSwitch(() => { if (lastDeleted.peek()?.cmd) lastDeleted.value = null; });
 
 /** E11: a delete on the undo stack: undo restores the parts (newest first), redo deletes them again
  *  (with fresh restore tokens). */

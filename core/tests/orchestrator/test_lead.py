@@ -461,6 +461,15 @@ def test_assembly_pin_route_validates_the_world_point(home):
             "part_id": "plate", "point": [0, 0, 0], "text": "x", "instance_id": "abc",
             "world_point": [1, 2]})
         assert r.status_code == 422
+    # never a NaN / infinite spot (Python's json reads NaN): the body model refuses it
+    from pydantic import ValidationError
+
+    from mises.server.agents_api import Feedback
+    for wp in ([float("nan"), 0, 0], [0, float("inf"), 0]):
+        with pytest.raises(ValidationError):
+            Feedback(part_id="plate", point=[0, 0, 0], text="x", instance_id="abc", world_point=wp)
+    with pytest.raises(ValidationError):
+        Feedback(part_id="plate", point=[float("nan"), 0, 0], text="x")
 
 
 def test_feedback_text_cannot_close_the_block():

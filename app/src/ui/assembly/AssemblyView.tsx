@@ -449,7 +449,13 @@ export function AssemblyView(): JSX.Element {
     const before: Mat4 = inst.transform.map((r) => [...r]);
     if (Math.hypot(before[0][3], before[1][3], before[2][3]) < 1e-6) { setNote(`${inst.name} is already at the origin.`); return; }
     const after: Mat4 = before.map((r, i) => (i < 3 ? [r[0], r[1], r[2], 0] : [...r]));
-    const put = async (t: Mat4) => { await actions.client().patchInstance(pid, iid, { transform: t }); await ctl.refresh(true); };
+    // only ever on this build's assembly, while it is the one shown
+    const put = async (t: Mat4) => {
+      if (ctl.projectId.peek() !== pid) return false;
+      await actions.client().patchInstance(pid, iid, { transform: t });
+      await ctl.refresh(true);
+      return true;
+    };
     try {
       await put(after);
       pushUndo({ label: `Reset ${inst.name} to the origin`, undo: () => put(before), redo: () => put(after) });

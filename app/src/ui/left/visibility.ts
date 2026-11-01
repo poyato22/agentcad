@@ -37,7 +37,13 @@ function recorded(label: string, change: () => void): void {
   change();
   const after = [...(hiddenByBuild.peek()[b] ?? [])];
   if (before.join(",") === after.join(",")) return;
-  const put = (ids: string[]) => () => { if ((activeBuildId.peek() ?? "") === b) save(ids); };
+  // another build, or already so: nothing to do (no "Undid" toast)
+  const put = (ids: string[]) => () => {
+    const now = hiddenByBuild.peek()[b] ?? [];
+    if ((activeBuildId.peek() ?? "") !== b || (now.length === ids.length && ids.every((x) => now.includes(x)))) return false;
+    save(ids);
+    return true;
+  };
   pushUndo({ label, undo: put(before), redo: put(after) });
 }
 

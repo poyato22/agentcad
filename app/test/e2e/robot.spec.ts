@@ -129,6 +129,14 @@ test("the origin and R: the selected part's offset shows; R puts it on the origi
   await page.keyboard.press("Meta+z");
   await expect(page.getByTestId("undo-status")).toHaveText("Undid: Reset battery to the origin");
   await expect(page.getByTestId("origin-delta")).toHaveText("Δ 0, 0, 18.5 mm");
+  // R on a focused approval card is that card's (Reject), never a reset of the selected part
+  await page.locator("[data-approval]").first().focus();
+  const patches = async () => (await fake.calls()).filter((c) => c.method === "PATCH" && /\/assembly\/instances\//.test(c.path)).length;
+  const before = await patches();
+  await page.keyboard.press("r");
+  await page.waitForTimeout(300);
+  expect(await patches()).toBe(before);
+  await expect(page.getByTestId("assembly-note")).toHaveCount(0);
   // a part a joint places can't be reset on its own: the note says why
   const t = await at(page, [30, -20, 45]);
   await page.mouse.click(t.x, t.y);
