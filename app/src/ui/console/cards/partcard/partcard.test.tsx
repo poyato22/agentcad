@@ -1,8 +1,8 @@
 // Part cards (R4) against the real core's shapes: `part_show`'s result carries only ids, the
 // card is fetched from GET /browser/cards/{id}; it shows the proxied image, name, price, vendor,
-// specs, "Open · <domain>", and its actions target the card's own build. An unknown currency is
-// shown and sent as unknown, never as USD.
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
+// specs and "Open · <domain>"; it is display-only (P10 E15: the core inserts and lists it). An unknown currency is
+// shown as unknown, never as USD.
+import { cleanup, render, screen } from "@testing-library/preact";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -70,41 +70,27 @@ describe("PartCardSlot", () => {
     expect(document.querySelector('[data-proxy-img]')).toBeTruthy();       // proxied image slot, never a raw <img src>
   });
 
-  it("Add to parts list targets the card's build, sends only core fields, then shows In parts list", async () => {
+  it("is display-only (P10 E15): no Add to parts list / Insert, nothing is sent from the card", async () => {
     render(<PartCardSlot call={call(RESULT)} />);
-    fireEvent.click(await screen.findByRole("button", { name: /^Add .* to the parts list$/ }));
-    await waitFor(() => expect(client.bomAdd).toHaveBeenCalledTimes(1));
-    const [pid, row] = client.bomAdd.mock.calls[0];
-    expect(pid).toBe(CARD.project_id);
-    expect(Object.keys(row).sort()).toEqual(["catalog_id", "currency", "kind", "name", "qty", "specs", "unit_cost", "url", "vendor"]);
-    expect(row).toMatchObject({ kind: "bought", name: CARD.name, qty: 1, unit_cost: 5.95, currency: "USD" });
-    // m3: the vendor is the shop (the page's site), the brand is kept as a spec
-    expect(row.vendor).toBe("adafruit.com");
-    expect(row.specs[0]).toEqual({ key: "brand", value: "TowerPro", unit: null });
-    await screen.findByText("Added to the parts list of Robot arm");
-    expect(screen.getByRole("button", { name: /is in the parts list/ }).hasAttribute("disabled")).toBe(true);
+    await screen.findByText(CARD.name);
+    expect(screen.queryByRole("button", { name: /parts list|^Insert/ })).toBeNull();
+    expect(client.bomAdd).not.toHaveBeenCalled();
+    expect(client.catalogInsert).not.toHaveBeenCalled();
+    // an older core's result names neither: no status claimed
+    expect(document.querySelector("[data-in-build], [data-in-list]")).toBeNull();
   });
 
-  it("Insert names the card's build and inserts there", async () => {
-    render(<PartCardSlot call={call(RESULT)} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Insert Micro servo - TowerPro SG92R into Robot arm" }));
-    await waitFor(() => expect(client.catalogInsert).toHaveBeenCalledWith(CARD.catalog_id, CARD.project_id));
+  it("says where the core put the part when the result names it (core C1 inserts and lists it)", async () => {
+    render(<PartCardSlot call={call({ ...RESULT, part_id: "servo_sg92r", bom_id: "bom_7" })} />);
+    await screen.findByText(CARD.name);
+    expect(document.querySelector("[data-in-build=servo_sg92r]")?.textContent).toBe("In Robot arm");
+    expect(document.querySelector("[data-in-list=bom_7]")?.textContent).toBe("In the parts list");
   });
 
-  it("an unknown currency is shown and sent as unknown, not USD", async () => {
+  it("an unknown currency is shown as unknown, not USD", async () => {
     setCard({ ...CARD, currency: null });
     render(<PartCardSlot call={call(RESULT)} />);
     await screen.findByText("5.95 (currency unknown)");
-    fireEvent.click(screen.getByRole("button", { name: /^Add .* to the parts list$/ }));
-    await waitFor(() => expect(client.bomAdd).toHaveBeenCalled());
-    expect(client.bomAdd.mock.calls[0][1].currency).toBeNull();
-  });
-
-  it("a card that isn't catalog-backed has no Insert", async () => {
-    setCard({ ...CARD, catalog_backed: false, catalog_id: null });
-    render(<PartCardSlot call={call(RESULT)} />);
-    await screen.findByText(CARD.name);
-    expect(screen.queryByRole("button", { name: /^Insert/ })).toBeNull();
   });
 
   it("a card that can't be loaded says so", async () => {
