@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import json
 import logging
 import os
 import re
@@ -113,6 +114,12 @@ def _public_log(user_log: dict | None) -> dict | None:
         return user_log
     rest = {k: v for k, v in user_log.items() if k != CLASSIFY}
     return rest or None
+
+
+def _warning_key(payload: dict) -> str:
+    """What a turn-end engineering warning says (its check lists), to tell a repeat (FWC M5)."""
+    keep = ("missing", "failing", "stale", "running", "unchecked", "project_id", "warning")
+    return json.dumps({k: payload.get(k) for k in keep}, sort_keys=True, default=str)
 
 
 def tools_withheld_for(model_ref: str) -> frozenset[str]:
@@ -302,6 +309,9 @@ class Runtime:
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
         self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
+        # FWC M5: the last turn-end engineering warning each run got, so an unchanged pipeline
+        # (a Q&A turn that changed nothing) does not repeat it every turn
+        self._warned: dict[str, str] = {}
         # E33: root run id -> the build whose assembly its turn changed; the render waiting for
         # its next tool result; the turn-end review tasks (awaited by tests)
         self.assembly_touched: dict[str, str] = {}
@@ -1459,7 +1469,9 @@ class Runtime:
             return
         from .engineering.pipeline import finish_report
         got = finish_report(self, run_id)
-        if got is not None:
+        if got is None:
+            self._warned.pop(run_id, None)       # clear now: a later regression warns again
+        elif self._warned.get(run_id) != _warning_key(got[1]):
             self._turn_warning(run_id, *got)
 
     def _turn_warning(self, run_id: str, text: str, payload: dict,
@@ -1467,6 +1479,7 @@ class Runtime:
         """The single finish-check step of a turn (VERIFY, kind engineering_checks) and its
         engineering_warning event; `health` adds the E33 assembly findings to both."""
         body = {**payload, "warning": text, **({"assembly_health": health} if health else {})}
+        self._warned[run_id] = _warning_key(payload)
         with contextlib.suppress(Exception):
             self.store.append_step(run_id, StepKind.VERIFY, body)
         self.events.publish(Event(type="engineering_warning", run_id=run_id, data={

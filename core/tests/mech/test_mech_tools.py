@@ -139,6 +139,22 @@ async def test_mech_check_on_a_group_reports_mobility_sizing_and_loops(ctx, fake
         await mt.mech_check.handler(ctx, mt.CheckArgs(project_id="p", group="nope"))
 
 
+async def test_the_dyn_rom_sweep_pointer_is_a_note_not_a_warn(ctx, fake_build, monkeypatch):
+    """FWC M6: with dynamics available, a fully passing swept check reports 0 warn; the pointer
+    to dyn_rom_sweep is a note."""
+    out = await mt.mech_insert.handler(ctx, mt.InsertArgs(project_id="p", mech_id="slider_crank"))
+
+    async def fake_sweep(ctx_, pid, asm, rec, steps):
+        return [mt._check("rom_sweep", "pass", "swept")]
+    monkeypatch.setattr(mt, "_rom_sweep", fake_sweep)
+    ctx.services["registry"] = SimpleNamespace(get=lambda name: object())
+    res = await mt.mech_check.handler(ctx, mt.CheckArgs(project_id="p", group=out.data["group"]))
+    assert not [r for r in res.data["results"] if r["status"] == "warn"
+                and "dyn_rom_sweep" in r["detail"]]
+    assert any("dyn_rom_sweep" in n for n in res.data["notes"])
+    assert "dyn_rom_sweep" in res.summary
+
+
 async def test_drivetrain_plan_finds_options_with_margin(ctx):
     out = await mt.drivetrain_plan.handler(ctx, mt.PlanArgs(torque_nm=6.0, speed_rpm=20.0))
     rows = out.data["options"]

@@ -74,18 +74,7 @@ user approves the sketch or skips it. `mixed`: your first deliverable is one `co
 `concept_sketch` (parent_sketch_id = the marked version) that addresses every numbered mark.
 - Later, pitch again only for a genuinely open look decision (e.g. the head), at most 2 options.
 
-## Engineering checks (anything with moving parts)
-- At the skeleton stage, before skins: `actuator_size`, `electronics_estimate` (reserve: true, \
-into the enclosure) and `power_budget`.
-- Before you report done: `dyn_torque` on a representative motion, `dyn_stability`, \
-`dyn_rom_sweep`, `dyn_to_fem` on the most loaded links, and `assembly_health` when it exists; \
-revise until they pass. Give every moving joint an actuator (an unjudged joint does not pass). \
-`dyn_to_fem` runs in the background: `job_wait` its job and read the safety factors before you \
-claim done. `engineering_checks` shows what is missing, failing or stale. State the \
-margins (torque % of stall, stability margin, link safety factors, runtime) in your final \
-message: a turn that ends with checks missing gets a warning.
-
-## Tell the user
+{engineering}## Tell the user
 - Mises shows a card whenever a part is created, an agent is spawned, or something is added to \
 the assembly or the parts list. Still say it in one short line ("Spawned designer: Design motor \
 mount.").
@@ -98,11 +87,30 @@ enclosure, clearances), present `present_view` kind `section_sweep` on the build
 {{axis}}): a cut sweeps through the assembly once, then the user drags it.
 """
 
+#: the engineering pipeline, for a routed agent whose own body does not already give it (the
+#: engineer's "Engineering checks: practical engineering first" section does: FWC M4)
+LEAD_ENGINEERING = """## Engineering checks (anything with moving parts)
+- At the skeleton stage, before skins: `actuator_size`, `electronics_estimate` (reserve: true, \
+into the enclosure) and `power_budget`.
+- Before you report done: `dyn_torque` on a representative motion, `dyn_stability`, \
+`dyn_rom_sweep`, `dyn_to_fem` on the most loaded links, and `assembly_health` when it exists; \
+revise until they pass. Give every moving joint an actuator (an unjudged joint does not pass). \
+`dyn_to_fem` runs in the background: `job_wait` its job and read the safety factors before you \
+claim done. `engineering_checks` shows what is missing, failing or stale. State the \
+margins (torque % of stall, stability margin, link safety factors, runtime) in your final \
+message: a turn that ends with checks missing gets a warning.
+
+"""
+#: the tools a body must name for its own engineering section to stand in for LEAD_ENGINEERING
+ENGINEERING_MARKERS = ("actuator_size", "electronics_estimate", "power_budget", "dyn_torque",
+                       "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks")
+
 #: the assembly steps, for a routed agent whose own body does not already give them (the
 #: engineer's "Assemble" section does): the ordering guidance appears once in a lead's prompt
 LEAD_ASSEMBLY = """
 ## The assembly
-- A new part lands in the assembly by itself (beside the others, or at its skeleton slot); \
+- A new part lands in the assembly by itself (at its skeleton slot, else next to its related \
+parts or near the others); \
 `assembly_add_part` on it then joins that same instance where it really goes. A throwaway test \
 piece: create it with `place: false`. Delete a part you no longer need with `part_delete`.
 - When you build a system, bring every part into the assembly with `assembly_add_part`: the \
@@ -121,7 +129,9 @@ def lead_definition(defn: AgentDefinition) -> AgentDefinition:
     (every prompt path carries it); delegation on Claude Code is in its tool-only section."""
     tools = None if defn.tools is None else list(dict.fromkeys([*defn.tools, *LEAD_TOOLS]))
     has_assembly = "assembly_animate" in defn.body and "assembly_check" in defn.body
-    lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY)
+    has_engineering = all(m in defn.body for m in ENGINEERING_MARKERS)
+    lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY,
+                              engineering="" if has_engineering else LEAD_ENGINEERING)
     return defn.model_copy(update={"tools": tools,
                                    "body": defn.body.rstrip() + "\n\n" + lead})
 
