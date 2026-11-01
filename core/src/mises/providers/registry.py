@@ -51,6 +51,32 @@ def is_openrouter_free(vendor: str, model: str) -> bool:
     return is_free_model(f"{vendor}/{model}")
 
 
+def ref_vendor(model_ref: str) -> str | None:
+    """The vendor a `vendor/model` (or bare `claude-*`) ref names, else None."""
+    if "/" in model_ref:
+        return model_ref.split("/", 1)[0]
+    if model_ref.startswith("claude-"):
+        return "anthropic"
+    return None
+
+
+def has_key(vendor: str) -> bool:
+    """True when `vendor` needs no API key (a local vendor, or an unknown name) or one is
+    configured for it (env var or Keychain). Used to decide, with no network call, whether a
+    model ref can actually be reached before a run starts (E34 default_model_ref)."""
+    spec = VENDORS.get(vendor)
+    if spec is None or spec.env_key is None:
+        return True
+    return bool(os.environ.get(spec.env_key) or keychain_get("mises", vendor))
+
+
+def ref_has_key(model_ref: str) -> bool:
+    """True when the model ref's vendor needs no key or has one; a claude-code alias (no vendor
+    here) counts as reachable only via the Claude Code path, so it returns True as well."""
+    vendor = ref_vendor(model_ref)
+    return True if vendor is None else has_key(vendor)
+
+
 def resolve(model_ref: str,
             *, local_endpoints: dict[str, str] | None = None) -> tuple[ModelProvider, str]:
     if "/" in model_ref:

@@ -60,7 +60,7 @@ from .parallel import Limits, ParallelLimiter
 from .platform import data_home, keychain_get, register_sandbox_home
 from .print.tools import register_print_tools
 from .profile import load_profile
-from .providers.registry import DEFAULT_MODEL, VENDORS, resolve
+from .providers.registry import DEFAULT_MODEL, VENDORS, has_key, ref_has_key, resolve
 from .store import Store
 from .tools.registry import ToolRegistry
 from . import budget as budget_mod
@@ -143,6 +143,10 @@ def is_vision_model(model_ref: str) -> bool:
 
 
 USER = "local"
+
+# E34: the Claude Code alias default_model_ref / the no-key fallback pick when they route a run
+# to the user's Claude Code (signed in, no Anthropic key)
+CLAUDE_DEFAULT_ALIAS = "sonnet"
 
 LOGIN_TIMEOUT_S = 600.0            # a `claude auth login` left open in the browser is stopped
 # GET /models and GET /setup reuse a `claude auth status` answer this young (the app asks both on
@@ -670,9 +674,9 @@ class Runtime:
         return Limits(total)
 
     def parallel_limit(self, ref: str | None = None) -> int:
-        """How many runs on `ref` (default: the profile's default model) can work at once."""
+        """How many runs on `ref` (default: the build's default model) can work at once."""
         prof = self.profile()
-        ref = ref or prof.default_model or DEFAULT_MODEL
+        ref = ref or self.default_model_ref(prof=prof)
         lim = self._limits_for(ref)
         return min(lim.total, lim.group_cap) if lim.group is not None else lim.total
 
@@ -680,7 +684,7 @@ class Runtime:
         """GET /status `parallel`: {limit, auto, reason} for `ref` (default: the profile's
         default model)."""
         prof = self.profile()
-        ref = ref or prof.default_model or DEFAULT_MODEL
+        ref = ref or self.default_model_ref(prof=prof)
         limit = self.parallel_limit(ref)
         auto = prof.max_parallel_agents == "auto"
         if auto:
@@ -821,16 +825,29 @@ class Runtime:
         if caps is None:
             caps = Caps(onshape_calls_run=prof.onshape_calls_run_cap,
                         onshape_calls_year=prof.onshape_calls_year_cap)
-        ref = self.model_ref_for(defn, model_ref, prof)
+        # E34: warm the Claude Code sign-in cache so default_model_ref and the no-key fallback
+        # can read it without a network call on the sync resolver path
+        if model_ref is None or not ref_has_key(model_ref):
+            with contextlib.suppress(Exception):
+                await self.claude_status_cached()
+        ref = self.model_ref_for(defn, model_ref, prof, project_id=project_id)
         alias = model_alias(ref)
+        fallback_from: str | None = None
+        if alias is None:
+            fb = self._claude_fallback_ref(ref)
+            if fb is not None:          # an unreachable ref + Claude Code signed in: use it
+                fallback_from, ref, alias = ref, fb, model_alias(fb)
         if alias is not None:
-            return await self._start_claude_run(agent, prompt, alias, edit_scope=edit_scope,
-                                                read_scope=read_scope, caps=caps,
-                                                parent_id=parent_id,
-                                                allowed_classes=allowed_classes,
-                                                sketch_id=sketch_id, project_id=project_id,
-                                                meta=meta, log=log, design_words=words,
-                                                first_context=first_context, images=images)
+            rid = await self._start_claude_run(agent, prompt, alias, edit_scope=edit_scope,
+                                               read_scope=read_scope, caps=caps,
+                                               parent_id=parent_id,
+                                               allowed_classes=allowed_classes,
+                                               sketch_id=sketch_id, project_id=project_id,
+                                               meta=meta, log=log, design_words=words,
+                                               first_context=first_context, images=images)
+            if fallback_from is not None:
+                self._note_model_fallback(rid, fallback_from, ref)
+            return rid
         provider, model = self._resolve_provider(ref, prof)
         if hardware.model_kind(ref) == "local":
             await self.refresh_local_sizes()
@@ -974,15 +991,82 @@ class Runtime:
             blocks += [ImageBlock(media_type=m, data_b64=d) for m, d in images]
         return blocks, {"text": prompt, "context": ctx, "images": len(blocks) - 1}
 
-    def model_ref_for(self, defn, model_ref: str | None = None, prof=None) -> str:
-        """model_ref, else the definition's model (unless "inherit"), else the profile's
-        default model, else DEFAULT_MODEL."""
+    def model_ref_for(self, defn, model_ref: str | None = None, prof=None,
+                      project_id: str | None = None) -> str:
+        """model_ref, else the definition's model (unless "inherit"), else the build's default
+        model (default_model_ref: the build's lead model, the profile default, or the user's
+        Claude Code when no key is set)."""
         if model_ref:
             return model_ref
         if defn is not None and defn.model and defn.model != "inherit":
             return defn.model
+        return self.default_model_ref(project_id, prof=prof)
+
+    def _claude_signed_in_cached(self) -> bool:
+        """Whether a cached `claude auth status` says signed in (E34, no network call). The
+        hot paths warm the cache (claude_status_cached) before calling the sync resolvers."""
+        c = self._claude_status_cache
+        return bool(c is not None and c[1][1].signed_in)
+
+    def _lead_model_ref(self, project_id: str | None) -> str | None:
+        """The build's current lead model as a ref (E34): its live session/loop ref, else its
+        stored provider/model when that still names a real model. None when there is no lead."""
+        if not project_id:
+            return None
+        from .orchestrator.lead import find_lead
+        try:
+            lead = find_lead(self.store, project_id)
+        except Exception:  # noqa: BLE001 - a routing hint must never raise
+            return None
+        if lead is None:
+            return None
+        st = self._claude.get(lead.id)
+        if st is not None and st.ref:
+            return st.ref
+        rst = self._runs.get(lead.id)
+        if rst is not None and getattr(rst, "ref", None):
+            return rst.ref
+        ref = f"{lead.provider}/{lead.model}"
+        if lead.provider == CLAUDE_CODE:
+            return ref
+        try:
+            self.check_model_ref(ref)
+        except MisesError:
+            return None
+        return ref
+
+    def default_model_ref(self, project_id: str | None = None, *, prof=None) -> str:
+        """The model a run of this build should use when nothing pins one (E34): the build's
+        lead model, then the profile default, then the user's Claude Code when it is signed in
+        and no Anthropic key is set, then the Anthropic default."""
         prof = prof if prof is not None else self.profile()
-        return prof.default_model or DEFAULT_MODEL
+        lead_ref = self._lead_model_ref(project_id)
+        if lead_ref:
+            return lead_ref
+        if prof.default_model:
+            return prof.default_model
+        if not has_key("anthropic") and self._claude_signed_in_cached():
+            return f"{CLAUDE_CODE}/{CLAUDE_DEFAULT_ALIAS}"
+        return DEFAULT_MODEL
+
+    def _claude_fallback_ref(self, ref: str) -> str | None:
+        """A reachable Claude Code ref to use in place of `ref` when `ref`'s vendor has no key
+        and the user's Claude Code is signed in (E34 single-point defence); else None. Never
+        overrides a ref that is already reachable or is itself a Claude Code alias."""
+        if model_alias(ref) is not None or ref_has_key(ref):
+            return None
+        return (f"{CLAUDE_CODE}/{CLAUDE_DEFAULT_ALIAS}" if self._claude_signed_in_cached()
+                else None)
+
+    def _note_model_fallback(self, run_id: str, frm: str, to: str) -> None:
+        """A visible note that a run routed to Claude Code because its chosen model had no key
+        (E34 single-point defence)."""
+        from .providers.registry import ref_vendor
+        vendor = ref_vendor(frm) or frm
+        note = f"no API key for {vendor}; using your Claude Code instead"
+        with contextlib.suppress(Exception):
+            self.store.append_step(run_id, StepKind.DECISION,
+                                   {"model_fallback": {"from": frm, "to": to, "reason": note}})
 
     def _note_shape_complexity(self, run_id: str, prompt: str) -> dict:
         """Estimate how shape-heavy the request is (G-R6), store it on the run and announce it,
@@ -1194,7 +1278,11 @@ class Runtime:
         if st is not None and is_vision_model(st.ref):
             return st.loop.provider, st.loop.model, None
         prof = self.profile()
-        fallback = prof.default_model or DEFAULT_MODEL
+        try:
+            project_id = self.store.get_run(run_id).project_id
+        except KeyError:
+            project_id = None
+        fallback = self.default_model_ref(project_id, prof=prof)
         if is_vision_model(fallback) and model_alias(fallback) is None:
             try:
                 provider, model = self._resolve_provider(fallback, prof)
