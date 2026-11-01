@@ -79,3 +79,21 @@ async def test_a_config_failure_is_not_retried(rt, claude_bin, signed_in):
         rid, res = await _run(rt, "error")        # "Not logged in": the user's to fix
     assert res.stop_reason == "error" and _notes(rt, rid) == []
     assert len(_argvs(rt, rid)) == 1
+
+
+async def test_a_restarted_session_runs_at_the_turns_effort(rt, claude_bin, signed_in):
+    """Plan 11 F8 x F9: the first process starts with --effort; the session that replaces it
+    (resumed, without the flag) gets the turn's level over the control protocol before it
+    carries on."""
+    from .test_runtime_wiring import _log
+    async with served(rt):
+        rid = await rt.start_run("designer", "flaky:exit:1", model_ref="claude-code/sonnet",
+                                 effort="hard")
+        res = await asyncio.wait_for(rt.wait(rid), 30)
+    assert res.stop_reason == "end_turn", res.error
+    argvs = _argvs(rt, rid)
+    assert argvs[0][argvs[0].index("--effort") + 1] == "high"
+    assert "--effort" not in argvs[1] and "--resume" in argvs[1]
+    controls = [r["msg"]["request"] for r in _log(rt, rid) if r["event"] == "control"]
+    assert {"subtype": "apply_flag_settings", "settings": {"effortLevel": "high"}} in controls
+    assert len(_notes(rt, rid)) == 1

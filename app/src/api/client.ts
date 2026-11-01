@@ -32,6 +32,7 @@ import {
   type StudySection, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "./studies";
 import { studiesContextSchema, type StudiesContext } from "./studiesAgent";
+import { effortDefaultSchema, type EffortDefault, type ThinkChoice } from "./think";
 import { backgroundJobSchema, jobCancelSchema, type BackgroundJob, type JobCancel } from "./jobs";
 import type {
   AgentDefBody, AgentDetail, AgentInfo, AgentRun, Approval, CancelAllResult, ClaudeCodeStatus, CleanupBody, CleanupResult, CoreInfo, CoreStatusInfo, DecisionBody, DeleteRefused, ErrorCode, KeyStatus, LocalActionResult, LocalStatus, LocalTestResult,
@@ -84,6 +85,9 @@ export type CoreErrorCode = ErrorCode | "unauthorized" | "validation" | "network
 
 /** P11 F7: one image attached to a chat message (core server/app.py ImageIn). */
 export interface ChatImageIn { media_type: string; data_b64: string }
+
+/** What rides along with a chat message: attached images (P11 F7) and the Think choice (F8). */
+export interface ChatOptions { images?: readonly ChatImageIn[]; effort?: ThinkChoice | null }
 
 export class CoreError extends Error {
   readonly status: number;
@@ -172,11 +176,27 @@ export class CoreClient {
   /** P10 E24 (core C1): one chat per build. The message goes to the build's lead (queued behind
    *  its current step while it works); with no lead yet the core starts one on the default model
    *  (Claude Code when signed in). null: this core has no such route (an older core). */
-  async chat(projectId: string, text: string, images?: readonly ChatImageIn[]): Promise<CreateRunResult | null> {
-    const res = await this.request("POST", `/projects/${enc(projectId)}/chat`, { body: images?.length ? { text, images } : { text } });
+  /** P11 F7 / F8: `images` (at most 5, already shrunk by the composer) go with the message as
+   *  real image blocks; `effort`, the Think choice, rides along when it is not Auto (an older core
+   *  never sees either). */
+  async chat(projectId: string, text: string, opts: ChatOptions = {}): Promise<CreateRunResult | null> {
+    const { images, effort } = opts;
+    const res = await this.request("POST", `/projects/${enc(projectId)}/chat`, { body: {
+      text, ...(images?.length ? { images } : {}), ...(effort && effort !== "auto" ? { effort } : {}),
+    } });
     if (await routeMissing(res)) return null;
     if (!res.ok) throw await toError(res);
     return createRunResultSchema.parse(await res.json());
+  }
+  /** Plan 11 F8: the build's default Think choice. null: this core has no such route. */
+  async effortDefault(projectId: string): Promise<EffortDefault | null> {
+    const res = await this.request("GET", `/projects/${enc(projectId)}/effort`, {});
+    if (await routeMissing(res)) return null;
+    if (!res.ok) throw await toError(res);
+    return effortDefaultSchema.parse(await res.json());
+  }
+  setEffortDefault(projectId: string, choice: ThinkChoice): Promise<EffortDefault> {
+    return this.json("PUT", `/projects/${enc(projectId)}/effort`, effortDefaultSchema, { body: { default: choice } });
   }
   /** P10 E9 (core C1): take back a message still waiting for a busy lead (it is dropped with the
    *  reason "cancelled"). false: this core can't cancel a queued message (no such route). */

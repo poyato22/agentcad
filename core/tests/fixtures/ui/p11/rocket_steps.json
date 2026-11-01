@@ -1,0 +1,1823 @@
+[
+ {
+  "id": 1,
+  "run_id": "333a08d81f7e",
+  "ts": 1793556191.8050208,
+  "kind": "tool_call",
+  "payload": {
+   "call_id": "rk0",
+   "input": {
+    "cg_mm": 493.33,
+    "dry_mass_g": 540,
+    "geometry": {
+     "body_diameter_mm": 66,
+     "fins": [
+      {
+       "count": 3,
+       "root_chord_mm": 120,
+       "span_mm": 65,
+       "sweep_mm": 60,
+       "te_from_aft_mm": 0,
+       "thickness_mm": 3.2,
+       "tip_chord_mm": 50
+      }
+     ],
+     "nose": {
+      "length_mm": 200,
+      "shape": "ogive"
+     },
+     "rail_buttons": 0,
+     "sections": [
+      {
+       "length_mm": 700
+      }
+     ]
+    },
+    "motor": "F52C",
+    "project_id": "963c959990f0"
+   },
+   "name": "rocket_analyze"
+  },
+  "evidence_hash": "cfc0ed2caa681225671efb15fe67bedfb089cbe5b05f3fe42cb1a7ed6b992f1a",
+  "prev_hash": null,
+  "collapsed": false,
+  "stream": "sim"
+ },
+ {
+  "id": 2,
+  "run_id": "333a08d81f7e",
+  "ts": 1793556191.907843,
+  "kind": "sim_run",
+  "payload": {
+   "call_id": "rk0",
+   "name": "rocket_analyze",
+   "output": {
+    "data": {
+     "card": {
+      "accuracy": [
+       "Barrowman CP: subsonic, small angle of attack, body lift ignored (it adds stability at larger angles); matches OpenRocket's CP within ~1% on the reference rockets.",
+       "Flutter: NACA TN-4197 screening estimate; printed fins are weaker across layers."
+      ],
+      "charts": [
+       {
+        "bands": [
+         {
+          "axis": "y",
+          "from": 1.0,
+          "label": "target 1-2 cal",
+          "to": 2.0
+         }
+        ],
+        "id": "margin",
+        "kind": "line",
+        "series": [
+         {
+          "name": "margin",
+          "points": [
+           [
+            0.0,
+            1.84
+           ],
+           [
+            0.03,
+            1.84
+           ],
+           [
+            0.07,
+            1.85
+           ],
+           [
+            0.1,
+            1.85
+           ],
+           [
+            0.13,
+            1.86
+           ],
+           [
+            0.17,
+            1.87
+           ],
+           [
+            0.2,
+            1.87
+           ],
+           [
+            0.23,
+            1.88
+           ],
+           [
+            0.27,
+            1.89
+           ],
+           [
+            0.3,
+            1.89
+           ],
+           [
+            0.33,
+            1.9
+           ],
+           [
+            0.37,
+            1.91
+           ],
+           [
+            0.4,
+            1.92
+           ],
+           [
+            0.43,
+            1.92
+           ],
+           [
+            0.47,
+            1.93
+           ],
+           [
+            0.5,
+            1.94
+           ],
+           [
+            0.53,
+            1.94
+           ],
+           [
+            0.56,
+            1.95
+           ],
+           [
+            0.6,
+            1.96
+           ],
+           [
+            0.63,
+            1.96
+           ],
+           [
+            0.66,
+            1.97
+           ],
+           [
+            0.7,
+            1.98
+           ],
+           [
+            0.73,
+            1.98
+           ],
+           [
+            0.76,
+            1.99
+           ],
+           [
+            0.8,
+            2.0
+           ],
+           [
+            0.83,
+            2.01
+           ],
+           [
+            0.86,
+            2.01
+           ],
+           [
+            0.9,
+            2.02
+           ],
+           [
+            0.93,
+            2.03
+           ],
+           [
+            0.96,
+            2.03
+           ],
+           [
+            1.0,
+            2.04
+           ],
+           [
+            1.03,
+            2.05
+           ],
+           [
+            1.06,
+            2.05
+           ],
+           [
+            1.1,
+            2.06
+           ],
+           [
+            1.13,
+            2.06
+           ],
+           [
+            1.16,
+            2.07
+           ],
+           [
+            1.2,
+            2.07
+           ],
+           [
+            1.23,
+            2.08
+           ],
+           [
+            1.26,
+            2.08
+           ],
+           [
+            1.3,
+            2.08
+           ],
+           [
+            1.33,
+            2.08
+           ]
+          ]
+         }
+        ],
+        "title": "Static margin during the burn (F52C)",
+        "x": {
+         "label": "time",
+         "unit": "s"
+        },
+        "y": {
+         "label": "margin",
+         "unit": "cal"
+        }
+       }
+      ],
+      "kind": "rocket_analyze",
+      "metrics": [
+       {
+        "label": "CP",
+        "unit": "mm from tip",
+        "value": 661.0
+       },
+       {
+        "label": "CN alpha",
+        "unit": "/rad",
+        "value": 8.786
+       },
+       {
+        "label": "dry mass",
+        "unit": "g",
+        "value": 540.0
+       },
+       {
+        "label": "dry CG",
+        "unit": "mm from tip",
+        "value": 493.3
+       },
+       {
+        "label": "liftoff mass",
+        "unit": "g",
+        "value": 621.4
+       },
+       {
+        "label": "CG at launch",
+        "unit": "mm from tip",
+        "value": 539.3
+       },
+       {
+        "label": "margin at launch",
+        "status": "pass",
+        "unit": "cal",
+        "value": 1.84
+       },
+       {
+        "label": "margin at burnout",
+        "status": "pass",
+        "unit": "cal",
+        "value": 2.08
+       },
+       {
+        "label": "rail exit",
+        "status": "warn",
+        "unit": "m/s",
+        "value": 12.9
+       }
+      ],
+      "notes": [
+       "PLA: G = E / (2 (1 + nu)) = 2300 / (2 x 1.35) = 852 MPa (Prusament PLA TDS v1.1 (printed, horizontal))",
+       "geometry from the given"
+      ],
+      "status": "pass",
+      "title": "Rocket stability · F52C"
+     },
+     "cg_launch_mm": 539.3,
+     "cn_alpha": 8.786,
+     "cp_mm": 661.0,
+     "dry_cg_mm": 493.3,
+     "dry_mass_g": 540.0,
+     "flutter": [
+      {
+       "at_alt_m": 57.0,
+       "fins": "3 x 120/50 mm, span 65, t 3.2",
+       "flutter_mps": 246.2,
+       "max_v_mps": 90.1,
+       "ratio": 2.73,
+       "status": "pass"
+      }
+     ],
+     "length_mm": 900.0,
+     "margin_burnout_cal": 2.08,
+     "margin_launch_cal": 1.84,
+     "mass_table": [
+      {
+       "cg_mm": 493.3,
+       "mass_g": 540.0,
+       "part": "rocket (override)",
+       "source": "override"
+      }
+     ],
+     "max_v_mps": 90.1,
+     "motor": {
+      "avg_thrust_n": 49.9,
+      "burn_time_s": 1.329,
+      "class": "F",
+      "common_name": "F52",
+      "delays_s": [
+       5.0,
+       8.0,
+       12.0
+      ],
+      "designation": "F52C",
+      "diameter_mm": 29.0,
+      "length_mm": 111.0,
+      "license": "PD",
+      "manufacturer": "AT",
+      "max_thrust_n": 61.32,
+      "prop_g": 30.0,
+      "source": "bundled",
+      "total_g": 81.4,
+      "total_impulse_ns": 66.31,
+      "url": "https://www.thrustcurve.org/simfiles/5f5e5a6a1e865c0004c95620/"
+     },
+     "motor_parts": [],
+     "project_id": "963c959990f0",
+     "ref_diameter_mm": 66.0,
+     "status": "pass",
+     "stream": "sim",
+     "terms": [
+      {
+       "cn_alpha": 2.0,
+       "term": "nose (ogive)",
+       "x_mm": 93.2
+      },
+      {
+       "cn_alpha": 6.786,
+       "term": "fins (3)",
+       "x_mm": 828.3
+      }
+     ]
+    },
+    "handles": [],
+    "ok": true,
+    "step_kind": "sim_run",
+    "summary": "rocket_analyze pass: CP 661 mm, margin 1.84 cal at launch / 2.08 at burnout on F52C; flutter 246 m/s vs 90 m/s max (2.7x)",
+    "warnings": [
+     "rail exit 12.9 m/s on F52C (< 13.4 m/s): the fins may not steer it yet; use a longer rail or a higher-thrust motor"
+    ]
+   }
+  },
+  "evidence_hash": "fdb9f966508a53e637edbd74922c89121f0bf3e4ecfacc91bf21ec06f2f0568b",
+  "prev_hash": "cfc0ed2caa681225671efb15fe67bedfb089cbe5b05f3fe42cb1a7ed6b992f1a",
+  "collapsed": false,
+  "stream": "sim"
+ },
+ {
+  "id": 3,
+  "run_id": "333a08d81f7e",
+  "ts": 1793556191.9083068,
+  "kind": "tool_call",
+  "payload": {
+   "call_id": "rk1",
+   "input": {
+    "cg_mm": 493.33,
+    "dry_mass_g": 540,
+    "geometry": {
+     "body_diameter_mm": 66,
+     "fins": [
+      {
+       "count": 3,
+       "root_chord_mm": 120,
+       "span_mm": 65,
+       "sweep_mm": 60,
+       "te_from_aft_mm": 0,
+       "thickness_mm": 3.2,
+       "tip_chord_mm": 50
+      }
+     ],
+     "nose": {
+      "length_mm": 200,
+      "shape": "ogive"
+     },
+     "rail_buttons": 0,
+     "sections": [
+      {
+       "length_mm": 700
+      }
+     ]
+    },
+    "motors": [
+     "F52C",
+     "G40W"
+    ],
+    "project_id": "963c959990f0",
+    "target_apogee_ft": 750,
+    "target_time_s": [
+     36,
+     39
+    ],
+    "tune_mass": true
+   },
+   "name": "rocket_flight"
+  },
+  "evidence_hash": "a1b2f24eaf4fa254daf512b24bb4760ce9c3a0a0111b8b40274fe798c10396a5",
+  "prev_hash": "fdb9f966508a53e637edbd74922c89121f0bf3e4ecfacc91bf21ec06f2f0568b",
+  "collapsed": false,
+  "stream": "sim"
+ },
+ {
+  "id": 4,
+  "run_id": "333a08d81f7e",
+  "ts": 1793556196.1952481,
+  "kind": "sim_run",
+  "payload": {
+   "call_id": "rk1",
+   "name": "rocket_flight",
+   "output": {
+    "data": {
+     "card": {
+      "accuracy": [
+       "Barrowman CP: subsonic, small angle of attack, body lift ignored (it adds stability at larger angles); matches OpenRocket's CP within ~1% on the reference rockets.",
+       "Drag: component build-up (skin friction for the stated finish, fin edge and base drag); printed surfaces, seams and rail buttons vary. Use cd_override with a CFD (wind study) Cd when you have one.",
+       "Flight: 3-DOF point mass, weathercocking assumed; agrees with OpenRocket 24.12 apogee within ~1% on the reference flights. Real flights land 5-15% lower (OpenRocket's own validation: +7% over measured): trim against a test flight.",
+       "Flutter: NACA TN-4197 screening estimate; printed fins are weaker across layers."
+      ],
+      "charts": [
+       {
+        "bands": [
+         {
+          "axis": "y",
+          "from": 224.02800000000002,
+          "label": "target 229 m",
+          "to": 233.17200000000003
+         }
+        ],
+        "id": "altitude",
+        "kind": "line",
+        "series": [
+         {
+          "name": "F52C",
+          "points": [
+           [
+            0.03,
+            0.0
+           ],
+           [
+            0.39,
+            5.03
+           ],
+           [
+            0.76,
+            21.47
+           ],
+           [
+            1.12,
+            48.42
+           ],
+           [
+            1.65,
+            94.16
+           ],
+           [
+            3.11,
+            191.69
+           ],
+           [
+            4.57,
+            256.25
+           ],
+           [
+            6.01,
+            294.6
+           ],
+           [
+            7.47,
+            311.23
+           ],
+           [
+            8.93,
+            306.95
+           ],
+           [
+            10.39,
+            293.4
+           ],
+           [
+            11.85,
+            285.27
+           ],
+           [
+            13.31,
+            277.88
+           ],
+           [
+            14.75,
+            270.61
+           ],
+           [
+            16.21,
+            263.23
+           ],
+           [
+            17.67,
+            255.86
+           ],
+           [
+            19.13,
+            248.49
+           ],
+           [
+            20.59,
+            241.12
+           ],
+           [
+            22.05,
+            233.75
+           ],
+           [
+            23.49,
+            226.49
+           ],
+           [
+            24.95,
+            219.13
+           ],
+           [
+            26.41,
+            211.77
+           ],
+           [
+            27.87,
+            204.42
+           ],
+           [
+            29.33,
+            197.07
+           ],
+           [
+            30.79,
+            189.72
+           ],
+           [
+            32.25,
+            182.37
+           ],
+           [
+            33.69,
+            175.13
+           ],
+           [
+            35.15,
+            167.79
+           ],
+           [
+            36.61,
+            160.45
+           ],
+           [
+            38.07,
+            153.11
+           ],
+           [
+            39.53,
+            145.78
+           ],
+           [
+            40.99,
+            138.45
+           ],
+           [
+            42.43,
+            131.22
+           ],
+           [
+            43.89,
+            123.89
+           ],
+           [
+            45.35,
+            116.57
+           ],
+           [
+            46.81,
+            109.25
+           ],
+           [
+            48.27,
+            101.93
+           ],
+           [
+            49.73,
+            94.61
+           ],
+           [
+            51.17,
+            87.4
+           ],
+           [
+            52.63,
+            80.09
+           ],
+           [
+            54.09,
+            72.78
+           ],
+           [
+            55.55,
+            65.47
+           ],
+           [
+            57.01,
+            58.17
+           ],
+           [
+            58.47,
+            50.87
+           ],
+           [
+            59.91,
+            43.67
+           ],
+           [
+            61.37,
+            36.38
+           ],
+           [
+            62.83,
+            29.08
+           ],
+           [
+            64.29,
+            21.79
+           ],
+           [
+            65.75,
+            14.51
+           ],
+           [
+            67.21,
+            7.22
+           ],
+           [
+            68.65,
+            0.04
+           ]
+          ]
+         },
+         {
+          "name": "G40W",
+          "points": [
+           [
+            0.01,
+            0.0
+           ],
+           [
+            0.56,
+            13.63
+           ],
+           [
+            1.11,
+            52.53
+           ],
+           [
+            1.67,
+            108.83
+           ],
+           [
+            2.22,
+            169.92
+           ],
+           [
+            3.9,
+            312.86
+           ],
+           [
+            6.14,
+            425.73
+           ],
+           [
+            8.36,
+            476.85
+           ],
+           [
+            10.58,
+            478.03
+           ],
+           [
+            12.8,
+            459.86
+           ],
+           [
+            15.02,
+            448.5
+           ],
+           [
+            17.24,
+            437.18
+           ],
+           [
+            19.48,
+            425.78
+           ],
+           [
+            21.7,
+            414.48
+           ],
+           [
+            23.92,
+            403.18
+           ],
+           [
+            26.14,
+            391.9
+           ],
+           [
+            28.36,
+            380.62
+           ],
+           [
+            30.6,
+            369.24
+           ],
+           [
+            32.82,
+            357.97
+           ],
+           [
+            35.04,
+            346.71
+           ],
+           [
+            37.27,
+            335.45
+           ],
+           [
+            39.49,
+            324.2
+           ],
+           [
+            41.71,
+            312.96
+           ],
+           [
+            43.95,
+            301.62
+           ],
+           [
+            46.17,
+            290.39
+           ],
+           [
+            48.39,
+            279.16
+           ],
+           [
+            50.61,
+            267.94
+           ],
+           [
+            52.83,
+            256.73
+           ],
+           [
+            55.07,
+            245.42
+           ],
+           [
+            57.29,
+            234.22
+           ],
+           [
+            59.51,
+            223.03
+           ],
+           [
+            61.73,
+            211.84
+           ],
+           [
+            63.95,
+            200.66
+           ],
+           [
+            66.17,
+            189.48
+           ],
+           [
+            68.41,
+            178.21
+           ],
+           [
+            70.63,
+            167.04
+           ],
+           [
+            72.85,
+            155.88
+           ],
+           [
+            75.07,
+            144.73
+           ],
+           [
+            77.29,
+            133.58
+           ],
+           [
+            79.53,
+            122.34
+           ],
+           [
+            81.75,
+            111.21
+           ],
+           [
+            83.97,
+            100.08
+           ],
+           [
+            86.18,
+            88.96
+           ],
+           [
+            88.4,
+            77.84
+           ],
+           [
+            90.62,
+            66.73
+           ],
+           [
+            92.86,
+            55.52
+           ],
+           [
+            95.08,
+            44.42
+           ],
+           [
+            97.3,
+            33.33
+           ],
+           [
+            99.52,
+            22.24
+           ],
+           [
+            101.74,
+            11.16
+           ],
+           [
+            103.96,
+            0.08
+           ]
+          ]
+         }
+        ],
+        "title": "Altitude",
+        "x": {
+         "label": "time",
+         "unit": "s"
+        },
+        "y": {
+         "label": "altitude",
+         "unit": "m"
+        }
+       },
+       {
+        "id": "velocity",
+        "kind": "line",
+        "series": [
+         {
+          "name": "F52C",
+          "points": [
+           [
+            0.03,
+            0.05
+           ],
+           [
+            0.07,
+            2.77
+           ],
+           [
+            0.17,
+            9.96
+           ],
+           [
+            0.21,
+            13.71
+           ],
+           [
+            0.3,
+            21.47
+           ],
+           [
+            0.35,
+            25.47
+           ],
+           [
+            0.44,
+            33.38
+           ],
+           [
+            0.49,
+            37.71
+           ],
+           [
+            0.58,
+            45.38
+           ],
+           [
+            0.67,
+            52.87
+           ],
+           [
+            0.71,
+            56.53
+           ],
+           [
+            0.8,
+            63.71
+           ],
+           [
+            0.85,
+            67.21
+           ],
+           [
+            0.94,
+            74.3
+           ],
+           [
+            0.99,
+            77.5
+           ],
+           [
+            1.07,
+            83.59
+           ],
+           [
+            1.12,
+            86.48
+           ],
+           [
+            1.21,
+            90.04
+           ],
+           [
+            1.3,
+            88.9
+           ],
+           [
+            1.35,
+            87.71
+           ],
+           [
+            1.47,
+            84.87
+           ],
+           [
+            1.65,
+            80.82
+           ],
+           [
+            2.01,
+            73.35
+           ],
+           [
+            2.19,
+            69.89
+           ],
+           [
+            2.55,
+            63.43
+           ],
+           [
+            2.93,
+            57.18
+           ],
+           [
+            3.11,
+            54.39
+           ],
+           [
+            3.47,
+            49.11
+           ],
+           [
+            3.65,
+            46.6
+           ],
+           [
+            4.01,
+            41.8
+           ],
+           [
+            4.19,
+            39.49
+           ],
+           [
+            4.57,
+            34.82
+           ],
+           [
+            4.75,
+            32.69
+           ],
+           [
+            5.11,
+            28.55
+           ],
+           [
+            5.47,
+            24.56
+           ],
+           [
+            5.65,
+            22.62
+           ],
+           [
+            6.01,
+            18.81
+           ],
+           [
+            6.19,
+            16.95
+           ],
+           [
+            6.57,
+            13.07
+           ],
+           [
+            6.75,
+            11.26
+           ],
+           [
+            7.11,
+            7.67
+           ],
+           [
+            7.29,
+            5.88
+           ],
+           [
+            7.65,
+            2.34
+           ],
+           [
+            8.03,
+            1.39
+           ],
+           [
+            8.21,
+            3.15
+           ],
+           [
+            8.57,
+            6.55
+           ],
+           [
+            8.75,
+            8.05
+           ],
+           [
+            9.11,
+            10.07
+           ],
+           [
+            9.29,
+            10.42
+           ],
+           [
+            9.65,
+            9.87
+           ],
+           [
+            9.85,
+            9.15
+           ]
+          ]
+         },
+         {
+          "name": "G40W",
+          "points": [
+           [
+            0.01,
+            0.02
+           ],
+           [
+            0.07,
+            5.5
+           ],
+           [
+            0.14,
+            11.89
+           ],
+           [
+            0.28,
+            24.55
+           ],
+           [
+            0.35,
+            30.77
+           ],
+           [
+            0.42,
+            36.89
+           ],
+           [
+            0.56,
+            48.77
+           ],
+           [
+            0.63,
+            54.53
+           ],
+           [
+            0.7,
+            59.76
+           ],
+           [
+            0.84,
+            70.55
+           ],
+           [
+            0.91,
+            75.57
+           ],
+           [
+            0.98,
+            80.31
+           ],
+           [
+            1.11,
+            88.95
+           ],
+           [
+            1.18,
+            92.84
+           ],
+           [
+            1.32,
+            99.7
+           ],
+           [
+            1.39,
+            102.36
+           ],
+           [
+            1.46,
+            104.85
+           ],
+           [
+            1.6,
+            108.63
+           ],
+           [
+            1.67,
+            109.93
+           ],
+           [
+            1.74,
+            110.83
+           ],
+           [
+            1.88,
+            111.46
+           ],
+           [
+            1.95,
+            111.17
+           ],
+           [
+            2.02,
+            110.49
+           ],
+           [
+            2.15,
+            107.72
+           ],
+           [
+            2.22,
+            105.88
+           ],
+           [
+            2.36,
+            101.89
+           ],
+           [
+            2.52,
+            97.48
+           ],
+           [
+            2.8,
+            90.33
+           ],
+           [
+            3.36,
+            77.84
+           ],
+           [
+            3.64,
+            72.32
+           ],
+           [
+            3.9,
+            67.54
+           ],
+           [
+            4.46,
+            58.19
+           ],
+           [
+            4.74,
+            53.92
+           ],
+           [
+            5.02,
+            49.86
+           ],
+           [
+            5.58,
+            42.31
+           ],
+           [
+            5.86,
+            38.77
+           ],
+           [
+            6.14,
+            35.37
+           ],
+           [
+            6.68,
+            29.1
+           ],
+           [
+            6.96,
+            25.99
+           ],
+           [
+            7.52,
+            19.99
+           ],
+           [
+            7.8,
+            17.09
+           ],
+           [
+            8.08,
+            14.23
+           ],
+           [
+            8.64,
+            8.61
+           ],
+           [
+            8.92,
+            5.83
+           ],
+           [
+            9.18,
+            3.27
+           ],
+           [
+            9.74,
+            2.22
+           ],
+           [
+            10.02,
+            4.93
+           ],
+           [
+            10.3,
+            7.46
+           ],
+           [
+            10.86,
+            10.42
+           ],
+           [
+            11.14,
+            10.32
+           ],
+           [
+            11.42,
+            9.46
+           ]
+          ]
+         }
+        ],
+        "title": "Speed",
+        "x": {
+         "label": "time",
+         "unit": "s"
+        },
+        "y": {
+         "label": "speed",
+         "unit": "m/s"
+        }
+       },
+       {
+        "id": "acceleration",
+        "kind": "line",
+        "series": [
+         {
+          "name": "F52C",
+          "points": [
+           [
+            0.03,
+            1.0
+           ],
+           [
+            0.07,
+            8.64
+           ],
+           [
+            0.12,
+            9.12
+           ],
+           [
+            0.17,
+            9.37
+           ],
+           [
+            0.21,
+            9.58
+           ],
+           [
+            0.26,
+            9.78
+           ],
+           [
+            0.3,
+            9.97
+           ],
+           [
+            0.35,
+            10.06
+           ],
+           [
+            0.39,
+            9.98
+           ],
+           [
+            0.44,
+            9.9
+           ],
+           [
+            0.49,
+            9.8
+           ],
+           [
+            0.53,
+            9.7
+           ],
+           [
+            0.58,
+            9.6
+           ],
+           [
+            0.62,
+            9.49
+           ],
+           [
+            0.67,
+            9.38
+           ],
+           [
+            0.71,
+            9.27
+           ],
+           [
+            0.76,
+            9.15
+           ],
+           [
+            0.8,
+            9.02
+           ],
+           [
+            0.85,
+            8.86
+           ],
+           [
+            0.89,
+            8.64
+           ],
+           [
+            0.94,
+            8.39
+           ],
+           [
+            0.99,
+            8.16
+           ],
+           [
+            1.03,
+            7.93
+           ],
+           [
+            1.07,
+            7.7
+           ],
+           [
+            1.12,
+            7.46
+           ],
+           [
+            1.16,
+            5.55
+           ],
+           [
+            1.21,
+            1.98
+           ],
+           [
+            1.25,
+            0.26
+           ],
+           [
+            1.3,
+            1.28
+           ],
+           [
+            1.35,
+            1.46
+           ],
+           [
+            1.39,
+            1.43
+           ],
+           [
+            1.47,
+            1.38
+           ],
+           [
+            1.65,
+            1.25
+           ],
+           [
+            1.83,
+            1.13
+           ],
+           [
+            2.01,
+            1.02
+           ],
+           [
+            2.19,
+            0.92
+           ]
+          ]
+         },
+         {
+          "name": "G40W",
+          "points": [
+           [
+            0.01,
+            1.0
+           ],
+           [
+            0.07,
+            10.33
+           ],
+           [
+            0.14,
+            10.29
+           ],
+           [
+            0.21,
+            10.23
+           ],
+           [
+            0.28,
+            10.14
+           ],
+           [
+            0.35,
+            10.0
+           ],
+           [
+            0.42,
+            9.84
+           ],
+           [
+            0.49,
+            9.67
+           ],
+           [
+            0.56,
+            9.49
+           ],
+           [
+            0.63,
+            9.31
+           ],
+           [
+            0.7,
+            9.12
+           ],
+           [
+            0.77,
+            8.92
+           ],
+           [
+            0.84,
+            8.54
+           ],
+           [
+            0.91,
+            8.14
+           ],
+           [
+            0.98,
+            7.74
+           ],
+           [
+            1.04,
+            7.32
+           ],
+           [
+            1.11,
+            6.91
+           ],
+           [
+            1.18,
+            6.49
+           ],
+           [
+            1.25,
+            6.08
+           ],
+           [
+            1.32,
+            5.49
+           ],
+           [
+            1.39,
+            4.95
+           ],
+           [
+            1.46,
+            4.37
+           ],
+           [
+            1.53,
+            3.8
+           ],
+           [
+            1.6,
+            3.21
+           ],
+           [
+            1.67,
+            2.64
+           ],
+           [
+            1.74,
+            2.08
+           ],
+           [
+            1.81,
+            1.49
+           ],
+           [
+            1.88,
+            0.91
+           ],
+           [
+            1.95,
+            0.34
+           ],
+           [
+            2.02,
+            0.28
+           ],
+           [
+            2.08,
+            1.04
+           ],
+           [
+            2.15,
+            1.58
+           ],
+           [
+            2.22,
+            1.77
+           ],
+           [
+            2.29,
+            1.95
+           ],
+           [
+            2.36,
+            1.9
+           ],
+           [
+            2.52,
+            1.75
+           ],
+           [
+            2.8,
+            1.5
+           ],
+           [
+            3.08,
+            1.28
+           ]
+          ]
+         }
+        ],
+        "title": "Acceleration (payload)",
+        "x": {
+         "label": "time",
+         "unit": "s"
+        },
+        "y": {
+         "label": "acceleration",
+         "unit": "g"
+        }
+       }
+      ],
+      "conditions": {
+       "cd": "build-up",
+       "chute_cd": 0.8,
+       "deploy": "at apogee",
+       "finish": "paint",
+       "launch_alt_m": 0.0,
+       "rail_angle_deg": 0.0,
+       "rail_m": 1.0,
+       "temp_c": null,
+       "wind_mps": 0.0
+      },
+      "kind": "rocket_flight",
+      "metrics": [
+       {
+        "label": "apogee",
+        "unit": "ft",
+        "value": 1024.0
+       },
+       {
+        "label": "apogee",
+        "unit": "m",
+        "value": 312.1
+       },
+       {
+        "label": "time to apogee",
+        "unit": "s",
+        "value": 7.89
+       },
+       {
+        "label": "flight time",
+        "unit": "s",
+        "value": 68.7
+       },
+       {
+        "label": "max speed",
+        "unit": "m/s",
+        "value": 90.1
+       },
+       {
+        "label": "payload peak",
+        "unit": "g",
+        "value": 10.1
+       },
+       {
+        "label": "margin",
+        "status": "pass",
+        "unit": "cal",
+        "value": 1.84
+       },
+       {
+        "label": "descent",
+        "unit": "m/s",
+        "value": 4.99
+       }
+      ],
+      "status": "warn",
+      "target": {
+       "apogee_m": 228.60000000000002,
+       "time_s": [
+        36.0,
+        39.0
+       ]
+      },
+      "title": "Rocket flight · F52C, G40W"
+     },
+     "dry_mass_g": 540.0,
+     "flights": [
+      {
+       "apogee_error_ft": 274.0,
+       "apogee_ft": 1024.0,
+       "apogee_m": 312.1,
+       "boost_g": 10.1,
+       "cd": 0.528,
+       "chute_for_time_mm": 368,
+       "chute_mm": 776,
+       "class": "F",
+       "deploy_shock_g": 1.4,
+       "deploy_v_mps": 0.0,
+       "descent_for_time_mps": 10.54,
+       "descent_mps": 4.99,
+       "drift_m": 0.0,
+       "flight_time_s": 68.7,
+       "impulse_ns": 66.3,
+       "landing_v_mps": 4.99,
+       "liftoff_g": 621.4,
+       "margin_cal": 1.84,
+       "margin_status": "pass",
+       "max_mach": 0.265,
+       "max_v_mps": 90.1,
+       "motor": "F52C",
+       "motor_delay_s": 8.0,
+       "motor_source": "bundled",
+       "optimal_delay_s": 6.6,
+       "payload_peak_g": 10.1,
+       "rail_exit_mps": 12.9,
+       "status": "warn",
+       "t_apogee_s": 7.89,
+       "thrust_to_weight": 10.1,
+       "tune": {
+        "at_mm": 200.0,
+        "ballast_g": 186.1,
+        "margin_launch_cal": 3.03,
+        "reachable": true
+       }
+      },
+      {
+       "apogee_error_ft": 836.0,
+       "apogee_ft": 1586.0,
+       "apogee_m": 483.4,
+       "boost_g": 11.4,
+       "cd": 0.533,
+       "chute_for_time_mm": 228,
+       "chute_mm": 788,
+       "class": "G",
+       "deploy_shock_g": 1.4,
+       "deploy_v_mps": 0.1,
+       "descent_for_time_mps": 17.28,
+       "descent_mps": 4.99,
+       "drift_m": 0.0,
+       "flight_time_s": 104.0,
+       "impulse_ns": 99.0,
+       "landing_v_mps": 4.99,
+       "liftoff_g": 663.0,
+       "margin_cal": 1.57,
+       "margin_status": "pass",
+       "max_mach": 0.328,
+       "max_v_mps": 111.5,
+       "motor": "G40W",
+       "motor_delay_s": 7.0,
+       "motor_source": "bundled",
+       "optimal_delay_s": 7.2,
+       "payload_peak_g": 11.4,
+       "rail_exit_mps": 13.7,
+       "status": "warn",
+       "t_apogee_s": 9.52,
+       "thrust_to_weight": 11.4,
+       "tune": {
+        "at_mm": 200.0,
+        "ballast_g": 571.4,
+        "margin_launch_cal": 4.08,
+        "reachable": true
+       }
+      }
+     ],
+     "project_id": "963c959990f0",
+     "status": "warn",
+     "stream": "sim"
+    },
+    "handles": [],
+    "ok": true,
+    "step_kind": "sim_run",
+    "summary": "rocket_flight warn: F52C apogee 1024 ft (312 m) at 7.9 s, flight 68.7 s, max 90 m/s, margin 1.84 cal, ballast +186 g for target; G40W apogee 1586 ft (483 m) at 9.5 s, flight 104.0 s, max 112 m/s, margin 1.57 cal, ballast +571 g for target (target 750 ft, time 36-39 s)",
+    "warnings": [
+     "F52C: rail exit 12.9 m/s < 13.4 m/s"
+    ]
+   }
+  },
+  "evidence_hash": "e1cadf4ae8715c27c7babdf06e90bd8015debf0fedc43c6700eb012662079159",
+  "prev_hash": "a1b2f24eaf4fa254daf512b24bb4760ce9c3a0a0111b8b40274fe798c10396a5",
+  "collapsed": false,
+  "stream": "sim"
+ }
+]

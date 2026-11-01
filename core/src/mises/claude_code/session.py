@@ -20,6 +20,8 @@ Stream-json mapping (code.claude.com/docs/en/headless):
 - `assistant`              -> message Step (text); tool_use -> lightweight tool_call event
 - `user` tool_result       -> lightweight tool_result event (the Gate already has the Steps)
 - `result`                 -> usage tokens, then run_finished done (failed if is_error)
+- `control_response`       -> answers Mises' own control requests (Plan 11 F8: the turn's
+                              effort, `apply_flag_settings` {effortLevel} then `get_settings`)
 - non-JSON stdout lines are ignored with a warning; stderr is kept as a bounded, redacted tail
 
 The caller owns the run: `runtime.create_external_run(agent, provider="claude-code",
@@ -90,6 +92,12 @@ STDIO_LIMIT = 50 * 1024 * 1024
 STDERR_KEEP_BYTES = 8192
 STDERR_TAIL_CHARS = 2048
 TERM_GRACE_S = 5.0                     # SIGTERM -> SIGKILL
+CONTROL_TIMEOUT_S = 5.0                # a control_request's answer (effort change)
+# Plan 11 F8: Mises owns the session's effort (--effort, then apply_flag_settings per turn);
+# this variable would pin it and make Claude Code refuse the per-turn change
+EFFORT_ENV = "CLAUDE_CODE_EFFORT_LEVEL"
+_EFFORT_REJECTED = re.compile(r"effort|unknown option|invalid (option|value|argument)|"
+                              r"unexpected argument", re.I)
 CLOSE_GRACE_S = 2.0                    # stdin EOF -> SIGTERM on a normal close
 MCP_FILE, AGENTS_FILE, RULES_FILE = "claude-mcp.json", "claude-agents.json", "mises-rules.md"
 
@@ -160,7 +168,7 @@ class ClaudeCodeSession:
     def __init__(self, runtime, run_id: str, *, model_alias: str, info: ClaudeInfo,
                  mcp_url: str, mcp_token: str, resume_session_id: str | None = None,
                  config_dir: str | os.PathLike | None = None, run_label: str | None = None,
-                 term_grace_s: float = TERM_GRACE_S):
+                 term_grace_s: float = TERM_GRACE_S, effort: str | None = None):
         self.runtime = runtime
         self.run_id = run_id
         self.model_alias = model_alias
@@ -194,6 +202,10 @@ class ClaudeCodeSession:
         # P11 F9: why the last turn failed ({kind, message}), for the runtime's recovery
         self.failure: dict | None = None
         self.handed_on = False         # the runtime replaced this session: close() leaves the run
+        # Plan 11 F8: --effort at start; `effort` is the level the session runs at now
+        self.start_effort = effort
+        self.effort: str | None = effort
+        self._controls: dict[str, asyncio.Future[dict]] = {}
         runtime.register_cancel_hook(run_id, self.cancel)
 
     @property
@@ -244,8 +256,11 @@ class ClaudeCodeSession:
             if defn is not None and run.role == "lead":
                 # Plan 7: the build's lead is this main session; its sub-agents are Mises
                 # spawns (mcp__mises__agent_spawn only), so the run tree matches native leads
-                from ..orchestrator.lead import lead_definition
-                defn, lead = lead_definition(defn), True
+                from ..orchestrator.lead import is_rocket_build, lead_definition
+                from ..ideation import is_challenge_build
+                defn, lead = lead_definition(defn, rocket=is_rocket_build(
+                    self.runtime.store, run.project_id, run.task), challenge=is_challenge_build(
+                    self.runtime.store, run.project_id, run.task)), True
             if defn is not None:     # Plan 9 D27: the design-class block (design / mixed)
                 from ..design_intensity import rules_for
                 defn = rules_for(defn, run.role, run.design_class)
@@ -278,6 +293,7 @@ class ClaudeCodeSession:
             "--append-system-prompt-file", str(wd / RULES_FILE),
             "--agents", str(wd / AGENTS_FILE),
             *(["--resume", self.session_id] if self.resumed else ["--session-id", self.session_id]),
+            *(["--effort", self.start_effort] if self.start_effort else []),
             "--model", self.model_alias, "--name", self.run_label]
 
     # ---- lifecycle
@@ -316,8 +332,10 @@ class ClaudeCodeSession:
         except ValueError as e:
             raise MisesError(ErrorCode.DENIED, f"cannot sandbox Claude Code: {e}") from None
         self._write_files()
+        env = claude_environment()
+        env.pop(EFFORT_ENV, None)
         self._proc = await asyncio.create_subprocess_exec(
-            *argv, cwd=str(self.workdir), env=claude_environment(),
+            *argv, cwd=str(self.workdir), env=env,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE, start_new_session=True, limit=STDIO_LIMIT)
         self._readers = [asyncio.create_task(self._read_stdout()),
@@ -329,13 +347,14 @@ class ClaudeCodeSession:
     async def prompt(self, text: str, *, context: dict | None = None,
                      images: list[tuple[str, str]] | None = None,
                      log: dict | None = None, seed: str | None = None,
-                     record: bool = True) -> str:
+                     record: bool = True, effort: str | None = None) -> str:
         """Send one user message; returns the turn's assistant text when `result` arrives.
         `context` (the Mises UI context) is prepended as a data block to the first prompt only.
         `images` ((media_type, base64) pairs, e.g. a sketch photo) follow the text as image
         content blocks. `seed` (a recap of the thread for a fresh session) goes before the text
         to Claude Code only; `record=False` skips the user message step (already written by
-        the attempt this one retries)."""
+        the attempt this one retries). `effort` (Plan 11 F8): the turn's level, applied before
+        the message when it differs from the session's (a restarted session re-applies it)."""
         self.prompt_recorded = False
         self.failure = None
         proc = self._proc
@@ -360,6 +379,13 @@ class ClaudeCodeSession:
             self._finish("failed")
             raise
         self._reopen()
+        if effort and effort != self.effort:
+            await self.set_effort(effort)
+            if proc.returncode is not None or self._aborted or self.resume_lost:
+                # it died while the effort was being set: its exit already failed nothing
+                # (no turn yet), so say so here; the runtime's recovery takes it from here
+                raise MisesError(ErrorCode.INVALID_INPUT, "Claude Code session is not running",
+                                 hint="start a new session")
         content = text if seed is None else f"{seed}\n{text}"
         body: dict = {"role": "user", "text": text}
         if not self._first_sent and context is not None:
@@ -403,6 +429,58 @@ class ClaudeCodeSession:
                 await asyncio.wait_for(asyncio.shield(
                     asyncio.gather(*self._readers, return_exceptions=True)), 3)
         return self.resume_lost
+
+    async def _control(self, request: dict) -> dict:
+        """Send one stream-json control_request and wait for its control_response (raises
+        MisesError on an error answer or no answer within CONTROL_TIMEOUT_S)."""
+        proc = self._proc
+        if proc is None or proc.stdin is None or proc.returncode is not None:
+            raise MisesError(ErrorCode.INVALID_INPUT, "Claude Code session is not running")
+        rid = "mises-" + uuid.uuid4().hex[:12]
+        fut = self._controls[rid] = asyncio.get_running_loop().create_future()
+        line = json.dumps({"type": "control_request", "request_id": rid,
+                           "request": request}) + "\n"
+        try:
+            proc.stdin.write(line.encode())
+            await proc.stdin.drain()
+            resp = await asyncio.wait_for(fut, CONTROL_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            raise MisesError(ErrorCode.TRANSIENT, f"Claude Code did not answer "
+                             f"{request.get('subtype')}") from None
+        except (BrokenPipeError, ConnectionResetError):
+            raise MisesError(ErrorCode.TOOL_FAILED, "Claude Code is not reading") from None
+        finally:
+            self._controls.pop(rid, None)
+        if resp.get("subtype") == "error":
+            raise MisesError(ErrorCode.TOOL_FAILED,
+                             f"Claude Code refused {request.get('subtype')}: "
+                             f"{str(resp.get('error'))[:200]}")
+        return resp
+
+    def effort_rejected(self) -> bool:
+        """Plan 11 F8: the process started with --effort and died before system/init with an
+        option error: the caller retries once without the flag."""
+        return bool(self.start_effort and self.init_info is None
+                    and _EFFORT_REJECTED.search(self.stderr_tail))
+
+    async def set_effort(self, level: str) -> str | None:
+        """Change the session's effort for the next turn: `apply_flag_settings`
+        {effortLevel}, then `get_settings` for the effort Claude Code now applies. Recorded
+        as a decision Step; a failure is recorded too and never fails the turn (it runs at
+        the previous level). Returns the applied level (None when unknown)."""
+        applied, error = None, None
+        try:
+            await self._control({"subtype": "apply_flag_settings",
+                                 "settings": {"effortLevel": level}})
+            got = await self._control({"subtype": "get_settings"})
+            applied = (((got.get("response") or {}).get("applied") or {}).get("effort"))
+            self.effort = applied or level
+        except MisesError as e:
+            error = e.message
+        self.runtime.store.append_step(self.run_id, StepKind.DECISION, {
+            "claude_code": "effort", "requested": level, "applied": applied,
+            **({"error": error} if error else {})})
+        return applied
 
     async def cancel(self) -> None:
         if self._cancelling or self._closed:
@@ -545,6 +623,10 @@ class ClaudeCodeSession:
     def _on_exit(self) -> None:
         proc = self._proc
         rc = proc.returncode if proc else None
+        # a control request in flight gets no answer from a dead process: fail it now
+        for fut in self._controls.values():
+            if not fut.done():
+                fut.set_exception(MisesError(ErrorCode.TOOL_FAILED, "Claude Code exited"))
         with contextlib.suppress(ProcessLookupError, PermissionError, TypeError):
             os.killpg(proc.pid, signal.SIGKILL)
         (self.workdir / MCP_FILE).unlink(missing_ok=True)
@@ -588,6 +670,11 @@ class ClaudeCodeSession:
             self._on_user(msg)
         elif kind == "result":
             self._on_result(msg)
+        elif kind == "control_response":
+            resp = msg.get("response") if isinstance(msg.get("response"), dict) else {}
+            fut = self._controls.get(resp.get("request_id"))
+            if fut is not None and not fut.done():
+                fut.set_result(resp)
 
     def _on_system(self, msg: dict) -> None:
         sub = msg.get("subtype")

@@ -4,6 +4,7 @@
 // question stays a card, every failed call and error stays its own (red) line with its hint;
 // only successful calls fold (logModel's rule). Text stays plain strings (rendered as text).
 import { pinOf, type FeedbackPin } from "../../api/measure";
+import { effortOf, type EffortDecision } from "../../api/think";
 import type { Announcement, Approval, Question, Step, StreamKind } from "../../api/types";
 import { announcementOf, deliveredOf, droppedOf, queuedOf } from "./announceModel";
 import { foldKey, itemKey, type LogItem } from "./logModel";
@@ -35,6 +36,8 @@ export type ThreadItem =
       feedback?: FeedbackPin | null;
       /** P11 F7: the images attached to it (kept under the build; GET …/chat-images/{id}). */
       images?: ChatImageRef[];
+      /** Plan 11 F8: the effort this message's turn ran at (its decision step, just before it). */
+      effort?: EffortDecision | null;
     }
   | { kind: "agent"; key: string; text: string; ts: number | null; live: boolean; stepIds: number[] }
   | {
@@ -62,7 +65,7 @@ export type ThreadItem =
   | { kind: "announce"; key: string; announcement: Announcement & { actor: string | null; projectId: string | null; jointId: string | null }; ts: number; stepIds: number[]; stream?: StreamKind }
   /** A message sent while the lead was busy: "queued" until the lead reads it, then "delivered"
    *  (in place: the user step the delivery appends is not shown twice), or "dropped" with why. */
-  | { kind: "queued"; key: string; messageId: string; text: string; position: number | null; status: "queued" | "delivered" | "dropped"; reason: string | null; ts: number; stepIds: number[] }
+  | { kind: "queued"; key: string; messageId: string; text: string; position: number | null; status: "queued" | "delivered" | "dropped"; reason: string | null; ts: number; stepIds: number[]; effort?: EffortDecision | null }
   /** Several studies of one agent turn (R18), shown as one grid of compact cards. */
   | { kind: "studies"; key: string; calls: Call[]; ts: number; stepIds: number[] };
 
@@ -198,6 +201,8 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
   /** Queued messages by id, and the delivered texts whose user step is not shown again. */
   const queuedById = new Map<string, Extract<ThreadItem, { kind: "queued" }>>();
   const echo: string[] = [];
+  /** Plan 11 F8: the latest turn's effort decision, for the user message (or delivery) after it. */
+  let effort: { e: EffortDecision; id: number } | null = null;
 
   for (const it of items) {
     const key = itemKey(it);
@@ -205,10 +210,18 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
       case "message":
         if (it.role === "user") views = null;   // the reply to it gets its own set of presented views
         // the user step a queued message's delivery appends: already shown, as the queued line
-        if (it.role === "user" && echo.length && echo[0] === it.text) { echo.shift(); break; }
-        out.push(it.role === "user"
-          ? { kind: "user", key, text: it.text, ts: it.step.ts, stepIds: [it.step.id], feedback: pinOf(it.step.payload), images: chatImagesOf(it.step.payload) }
-          : { kind: "agent", key, text: it.text, ts: it.step.ts, live: false, stepIds: [it.step.id] });
+        if (it.role === "user" && echo.length && echo[0] === it.text) {
+          const text = echo.shift();
+          const q = [...queuedById.values()].reverse().find((x) => x.status === "delivered" && x.text === text);
+          if (q && effort) { q.effort = effort.e; q.stepIds.push(effort.id); effort = null; }
+          break;
+        }
+        if (it.role === "user") {
+          const e = effort;
+          effort = null;
+          out.push({ kind: "user", key, text: it.text, ts: it.step.ts, stepIds: e ? [e.id, it.step.id] : [it.step.id], feedback: pinOf(it.step.payload),
+            images: chatImagesOf(it.step.payload), ...(e ? { effort: e.e } : {}) });
+        } else out.push({ kind: "agent", key, text: it.text, ts: it.step.ts, live: false, stepIds: [it.step.id] });
         last = null;
         break;
       case "live":
@@ -256,6 +269,8 @@ export function buildThread(items: readonly LogItem[]): ThreadItem[] {
           break;
         }
         if (last && last.call && lastCallResult() === it.step.id) { last.extra.push(it); break; }
+        const eff = effortOf(it.step);
+        if (eff) { effort = { e: eff, id: it.step.id }; break; }
         // U3c's stored announcements and the lead's message queue: cards and chips, not "decided"
         const ann = announcementOf(it.step);
         if (ann) {

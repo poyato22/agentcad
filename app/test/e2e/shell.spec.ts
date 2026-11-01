@@ -388,7 +388,8 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
       // /runs/{id} carries `pending`, as the real core's does, so no GET /runs/{id}/pending)
       // P10 E5 (A3): Play reads the build's saved animations on open
       "/projects", "/projects/{id}/assembly", "/projects/{id}/assembly/animations", "/projects/{id}/assembly/animations",
-      "/projects/{id}/bom", "/projects/{id}/bom", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup",
+      // Plan 11 F8: the composer's Think control reads the build's default effort
+      "/projects/{id}/bom", "/projects/{id}/bom", "/projects/{id}/effort", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup",
       // FW-app I3: the dock's Simulations stream reads the build's study records (all, and its
       // assembly's) and its generative runs
       "/sims", "/sims", "/status", "/topopt"]);

@@ -1,0 +1,8 @@
+/* Plan 11 F8: the composer's Think control and the effort chip on a sent message. Tokens only. */
+.think { flex: none; align-self: flex-end; display: inline-flex; }
+.think-btn { height: 26px; padding: 0 8px; border-radius: 13px; font-size: var(--fs-small); white-space: nowrap; }
+.think.is-set .think-btn { border-color: var(--line2); color: var(--ink); }
+.think-k { margin-right: 1px; }
+/* the composer sits at the foot of the dock: the menu opens upward */
+.think-menu .ovm-menu { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
+.cv-effort { font-size: var(--fs-small); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

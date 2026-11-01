@@ -16,6 +16,7 @@ import { buildModelGroups, newRunModel } from "../dialogs/modelGroups";
 import { followLead, NEW_LEAD_NOTE } from "./leadFollow";
 import { noteRun } from "./queued";
 import { showRoutedNotes } from "./routedNotes";
+import { takeThink } from "./think/think";
 
 /** The build's live lead (newest, not archived), or null before its first message. */
 export function leadOf(all: Iterable<AgentRun>, buildId: string | null): AgentRun | null {
@@ -94,7 +95,9 @@ export async function sendChat(text: string, target: AgentRun | null = null, ima
   const buildId = target?.project_id ?? activeBuildId.peek();
   if (!buildId) throw new CoreError("invalid_input", "Open a build first", { hint: "the chat belongs to a build" });
   const lead = leadOf(runs.peek().values(), buildId);
-  let res = await (images.length ? c.chat(buildId, body, images) : c.chat(buildId, body));
+  const think = takeThink();       // Plan 11 F8: the Think pick (none on Auto)
+  const opts = { ...(think ? { effort: think } : {}), ...(images.length ? { images } : {}) };
+  let res = await (Object.keys(opts).length ? c.chat(buildId, body, opts) : c.chat(buildId, body));
   if (res === null) {
     // an older core: POST /runs routes to the lead, or starts one (on the default model we pick)
     const model = lead ? null : await firstLeadModel();

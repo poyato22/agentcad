@@ -28,6 +28,9 @@ class ModelRequest(BaseModel):
     tools: list[ToolSchema] = Field(default_factory=list)
     max_tokens: int = 8192
     temperature: float | None = None
+    # Plan 11 F8: the turn's reasoning effort (low|medium|high|max); each adapter maps it to
+    # its vendor's control (mises.effort.control), or leaves it out where there is none
+    effort: str | None = None
 
 
 class TextDelta(BaseModel):

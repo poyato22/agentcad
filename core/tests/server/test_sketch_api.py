@@ -102,7 +102,8 @@ def test_run_with_sketch_vision_provider(client, rt, fake):
     assert ctx["sketch"]["sketch_id"] == sid
     assert all(i["attached"] for i in ctx["sketch"]["images"])
     # the step log shows the user's words, not the data block or the image bytes
-    user = client.get(f"/runs/{rid}/steps", headers=AUTH).json()[0]["payload"]
+    user = next(s["payload"] for s in client.get(f"/runs/{rid}/steps", headers=AUTH).json()
+                if s["kind"] == "message")      # after the turn's effort decision (Plan 11 F8)
     assert user["text"].startswith("Build the part shown in my sketch.\n\n")
     assert not user["text"].startswith("<mises-context>") and "at most 3" in user["text"]
     assert "\"strokes\"" not in user["text"]

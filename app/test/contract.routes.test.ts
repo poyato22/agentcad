@@ -225,6 +225,9 @@ const COVERAGE: Record<string, string> = {
   "POST /runs/{run_id}/queued/{message_id}/cancel": "p10/queued_cancel.json",
   "DELETE /runs/{run_id}/queue/{message_id}": "EXEMPT: an alias of POST /runs/{run_id}/queued/{message_id}/cancel (p10/queued_cancel.json); the app sends the POST",
   "POST /runs/{run_id}/retry": "p10/retry.json",
+  // Plan 11 F8 (core/scripts/dump_p11_effort_fixtures.py; shapes checked in contract.p11c.test.ts)
+  "GET /projects/{project_id}/effort": "p11c/effort_get.json",
+  "PUT /projects/{project_id}/effort": "p11c/effort_put.json",
   "POST /runs/cancel_all": "cancel_all.json",
   "POST /runs/{run_id}/message": "EXEMPT: needs a live turn of a real model; the e2e suite drives it against the fake core",
   "POST /runs/{run_id}/resume": "EXEMPT: the app never calls it (CLI resume of an interrupted run)",

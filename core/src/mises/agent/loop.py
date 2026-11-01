@@ -147,6 +147,7 @@ class AgentLoop:
         self._announced_skips = False
         self._to_gate: set[str] = set()  # call ids handed to the gate (it records their outcome)
         self._images: dict[str, list[ImageBlock]] = {}  # call id -> images its result returned
+        self.effort: str | None = None   # Plan 11 F8: this turn's effort level (runtime sets it)
 
     # ---- control
     def cancel(self) -> None:
@@ -212,7 +213,8 @@ class AgentLoop:
                     return self._stop(messages, final_text, "budget", spent)
                 messages = self._prune_images(await self._maybe_compact(messages))
                 req = ModelRequest(model=self.model, system=system, messages=messages,
-                                   tools=tools, max_tokens=self.config.max_tokens)
+                                   tools=tools, max_tokens=self.config.max_tokens,
+                                   effort=self.effort)
                 try:
                     turn = await self._guard(self._turn(req))
                 except MisesError as e:

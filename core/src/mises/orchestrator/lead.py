@@ -45,7 +45,34 @@ LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "assembly_get", "asse
               "mech_list", "mech_insert", "mech_check", "assembly_add_loop", "material_pick",
               # Plan 10 C3: the engineering pipeline every lead runs before done
               "actuator_size", "electronics_estimate", "power_budget", "dyn_torque",
-              "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks")
+              "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks",
+              # Plan 11 F6: rocketry (LEAD_ROCKETRY tells every lead to run them on a rocket)
+              "rocket_analyze", "rocket_flight", "rocket_motor",
+              # Plan 11 F8: divergent ideation for open-ended challenges, egg-drop estimate
+              "ideate_concepts", "concepts_tried", "egg_drop_estimate")
+
+#: Plan 11 F6: any rocket build is flown and checked, not guessed (in every lead's prompt)
+LEAD_ROCKETRY = """## Rocket builds (model rockets, ARC / TARC, egg lofters)
+- Competition rules change every year: before you design, fetch the CURRENT rules (web_search / \
+web_open rocketrychallenge.org or the event's site) for the target altitude, the flight-time \
+window, the payload (e.g. raw eggs), motor limits (total impulse, class) and liftoff mass. Put \
+them in the spec; never design to last year's numbers or placeholders.
+- Lay the skeleton out with the rocket names so the tools read the shape: body_od, nose_len, \
+nose_base_z (nose up +z, body from z = 0), fin_count, fin_root, fin_tip, fin_span, fin_sweep, \
+fin_t, fin_root_start (fin trailing edge z), optional boattail_len / boattail_aft_od; or pass \
+`geometry`.
+- Fins are sized by analysis, not guesswork: run `rocket_analyze` (Barrowman CP, CG from the \
+parts, static margin, fin flutter) with the planned motor, and `rocket_flight` (apogee, time to \
+apogee, flight time with the chute, max speed, payload g, descent rate) on the candidate \
+motors with the target apogee / time window (tune_mass gives the ballast). Re-weigh stand-in \
+parts with mass_overrides_g (a raw egg is ~57-60 g; a chute, cord and wadding are not solid \
+plastic). Iterate fins, ballast, motor and chute until the margin is 1-2 cal (never < 1), \
+flutter >= 1.5x max speed, the apogee and time are on target and the descent suits the payload.
+- A curve Mises lacks: `rocket_motor` fetch, or web_open its .eng on thrustcurve.org and save it.
+- Every rocket report states the static margin (cal), apogee (ft and m), time to apogee, flight \
+time and descent rate against the targets, on the named motor.
+
+"""
 
 LEAD_PROMPT = """\
 # You are this build's lead agent
@@ -74,7 +101,7 @@ user approves the sketch or skips it. `mixed`: your first deliverable is one `co
 `concept_sketch` (parent_sketch_id = the marked version) that addresses every numbered mark.
 - Later, pitch again only for a genuinely open look decision (e.g. the head), at most 2 options.
 
-{engineering}## Tell the user
+{engineering}{rocketry}## Tell the user
 - Mises shows a card whenever a part is created, an agent is spawned, or something is added to \
 the assembly or the parts list. Still say it in one short line ("Spawned designer: Design motor \
 mount.").
@@ -124,16 +151,53 @@ over the same range to catch interference.
 """
 
 
-def lead_definition(defn: AgentDefinition) -> AgentDefinition:
+#: one line for a build that is not (yet) a rocket: the tools exist, the rules stay out
+LEAD_ROCKETRY_HINT = ("## Rockets\n- If the build turns out to be a rocket, check it with "
+                      "`rocket_analyze` and `rocket_flight`.\n\n")
+_ROCKET_WORDS = re.compile(r"(?i:\brockets?\b|\brocketry\b|\btarc\b|\bnose ?cones?\b|"
+                           r"\bapogee\b|\begg ?lofter\b|\bthrustcurve\b)|\bARC\b")
+
+
+def is_rocket_text(*texts: str | None) -> bool:
+    """Does the user's request / build name / spec read as a rocket build? A cheap keyword prior
+    (ARC only in capitals: "arc" is also a sketch curve)."""
+    return any(t and _ROCKET_WORDS.search(t) for t in texts)
+
+
+def is_rocket_build(store, project_id: str | None, *texts: str | None) -> bool:
+    """The keyword prior over the request texts, the build's name and its spec goal."""
+    more: list[str | None] = []
+    if store is not None and project_id:
+        try:
+            more.append(store.get_project(project_id).name)
+        except Exception:  # noqa: BLE001 - no such build: the texts decide
+            pass
+        try:
+            spec = store.get_spec(project_id) or {}
+            more.append(str(spec.get("goal") or ""))
+        except Exception:  # noqa: BLE001
+            pass
+    return is_rocket_text(*texts, *more)
+
+
+def lead_definition(defn: AgentDefinition, *, rocket: bool = False,
+                    challenge: bool = False) -> AgentDefinition:
     """The routed agent, as this build's lead. The "after studies" rule is RESPONSE_RULES'
-    (every prompt path carries it); delegation on Claude Code is in its tool-only section."""
+    (every prompt path carries it); delegation on Claude Code is in its tool-only section.
+    `rocket` (is_rocket_build) adds the rocketry rules; any other build gets one line."""
     tools = None if defn.tools is None else list(dict.fromkeys([*defn.tools, *LEAD_TOOLS]))
     has_assembly = "assembly_animate" in defn.body and "assembly_check" in defn.body
     has_engineering = all(m in defn.body for m in ENGINEERING_MARKERS)
+    rocketry = ("" if "rocket_analyze" in defn.body
+                else LEAD_ROCKETRY if rocket else LEAD_ROCKETRY_HINT)
     lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY,
-                              engineering="" if has_engineering else LEAD_ENGINEERING)
+                              engineering="" if has_engineering else LEAD_ENGINEERING,
+                              rocketry=rocketry)
+    from ..ideation import LEAD_IDEATION, LEAD_IDEATION_HINT   # Plan 11 F8
+    ideation = LEAD_IDEATION if challenge else LEAD_IDEATION_HINT
     return defn.model_copy(update={"tools": tools,
-                                   "body": defn.body.rstrip() + "\n\n" + lead})
+                                   "body": defn.body.rstrip() + "\n\n" + lead + "\n"
+                                   + ideation})
 
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
@@ -324,14 +388,15 @@ def cancel_queued(rt: Runtime, run_id: str, message_id: str) -> bool:
 
 
 def _enqueue(rt: Runtime, lead_id: str, text: str, log: dict | None, routed: Routed,
-             images: list[tuple[str, str]] | None = None) -> dict:
+             images: list[tuple[str, str]] | None = None, effort: str | None = None) -> dict:
     q = rt.lead_queues.setdefault(lead_id, [])
     if len(q) >= QUEUE_MAX:
         raise QueueFull(len(q))
     mid = "msg_" + secrets.token_hex(6)
     shown = (log or {}).get("text", text)
     q.append({"message_id": mid, "text": text, "log": log, "shown": shown,
-              **({"images": images} if images else {})})
+              **({"images": images} if images else {}),
+              **({"effort": effort} if effort else {})})
     # shown in the thread at once, in a queued state; message_delivered settles it
     rt.store.append_step(lead_id, StepKind.DECISION, {"queued_message": {
         "message_id": mid, "text": shown, "position": len(q), "routed": routed.model_dump(),
@@ -535,11 +600,12 @@ async def _drain(rt: Runtime, lead_id: str) -> None:
                 continue
             rt.note_turns[lead_id] = rt.note_turns.get(lead_id, 0) + 1
         try:
+            more = {"effort": m["effort"]} if m.get("effort") else {}   # Plan 11 F8
             if m.get("images"):
                 await rt.send(lead_id, m["text"], log=m["log"], images=m["images"],
-                              user_turn=not note)
+                              user_turn=not note, **more)
             else:
-                await rt.send(lead_id, m["text"], log=m["log"], user_turn=not note)
+                await rt.send(lead_id, m["text"], log=m["log"], user_turn=not note, **more)
         except MisesError as e:
             if note:
                 rt.note_turns[lead_id] -= 1
@@ -566,13 +632,19 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                  read_scope=("*",), default_agent: str = "engineer",
                  classifier=None, route_text: str | None = None,
                  log: dict | None = None,
-                 images: list[tuple[str, str]] | None = None) -> dict:
+                 images: list[tuple[str, str]] | None = None,
+                 effort: str | None = None) -> dict:
     """Route the prompt (or `route_text`, the user's own words when the prompt wraps them) and
     hand it to the build's lead: sent now when the lead is idle, else queued (delivered in order
     at its turn boundary), else a new lead is started. `log` overrides the stored user step.
     `images` ((media_type, base64) pairs) go with the message to a lead that can see them.
     Returns {run_id, routed, new_lead, queued, position?, message_id?, notes}. The find-or-start
-    runs under a per-build lock, so concurrent first messages make one lead."""
+    runs under a per-build lock, so concurrent first messages make one lead.
+    `effort` (Plan 11 F8): the message's Think choice; None reads the request's
+    (effort.REQUESTED, set by the chat route), else auto."""
+    from .. import effort as effort_mod
+    effort = effort or effort_mod.REQUESTED.get()
+    more = {"effort": effort} if effort else {}
     known = set(rt.definitions) - {"planner"} - set(rt.profile().hidden_agents or ())
     routed = await route(prompt if route_text is None else route_text,
                          attachments=attachments or [], known=known,
@@ -588,7 +660,7 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                 rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref,
                                          edit_scope=edit_scope, read_scope=read_scope,
                                          project_id=project_id, routed=routed.model_dump(),
-                                         log=log)
+                                         log=log, **more)
                 out.update(run_id=rid, role=None, notes=[
                     "narrower scope than the build's lead: started a separate run with it"])
                 return out
@@ -596,17 +668,19 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
             # the lead's own routing (why it is this agent) stays; each message's routing goes
             # on its queued step or in the reply
             if rt.lead_queues.get(lead.id) or rt.run_busy(lead.id):
-                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images))
+                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images,
+                                                   effort))
                 return out
             try:
                 if images:
-                    await rt.send(lead.id, prompt, log=log, images=images)
+                    await rt.send(lead.id, prompt, log=log, images=images, **more)
                 else:
-                    await rt.send(lead.id, prompt, log=log)
+                    await rt.send(lead.id, prompt, log=log, **more)
             except MisesError as e:
                 if not (e.code == ErrorCode.INVALID_INPUT and "still working" in e.message):
                     raise
-                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images))
+                out.update(queued=True, **_enqueue(rt, lead.id, prompt, log, routed, images,
+                                                   effort))
             return out
         first_context = None
         if lead is not None:
@@ -621,7 +695,7 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
                                  edit_scope=edit_scope, read_scope=read_scope,
                                  project_id=project_id, role=LEAD, routed=routed.model_dump(),
                                  log=log, first_context=first_context,
-                                 **({"images": images} if images else {}))
+                                 **({"images": images} if images else {}), **more)
         out.update(run_id=rid, new_lead=True)
         return out
 

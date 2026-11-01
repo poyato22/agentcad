@@ -34,6 +34,7 @@ import { AssemblyAnimationChip } from "./AssemblyAnimationChip";
 import { TopoptCardSlot } from "../topopt/TopoptCard";
 import { activeBuildId } from "../../state/builds";
 import { ChatImages } from "./ChatImages";
+import { EffortChip } from "./think/EffortChip";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -203,6 +204,7 @@ export function Item({ item, agent, runId = null, run = null, retryText = null }
         <div class={`cv-msg cv-user${edited ? " is-edited" : ""}`} data-msg="user" data-row data-kind="message" data-edited={edited ? "" : undefined}>
           <div class="cv-msg-head">
             <span class="label">you</span>
+            {item.effort && <EffortChip effort={item.effort} />}
             {edited && <span class="cv-edited faint">edited · sent again below</span>}
             {!fb && item.key !== "task" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={rowKey} />}
           </div>
@@ -276,6 +278,7 @@ function QueuedLine({ item, runId }: { item: Extract<ThreadItem, { kind: "queued
       <div class="cv-msg-head">
         <span class="label">you</span>
         <span class={`cv-queued-chip is-${status}`} data-queued-chip role="status">{chip}</span>
+        {item.effort && <EffortChip effort={item.effort} />}
         {status === "queued" && runId && <CancelQueuedButton runId={runId} messageId={item.messageId} />}
         {edited && <span class="cv-edited faint">edited · sent again below</span>}
         {status !== "queued" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={rowKey} />}

@@ -70,7 +70,7 @@ describe("composer images (P11 F7)", () => {
     expect(document.querySelector("[data-attachment] img")?.getAttribute("src")).toBe(`data:image/jpeg;base64,${btoa("shot.png")}`);
     fireEvent.input(box(), { target: { value: "what is wrong here" } });
     fireEvent.keyDown(box(), { key: "Enter" });
-    await waitFor(() => expect(client.chat).toHaveBeenCalledWith("b1", "what is wrong here", [{ media_type: "image/jpeg", data_b64: btoa("shot.png") }]));
+    await waitFor(() => expect(client.chat).toHaveBeenCalledWith("b1", "what is wrong here", { images: [{ media_type: "image/jpeg", data_b64: btoa("shot.png") }] }));
     await waitFor(() => expect(attachments.value).toEqual([]));
     expect(document.querySelector("[data-attachment]")).toBeNull();
   });
@@ -86,7 +86,7 @@ describe("composer images (P11 F7)", () => {
     expect(attachments.value.map((a) => a.name)).toEqual(["b.png", "c.png"]);
     expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(false);   // no text needed
     fireEvent.click(screen.getByTestId("composer-send"));
-    await waitFor(() => expect(client.chat).toHaveBeenCalledWith("b1", IMAGE_ONLY_TEXT, expect.arrayContaining([expect.objectContaining({ media_type: "image/jpeg" })])));
+    await waitFor(() => expect(client.chat).toHaveBeenCalledWith("b1", IMAGE_ONLY_TEXT, { images: expect.arrayContaining([expect.objectContaining({ media_type: "image/jpeg" })]) }));
   });
 
   it("a dropped technical drawing offers the drawing import on its thumbnail", async () => {

@@ -1,0 +1,15 @@
+{
+  "default": "auto",
+  "choices": [
+    "auto",
+    "normal",
+    "hard",
+    "max"
+  ],
+  "levels": {
+    "auto": null,
+    "normal": "medium",
+    "hard": "high",
+    "max": "max"
+  }
+}

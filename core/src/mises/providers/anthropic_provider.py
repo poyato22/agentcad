@@ -78,6 +78,11 @@ class AnthropicProvider:
                       "input_schema": t.input_schema} for t in req.tools]
             tools[-1]["cache_control"] = {"type": "ephemeral"}
             p["tools"] = tools
+        if req.effort:
+            from mises.effort import anthropic_effort
+            level = anthropic_effort(req.model, req.effort)
+            if level:
+                p["output_config"] = {"effort": level}
         # req.temperature is deliberately not sent: the Anthropic API rejects sampling
         # parameters on current models and the 2.x SDK no longer accepts them.
         return p
