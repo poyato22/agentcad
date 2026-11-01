@@ -73,7 +73,7 @@ def test_chat_think_choice_build_default_and_auto(home):
         # the build default
         assert client.get(f"/projects/{p}/effort", headers=AUTH).json()["default"] == "auto"
         v = client.put(f"/projects/{p}/effort", headers=AUTH, json={"default": "max"}).json()
-        assert v["default"] == "max" and v["levels"]["hard"] == "high"
+        assert v["default"] == "max" and v["levels"]["high"] == "high" and v["profile_default"] == "auto"
         client.post(f"/projects/{p}/chat", headers=AUTH, json={"text": "rename it to pod"})
         _idle(rt, lead)
         assert prov.reqs[-1].effort == "max"
@@ -129,6 +129,7 @@ async def test_a_sub_agent_gets_its_spawners_effort(home):
     await rt.wait(pid)
     (child,) = [r for r in rt.store.list_runs() if r.parent_id == pid]
     assert _decisions(rt, pid)[0]["level"] == "max"
-    assert _decisions(rt, child.id)[0] == {**_decisions(rt, child.id)[0], "level": "low",
+    # G8: under a Max spawner a sub-agent thinks at least High, whatever it was asked
+    assert _decisions(rt, child.id)[0] == {**_decisions(rt, child.id)[0], "level": "high",
                                            "source": "user"}
-    assert [e for _, e in seen] == ["max", "low", "max"]
+    assert [e for _, e in seen] == ["max", "high", "max"]

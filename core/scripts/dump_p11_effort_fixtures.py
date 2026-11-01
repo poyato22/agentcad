@@ -4,7 +4,7 @@ Throwaway Runtime (temp MISES_HOME, a fake model that only says "ok"), driven th
 routes:
 
   effort_get.json        GET /projects/{id}/effort -> {default, choices, levels}
-  effort_put.json        PUT /projects/{id}/effort {default: "hard"}
+  effort_put.json        PUT /projects/{id}/effort {default: "high"} (G8: auto low medium high max)
   effort_bad.json        the 422 answer for a choice that does not exist
   chat_effort.json       POST /projects/{id}/chat {text, effort: "max"}
   chat_effort_steps.json GET /runs/{lead}/steps: the effort decision step (source user), then an
@@ -60,7 +60,7 @@ def dump(out: Path) -> None:
         r = c.get(f"/projects/{p}/effort", headers=h)
         r.raise_for_status()
         write("effort_get.json", r.json())
-        r = c.put(f"/projects/{p}/effort", headers=h, json={"default": "hard"})
+        r = c.put(f"/projects/{p}/effort", headers=h, json={"default": "high"})
         r.raise_for_status()
         write("effort_put.json", r.json())
         r = c.put(f"/projects/{p}/effort", headers=h, json={"default": "ultra"})

@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/pr
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreClient } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
-import { effortChipText, effortChipTitle, effortOf } from "../../../api/think";
+import { effortChipText, effortChipTitle, effortDefaultSchema, effortOf } from "../../../api/think";
 import { activeBuildId } from "../../../state/builds";
 import { actions, bindClient, resetStore, runs } from "../../../state/store";
 import { CommandLine } from "../command/CommandLine";
@@ -27,47 +27,47 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); resetStore(); resetThink(); activeBuildId.value = null; });
 
-const open = () => fireEvent.click(screen.getByTestId("think-control").querySelector("button") as HTMLButtonElement);
-const pick = (label: RegExp) => fireEvent.click(screen.getByRole("menuitemcheckbox", { name: label }));
+const pick = (c: string) => fireEvent.click(screen.getByTestId(`think-${c}`));
 
-describe("Think control (Plan 11 F8)", () => {
-  it("loads the build's default and offers Auto · Normal · Hard · Max", async () => {
+describe("Think control (G8: Auto · Low · Medium · High · Max, always visible)", () => {
+  it("shows every level at once with the build's pick checked", async () => {
+    client.effortDefault.mockResolvedValue({ default: "high", choices: [], levels: {} });
+    expect(effortDefaultSchema.parse({ default: "hard", choices: [], levels: {} }).default).toBe("high");   // a Plan 11 name
     render(<ThinkControl />);
     await waitFor(() => expect(client.effortDefault).toHaveBeenCalledWith("b1"));
-    expect(screen.getByTestId("think-control").dataset.think).toBe("auto");
-    open();
-    const names = screen.getAllByRole("menuitemcheckbox").map((b) => b.textContent);
-    expect(names.slice(0, 4).map((n) => n?.split(" ·")[0])).toEqual(["Auto", "Normal", "Hard", "Max"]);
+    const radios = screen.getAllByRole("radio");
+    expect(radios.map((b) => b.textContent)).toEqual(["Auto", "Low", "Medium", "High", "Max"]);
+    await waitFor(() => expect(screen.getByTestId("think-control").dataset.think).toBe("high"));
+    expect(screen.getByTestId("think-high").getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByTestId("think-max-note")).toBeNull();
   });
 
-  it("a pick goes with the next message only, then the control is back on Auto", async () => {
+  it("a pick persists for the build and goes with every message; Max warns about usage", async () => {
     render(<CommandLine />);
-    open();
-    pick(/^Max/);
+    pick("max");
     expect(screen.getByTestId("think-control").dataset.think).toBe("max");
+    await waitFor(() => expect(client.setEffortDefault).toHaveBeenCalledWith("b1", "max"));
+    expect(screen.getByTestId("think-max-note").textContent).toContain("much more");
     fireEvent.input(screen.getByLabelText("Command line"), { target: { value: "make it really interesting" } });
     fireEvent.keyDown(screen.getByLabelText("Command line"), { key: "Enter" });
     await waitFor(() => expect(client.chat).toHaveBeenCalledWith("b1", "make it really interesting", { effort: "max" }));
-    expect(thinkChoice.value).toBe("auto");
+    expect(thinkChoice.value).toBe("max");                                  // it stays
+    pick("auto");
+    await waitFor(() => expect(client.setEffortDefault).toHaveBeenLastCalledWith("b1", "auto"));
     fireEvent.input(screen.getByLabelText("Command line"), { target: { value: "rename it" } });
     fireEvent.keyDown(screen.getByLabelText("Command line"), { key: "Enter" });
     await waitFor(() => expect(client.chat).toHaveBeenLastCalledWith("b1", "rename it"));    // Auto sends no effort
   });
 
-  it("'Every message in this build' saves the pick as the build default", async () => {
+  it("a build switch shows that build's own pick", async () => {
     render(<ThinkControl />);
-    open();
-    pick(/^Hard/);
-    open();
-    pick(/Every message in this build/);
-    await waitFor(() => expect(client.setEffortDefault).toHaveBeenCalledWith("b1", "hard"));
-    await waitFor(() => expect(buildThink.value.get("b1")).toBe("hard"));
-    const el = screen.getByTestId("think-control");
-    expect(el.dataset.think).toBe("hard");
-    expect(el.dataset.thinkSticky).toBe("");
-    open();
-    pick(/Every message in this build/);
-    await waitFor(() => expect(client.setEffortDefault).toHaveBeenLastCalledWith("b1", "auto"));
+    pick("low");
+    await waitFor(() => expect(buildThink.value.get("b1")).toBe("low"));
+    client.effortDefault.mockResolvedValue({ default: "high", choices: [], levels: {} });
+    activeBuildId.value = "b2";
+    await waitFor(() => expect(screen.getByTestId("think-control").dataset.think).toBe("high"));
+    activeBuildId.value = "b1";
+    await waitFor(() => expect(screen.getByTestId("think-control").dataset.think).toBe("low"));
   });
 
   it("hides on a core without the effort routes", async () => {

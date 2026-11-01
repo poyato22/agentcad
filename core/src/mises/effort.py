@@ -29,12 +29,28 @@ import time
 from typing import Any, Literal
 
 LEVELS = ("low", "medium", "high", "max")
-CHOICES = ("auto", "normal", "hard", "max")
-Think = Literal["auto", "normal", "hard", "max"]          # the composer's Think control
-CHOICE_LEVEL = {"normal": "medium", "hard": "high", "max": "max"}
-LEVEL_CHOICE = {"low": "auto", "medium": "normal", "high": "hard", "max": "max"}
-LABEL = {"low": "Light", "medium": "Normal", "high": "Hard", "max": "Max"}
+# G8: the composer's Think control is Auto · Low · Medium · High · Max (the user's own pick);
+# "normal" / "hard" are the Plan 11 names, still read (= medium / high)
+CHOICES = ("auto", "low", "medium", "high", "max")
+LEGACY = {"normal": "medium", "hard": "high"}
+Think = Literal["auto", "low", "medium", "high", "max", "normal", "hard"]
+CHOICE_LEVEL = {"low": "low", "medium": "medium", "high": "high", "max": "max"}
+LEVEL_CHOICE = {lvl: lvl for lvl in LEVELS}
+LABEL = {"low": "Low", "medium": "Medium", "high": "High", "max": "Max"}
 DEFAULT_META = "effort_default:{}"
+
+#: G8: what a top-level turn at Max is asked to do on top of the top effort: a deliberate loop
+MAX_LOOP = (
+    "[Think: Max, chosen by the user] Work this request as a deliberate loop, and show each "
+    "stage briefly:\n"
+    "1. Plan first: write the approach, at least two alternatives you rejected and why, and the "
+    "risks (what could fail, what you must verify).\n"
+    "2. Build it.\n"
+    "3. Review independently: get a separate critique of the result — spawn a reviewer "
+    "sub-agent with effort max (or run critique_model / the engineering checks) on the "
+    "strongest model available, asking it to find what is wrong, not to confirm.\n"
+    "4. Revise: fix what the review found, re-check, and only then report, saying what the "
+    "review changed.")
 
 #: the Think choice of the HTTP request being handled (POST /projects/{id}/chat): set by the
 #: route, read by orchestrator.lead.submit, so the message keeps it through the lead's queue
@@ -48,11 +64,8 @@ def normalise(choice: Any) -> str | None:
     if not isinstance(choice, str):
         return None
     c = choice.strip().lower()
-    if c in CHOICES:
-        return c
-    if c in LEVELS:
-        return LEVEL_CHOICE[c] if c != "low" else "low"
-    return None
+    c = LEGACY.get(c, c)
+    return c if c in CHOICES else None
 
 
 def _rank(level: str) -> int:
@@ -164,7 +177,7 @@ def build_default(store, project_id: str | None) -> str | None:
 
 def set_build_default(store, project_id: str, choice: str | None) -> str | None:
     c = normalise(choice)
-    if c in (None, "auto", "low"):
+    if c in (None, "auto"):
         store.meta_delete(DEFAULT_META.format(project_id))
         return "auto"
     store.meta_set(DEFAULT_META.format(project_id), c)
@@ -172,12 +185,20 @@ def set_build_default(store, project_id: str, choice: str | None) -> str | None:
 
 
 def decide(store, run_id: str, text: str, choice: Any = None, *,
-           inherit: str | None = None) -> dict:
-    """The effort decision for one turn of `run_id`: {level, choice, source, reasons}.
-    `inherit`: a sub-agent's spawner's level, used unless the sub-task is itself creative."""
+           inherit: str | None = None, profile_default: str | None = None) -> dict:
+    """The effort decision for one turn of `run_id`: {level, choice, source, reasons}: the
+    message's pick, else the build's default, else the profile's (G8), else auto.
+    `inherit`: a sub-agent's spawner's level, used unless the sub-task is itself creative; a
+    sub-agent of a Max spawner never thinks below High (G8)."""
+    d = _decide(store, run_id, text, choice, inherit=inherit, profile_default=profile_default)
+    if inherit == "max" and _rank(d["level"]) < _rank("high"):
+        d = {**d, "level": "high", "reasons": [*d["reasons"], "spawned under Max: at least High"]}
+    return d
+
+
+def _decide(store, run_id: str, text: str, choice: Any = None, *,
+            inherit: str | None = None, profile_default: str | None = None) -> dict:
     c = normalise(choice)
-    if c == "low":
-        return {"level": "low", "choice": "auto", "source": "user", "reasons": ["chosen"]}
     if c in CHOICE_LEVEL:
         return {"level": CHOICE_LEVEL[c], "choice": c, "source": "user",
                 "reasons": [f"the user picked {LABEL[CHOICE_LEVEL[c]]}"]}
@@ -188,8 +209,12 @@ def decide(store, run_id: str, text: str, choice: Any = None, *,
     project = getattr(run, "project_id", None)
     d = build_default(store, project)
     if d in CHOICE_LEVEL:
-        return {"level": CHOICE_LEVEL[d], "choice": "auto", "source": "build",
+        return {"level": CHOICE_LEVEL[d], "choice": d, "source": "build",
                 "reasons": [f"the build's default ({LABEL[CHOICE_LEVEL[d]]})"]}
+    p = normalise(profile_default)
+    if p in CHOICE_LEVEL and getattr(run, "parent_id", None) is None:
+        return {"level": CHOICE_LEVEL[p], "choice": p, "source": "profile",
+                "reasons": [f"your default ({LABEL[CHOICE_LEVEL[p]]})"]}
     from .ideation import build_challenge, challenge_signal
     if inherit in LEVELS:
         sig = challenge_signal(text or "")

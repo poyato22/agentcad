@@ -257,6 +257,9 @@ class Profile(BaseModel):
     # default for every runtime), and never on Claude Code (a subscription, not metered dollars).
     # Agents can always be stopped; the spawn, fetch and recovery caps stay whatever this says.
     dollar_caps: bool = False
+    # G8: the Think level a build with no default of its own starts from (auto · low · medium ·
+    # high · max); a message's pick and the build's default win over it
+    default_effort: Literal["auto", "low", "medium", "high", "max"] = "auto"
     # ceilings for an agent's wind-study settings (memory, OpenFOAM cores, time per run)
     wind_max_memory_mb: int = Field(4096, ge=256, le=8192)
     wind_max_cpus: int = Field(8, ge=1, le=32)

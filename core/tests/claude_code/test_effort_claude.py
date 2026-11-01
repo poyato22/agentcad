@@ -71,11 +71,11 @@ async def test_a_refused_effort_change_is_recorded_and_the_turn_still_runs(rt, c
         rid = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet")
         await asyncio.wait_for(rt.wait(rid), 15)
         (rt.workdir(rid) / "fake_effort_error").write_text("1")
-        await rt.send(rid, "hello again", effort="max")
+        await rt.send(rid, "hello again", effort="high")
         res = await asyncio.wait_for(rt.wait(rid), 15)
         assert res.final_text == "Hello there"
         step = [p for p in _effort_steps(rt, rid) if p.get("claude_code") == "effort"][-1]
-        assert step["requested"] == "max" and step["applied"] is None
+        assert step["requested"] == "high" and step["applied"] is None
         assert "effort is locked" in step["error"]
 
 
@@ -116,7 +116,7 @@ async def test_a_cli_that_rejects_effort_is_retried_once_without_it(rt, claude_b
     (user_home / "fake-claude-reject-effort").write_text("1")
     async with served(rt):
         rid = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet",
-                                 effort="max")
+                                 effort="high")
         res = await asyncio.wait_for(rt.wait(rid), 20)
     assert res.stop_reason == "end_turn" and res.final_text == "Hello there"
     assert rt.store.get_run(rid).status == "done"
@@ -125,7 +125,7 @@ async def test_a_cli_that_rejects_effort_is_retried_once_without_it(rt, claude_b
     rejected = [s.payload for s in rt.store.steps(rid, [StepKind.DECISION])
                 if s.payload.get("claude_code") == "effort_flag_rejected"]
     assert rejected and "unknown option" in rejected[0]["stderr_tail"]
-    assert _turn_efforts(rt, rid) == ["max"]      # applied over the control protocol
+    assert _turn_efforts(rt, rid) == ["high"]      # applied over the control protocol
 
 
 async def test_an_unanswered_effort_change_times_out_and_the_turn_runs(rt, claude_bin, signed_in,
@@ -136,8 +136,50 @@ async def test_an_unanswered_effort_change_times_out_and_the_turn_runs(rt, claud
         rid = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet")
         await asyncio.wait_for(rt.wait(rid), 15)
         (rt.workdir(rid) / "fake_effort_silent").write_text("1")
-        await rt.send(rid, "hello again", effort="max")
+        await rt.send(rid, "hello again", effort="high")
         res = await asyncio.wait_for(rt.wait(rid), 15)
     assert res.final_text == "Hello there"
     step = [p for p in _effort_steps(rt, rid) if p.get("claude_code") == "effort"][-1]
     assert step["applied"] is None and "did not answer" in step["error"]
+
+
+# ---- G8: the user's level (Auto · Low · Medium · High · Max), and Max's deliberate loop
+
+def _text(content) -> str:
+    return content if isinstance(content, str) else " ".join(
+        b.get("text", "") for b in content if isinstance(b, dict))
+
+
+@pytest.mark.parametrize("level", ["low", "medium", "high", "max"])
+async def test_each_level_reaches_the_cli_as_its_effort_flag(rt, claude_bin, signed_in, level):
+    async with served(rt):
+        rid = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet",
+                                 effort=level)
+        await asyncio.wait_for(rt.wait(rid), 15)
+    argv = _argvs(rt, rid)[0]
+    assert argv[argv.index("--effort") + 1] == level
+    assert _turn_efforts(rt, rid) == [level]
+    assert "MAX_THINKING_TOKENS" not in json.dumps(_log(rt, rid))    # thinking stays adaptive
+    sent = _text(_sent(rt, rid)[0])
+    # only a Max the user chose runs the plan -> build -> review -> revise loop
+    assert ("Plan first" in sent and "Review independently" in sent and "Revise" in sent) \
+        == (level == "max")
+
+
+async def test_max_on_a_follow_up_and_from_the_profile_default(rt, claude_bin, signed_in):
+    from mises.profile import load_profile, save_profile
+    save_profile(rt.home, load_profile(rt.home).model_copy(update={"default_effort": "max"}))
+    async with served(rt):
+        rid = await rt.start_run("designer", "hello", model_ref="claude-code/sonnet")
+        await asyncio.wait_for(rt.wait(rid), 15)
+        await rt.send(rid, "hello again", effort="low")
+        await asyncio.wait_for(rt.wait(rid), 15)
+    assert _turn_efforts(rt, rid) == ["max", "low"]
+    first, second = (_text(s) for s in _sent(rt, rid)[:2])
+    assert "Plan first" in first and "Plan first" not in second
+    d = [p["effort"] for p in _effort_steps(rt, rid) if "effort" in p]
+    assert [(x["level"], x["source"]) for x in d] == [("max", "profile"), ("low", "user")]
+    # the thread keeps the user's own words, not the loop's instructions
+    users = [s.payload for s in rt.store.steps(rid, [StepKind.MESSAGE])
+             if s.payload.get("role") == "user"]
+    assert users[0]["text"] == "hello"

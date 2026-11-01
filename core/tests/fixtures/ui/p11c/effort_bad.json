@@ -8,10 +8,10 @@
           "body",
           "default"
         ],
-        "msg": "Input should be 'auto', 'normal', 'hard' or 'max'",
+        "msg": "Input should be 'auto', 'low', 'medium', 'high', 'max', 'normal' or 'hard'",
         "input": "ultra",
         "ctx": {
-          "expected": "'auto', 'normal', 'hard' or 'max'"
+          "expected": "'auto', 'low', 'medium', 'high', 'max', 'normal' or 'hard'"
         }
       }
     ]

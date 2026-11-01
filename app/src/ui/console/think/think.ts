@@ -1,16 +1,23 @@
-// Plan 11 F8: what the composer's Think control holds. `thinkChoice` is the next message's pick
-// (Auto · Normal · Hard · Max); a pick other than Auto goes with one message, then the control is
-// back on Auto. "Every message in this build" saves the pick as the build's default instead
-// (core PUT /projects/{id}/effort); with Auto chosen the core then uses that default.
-import { signal, type Signal } from "@preact/signals";
+// G8 (Plan 11 F8): what the composer's Think control holds. `thinkChoice` is the active build's
+// pick (Auto · Low · Medium · High · Max), saved as that build's default (core PUT
+// /projects/{id}/effort) so it persists; every message carries it until it is changed.
+import { effect, signal, type Signal } from "@preact/signals";
 import type { ThinkChoice } from "../../../api/think";
+import { activeBuildId } from "../../../state/builds";
 import { actions } from "../../../state/store";
 
 export const thinkChoice: Signal<ThinkChoice> = signal<ThinkChoice>("auto");
-/** Each build's saved default ("auto" when none); a build not loaded yet is missing. */
+/** Each build's saved pick ("auto" when none); a build not loaded yet is missing. */
 export const buildThink: Signal<ReadonlyMap<string, ThinkChoice>> = signal<ReadonlyMap<string, ThinkChoice>>(new Map());
 /** false once the core answered that it has no effort routes (an older core): the control hides. */
 export const thinkSupported: Signal<boolean> = signal(true);
+
+// the control shows the active build's pick (a build switch shows that build's)
+effect(() => {
+  const b = activeBuildId.value;
+  const saved = b ? buildThink.value.get(b) : undefined;
+  if (saved !== undefined) thinkChoice.value = saved;
+});
 
 function setBuild(buildId: string, choice: ThinkChoice): void {
   const next = new Map(buildThink.peek());
@@ -26,16 +33,16 @@ export async function loadBuildThink(buildId: string): Promise<void> {
   } catch { /* the control keeps Auto */ }
 }
 
-/** Save `choice` as the build's default (Auto clears it). */
+/** Save `choice` as the build's pick (Auto clears it). */
 export async function saveBuildThink(buildId: string, choice: ThinkChoice): Promise<void> {
+  setBuild(buildId, choice);
   const v = await actions.client().setEffortDefault(buildId, choice);
   setBuild(buildId, v.default);
 }
 
-/** The pick the next message carries (null: Auto); the one-shot pick goes back to Auto. */
+/** The pick the next message carries (null: Auto). It stays: the build's pick persists. */
 export function takeThink(): ThinkChoice | null {
   const c = thinkChoice.peek();
-  if (c !== "auto") thinkChoice.value = "auto";
   return c === "auto" ? null : c;
 }
 

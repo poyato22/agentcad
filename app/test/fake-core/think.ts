@@ -1,20 +1,24 @@
-// Fake core: Plan 11 F8 (core effort.py, server/effort_api.py). GET/PUT /projects/{id}/effort hold
-// a build's default Think choice ({default, choices, levels}, the real core's shape: fixtures
-// core/tests/fixtures/ui/p11c); POST /projects/{id}/chat validates `effort` like ChatBody (422 for
-// anything else) and, for a build that has a lead, records the turn's effort decision step just
-// before the user message (the real core records one on every turn; the fake only when the
-// message carries a pick, so older scenarios keep their threads).
+// Fake core: Plan 11 F8 / G8 (core effort.py, server/effort_api.py). GET/PUT /projects/{id}/effort
+// hold a build's Think pick ({default, profile_default, choices, levels}, the real core's shape:
+// fixtures core/tests/fixtures/ui/p11c); POST /projects/{id}/chat validates `effort` like ChatBody
+// (422 for anything else) and, for a build that has a lead, records the turn's effort decision
+// step just before the user message (the real core records one on every turn; the fake only when
+// the message carries a pick, so older scenarios keep their threads). G8: Auto · Low · Medium ·
+// High · Max; Plan 11's "normal" / "hard" are still accepted (= medium / high).
 import { HttpError, mises, type Route, type StepIn } from "./server";
 
-const CHOICES = ["auto", "normal", "hard", "max"] as const;
-const LEVEL: Record<string, string | null> = { auto: null, normal: "medium", hard: "high", max: "max" };
-const LABEL: Record<string, string> = { medium: "Normal", high: "Hard", max: "Max" };
+const CHOICES = ["auto", "low", "medium", "high", "max"] as const;
+const ACCEPTED = [...CHOICES, "normal", "hard"] as const;
+const LEGACY: Record<string, string> = { normal: "medium", hard: "high" };
+const LEVEL: Record<string, string | null> = { auto: null, low: "low", medium: "medium", high: "high", max: "max" };
+const LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", max: "Max" };
+const EXPECTED = "'auto', 'low', 'medium', 'high', 'max', 'normal' or 'hard'";
 
 function bad(field: string, input: unknown): HttpError {
-  return new HttpError(422, { detail: [{ type: "literal_error", loc: ["body", field], msg: "Input should be 'auto', 'normal', 'hard' or 'max'", input, ctx: { expected: "'auto', 'normal', 'hard' or 'max'" } }] });
+  return new HttpError(422, { detail: [{ type: "literal_error", loc: ["body", field], msg: `Input should be ${EXPECTED}`, input, ctx: { expected: EXPECTED } }] });
 }
 
-const view = (choice: string) => ({ default: choice, choices: [...CHOICES], levels: { ...LEVEL } });
+const view = (choice: string) => ({ default: choice, profile_default: "auto", choices: [...CHOICES], levels: { ...LEVEL } });
 
 export function thinkRoutes(defaults: Map<string, string>, liveBuild: (id: string) => boolean): Route[] {
   const build = (m: RegExpMatchArray): string => {
@@ -28,9 +32,10 @@ export function thinkRoutes(defaults: Map<string, string>, liveBuild: (id: strin
       method: "PUT", re: /^\/projects\/([^/]+)\/effort$/, h: (m, _q, raw) => {
         const id = build(m);
         const v = (raw as Record<string, unknown> | null)?.default;
-        if (typeof v !== "string" || !(CHOICES as readonly string[]).includes(v)) throw bad("default", v);
-        if (v === "auto") defaults.delete(id); else defaults.set(id, v);
-        return view(v);
+        if (typeof v !== "string" || !(ACCEPTED as readonly string[]).includes(v)) throw bad("default", v);
+        const c = LEGACY[v] ?? v;
+        if (c === "auto") defaults.delete(id); else defaults.set(id, c);
+        return view(c);
       },
     },
   ];
@@ -40,11 +45,12 @@ export function thinkRoutes(defaults: Map<string, string>, liveBuild: (id: strin
 export function thinkOnChat(body: Record<string, unknown>, leadId: string | null, append: (s: StepIn, runId: string) => unknown): void {
   const e = body.effort;
   if (e === undefined || e === null) return;
-  if (typeof e !== "string" || !(CHOICES as readonly string[]).includes(e)) throw bad("effort", e);
-  const level = LEVEL[e];
+  if (typeof e !== "string" || !(ACCEPTED as readonly string[]).includes(e)) throw bad("effort", e);
+  const c = LEGACY[e] ?? e;
+  const level = LEVEL[c];
   if (!leadId || !level) return;
   append({ kind: "decision", payload: { effort: {
-    level, choice: e, source: "user", reasons: [`the user picked ${LABEL[level]}`], label: LABEL[level],
+    level, choice: c, source: "user", reasons: [`the user picked ${LABEL[level]}`], label: LABEL[level],
     control: { runtime: "claude-code", param: "--effort / apply_flag_settings.effortLevel", value: level },
   } } }, leadId);
 }

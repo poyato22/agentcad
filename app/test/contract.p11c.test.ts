@@ -37,15 +37,15 @@ describe("contract: Plan 11 F8 real-core effort answers ↔ app ↔ fake core", 
   it("GET / PUT /projects/{id}/effort parse, and the fake answers the same shape", async () => {
     const got = effortDefaultSchema.parse(real("effort_get.json"));
     expect(got.default).toBe("auto");
-    expect(effortDefaultSchema.parse(real("effort_put.json")).default).toBe("hard");
+    expect(effortDefaultSchema.parse(real("effort_put.json")).default).toBe("high");
     expect((real("effort_bad.json") as { status: number }).status).toBe(422);
     const builds = (await fake("GET", "/projects")).json as { id: string }[];
     const g = await fake("GET", `/projects/${builds[0].id}/effort`);
     expect(shapeDiff(real("effort_get.json"), g.json as Json)).toEqual([]);
-    const p = await fake("PUT", `/projects/${builds[0].id}/effort`, { default: "hard" });
+    const p = await fake("PUT", `/projects/${builds[0].id}/effort`, { default: "high" });
     expect(p.json).toEqual(real("effort_put.json"));
     expect((await fake("PUT", `/projects/${builds[0].id}/effort`, { default: "ultra" })).status).toBe(422);
-    expect((await fake("GET", `/projects/${builds[0].id}/effort`)).json).toMatchObject({ default: "hard" });
+    expect((await fake("GET", `/projects/${builds[0].id}/effort`)).json).toMatchObject({ default: "high" });
     await fake("PUT", `/projects/${builds[0].id}/effort`, { default: "auto" });
   });
 

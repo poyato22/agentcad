@@ -1,7 +1,7 @@
-"""Plan 11 F8: the composer's Think control.
+"""Plan 11 F8 / G8: the composer's Think control (Auto · Low · Medium · High · Max).
 
 - `GET /projects/{id}/effort`  -> {default, choices, levels}: the build's default Think choice
-- `PUT /projects/{id}/effort`  {default: auto|normal|hard|max} -> the same, after saving it
+- `PUT /projects/{id}/effort`  {default: auto|low|medium|high|max} -> the same, saved
 
 A message's own choice rides on `POST /projects/{id}/chat` as `effort` (ChatBody).
 """
@@ -20,11 +20,14 @@ if TYPE_CHECKING:
 
 
 class EffortDefault(BaseModel):
-    default: Literal["auto", "normal", "hard", "max"]
+    # G8: auto · low · medium · high · max (Plan 11's normal / hard still read)
+    default: Literal["auto", "low", "medium", "high", "max", "normal", "hard"]
 
 
 def _view(runtime: Runtime, project_id: str) -> dict:
     return {"default": effort_mod.build_default(runtime.store, project_id) or "auto",
+            # G8: what "auto" on this build falls back to (the profile's default_effort)
+            "profile_default": getattr(runtime.profile(), "default_effort", "auto"),
             "choices": list(effort_mod.CHOICES),
             "levels": {c: effort_mod.CHOICE_LEVEL.get(c) for c in effort_mod.CHOICES}}
 

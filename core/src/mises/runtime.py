@@ -306,6 +306,8 @@ class Runtime:
         self.note_hold: set[str] = set()
         # Plan 11 F8: the effort level decided for a run's next turn (send -> _send)
         self._pending_effort: dict[str, str] = {}
+        # G8: the level the last effort decision gave each run (Max runs the deliberate loop)
+        self._turn_level: dict[str, str] = {}
         self.deferred_notes: dict[str, list] = {}
         # question id -> its question_asked payload (+ run_id, asked_at), so a reloaded app can
         # recover the open question cards (GET /runs/{id}/pending; QA C-2)
@@ -937,6 +939,7 @@ class Runtime:
         slot = self._admit(run.id, ref, started)
         first: str | list[Block] = prompt
         user_log = log      # e.g. a feedback pin's note instead of the wrapped message
+        first, user_log = self._max_loop(run.id, first, user_log)     # G8
         if sketch_id is not None:
             try:
                 first, user_log = self._sketch_first_prompt(run.id, sketch_id, prompt, provider.name)
@@ -1410,7 +1413,7 @@ class Runtime:
         st = self._claude[rid] = _ClaudeRun(ref=ref, first_context=first_context)
         st.effort = self._decide_effort(rid, words, effort, CLAUDE_CODE, alias)
         st.slot, st.started_data = self._external_slots.pop(rid, (None, {}))
-        text = prompt
+        text, log = self._max_loop(rid, prompt, log)          # G8
         try:
             if sketch_id is not None:
                 wd = self.workdir(rid)
@@ -2040,6 +2043,8 @@ class Runtime:
                     self._raise_design_class(run_id, words)
                     self._note_challenge(run_id, words)
                 self._pending_effort[run_id] = self._turn_effort(run_id, words or text, effort)
+                if not harness:                 # G8: the user's own message at Max
+                    text, log = self._max_loop(run_id, text, log)
             elif user_turn:     # joins a running turn: still the user, so notes may wake it
                 self.note_turns.pop(run_id, None)
                 self.note_hold.discard(run_id)
@@ -2116,14 +2121,32 @@ class Runtime:
         from . import effort as effort_mod
         try:
             d = effort_mod.decide(self.store, run_id, words, choice,
-                                  inherit=self._parent_level(run_id))
+                                  inherit=self._parent_level(run_id),
+                                  profile_default=getattr(self.profile(), "default_effort", None))
             effort_mod.record(self, run_id, d, effort_mod.control(provider, model, d["level"]))
+            # the deliberate loop is for a Max the user chose (message, build or profile), not
+            # an auto pick that reached max
+            self._turn_level[run_id] = d["level"] if d["source"] in ("user", "build", "profile") else ""
             if provider == CLAUDE_CODE:     # clamped, or None for a model without effort
                 return effort_mod.claude_code_effort(d["level"], model)
             return d["level"]
         except Exception:  # noqa: BLE001
             log.warning("could not decide the effort for %s", run_id, exc_info=True)
             return None
+
+    def _max_loop(self, run_id: str, text, log: dict | None):
+        """G8: a top-level turn at Max runs the deliberate loop (plan → build → independent
+        review → revise): its message carries the loop's instructions; the thread keeps the
+        user's own words (log). (text, log) unchanged for any other level or a sub-agent."""
+        from . import effort as effort_mod
+        if self._turn_level.get(run_id) != "max" or not isinstance(text, str):
+            return text, log
+        try:
+            if self.store.get_run(run_id).parent_id is not None:
+                return text, log
+        except KeyError:
+            return text, log
+        return f"{text}\n\n{effort_mod.MAX_LOOP}", (log if log is not None else {"text": text})
 
     def _parent_level(self, run_id: str) -> str | None:
         """A sub-agent's spawner's latest effort level (it follows its lead unless its own

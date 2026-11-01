@@ -1,8 +1,20 @@
-/* Plan 11 F8: the composer's Think control and the effort chip on a sent message. Tokens only. */
-.think { flex: none; align-self: flex-end; display: inline-flex; }
-.think-btn { height: 26px; padding: 0 8px; border-radius: 13px; font-size: var(--fs-small); white-space: nowrap; }
-.think.is-set .think-btn { border-color: var(--line2); color: var(--ink); }
-.think-k { margin-right: 1px; }
-/* the composer sits at the foot of the dock: the menu opens upward */
-.think-menu .ovm-menu { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
+/* G8 (Plan 11 F8): the composer's Think control, always visible: Auto · Low · Medium · High ·
+   Max as one segmented choice; the effort chip on a sent message. Tokens only. */
+.think { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 4px 6px; }
+.think-seg {
+  display: inline-flex; align-items: center; gap: 1px; height: 26px; padding: 2px; border-radius: 13px;
+  border: 1px solid var(--line); background: var(--paper2);
+}
+.think-k { font-size: var(--fs-small); padding: 0 5px 0 6px; }
+.think-opt {
+  height: 20px; padding: 0 7px; border: 0; border-radius: 10px; background: transparent; color: var(--dim);
+  font: inherit; font-size: var(--fs-small); cursor: pointer; white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.think-opt:hover { color: var(--ink); }
+.think-opt.on { background: var(--raised, var(--paper)); color: var(--ink); box-shadow: 0 0 0 1px var(--line2); }
+.think-opt.is-max.on { background: color-mix(in srgb, var(--blue) 22%, transparent); color: var(--ink); box-shadow: 0 0 0 1px var(--blue); }
+.think-opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.think-note { font-size: 11px; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .think-opt { transition: none; } }
 .cv-effort { font-size: var(--fs-small); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

@@ -55,9 +55,11 @@ def test_a_challenge_build_follow_up():
 
 
 def test_choices_map_to_levels():
-    assert effort.normalise("Hard") == "hard"
+    assert effort.normalise("Hard") == "high" and effort.normalise("normal") == "medium"   # Plan 11 names
+    assert effort.normalise("low") == "low" and effort.normalise("Max") == "max"
     assert effort.normalise("bogus") is None and effort.normalise(None) is None
-    assert effort.CHOICE_LEVEL == {"normal": "medium", "hard": "high", "max": "max"}
+    assert effort.CHOICES == ("auto", "low", "medium", "high", "max")
+    assert effort.CHOICE_LEVEL == {"low": "low", "medium": "medium", "high": "high", "max": "max"}
 
 
 @pytest.mark.parametrize("provider,model,level,expect", [

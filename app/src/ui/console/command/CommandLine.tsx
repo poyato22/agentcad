@@ -305,8 +305,9 @@ export function CommandLine(): JSX.Element {
           {atts.map((a) => <AttachmentThumb key={a.id} a={a} />)}
         </div>
       )}
+      {/* G8: the Think level, always visible, on its own line above the field */}
+      <ThinkControl />
       <div class="cmd-row">
-        <ThinkControl />
         <button type="button" class="cmd-attach" aria-label="Attach images" title="Attach images (or paste / drop them here)"
           data-testid="composer-attach" disabled={atts.length >= 5} onClick={() => picker.current?.click()}>
           <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5.2 5.2a4.5 4.5 0 0 0 6.4 6.4l4.3-4.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>

@@ -1,15 +1,18 @@
 {
   "default": "auto",
+  "profile_default": "auto",
   "choices": [
     "auto",
-    "normal",
-    "hard",
+    "low",
+    "medium",
+    "high",
     "max"
   ],
   "levels": {
     "auto": null,
-    "normal": "medium",
-    "hard": "high",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
     "max": "max"
   }
 }
