@@ -101,7 +101,7 @@ test("an_animation_card_opens_the_assembly_full_window_and_plays_with_scrub_loop
   await expect(c.getByTestId("motion-card-meta")).toHaveText("Open and shut the lid · 2 moves · 3.5 s · plays 2×");
   await expect(c.getByTestId("motion-card-still")).toBeVisible();
   const card = (await c.boundingBox())!;
-  expect(card.width).toBeGreaterThanOrEqual(400);                        // D13: the dock's full width
+  expect(card.width).toBeGreaterThanOrEqual((await view(page).boundingBox())!.width - 30);   // D13: the View column's full width
   await shots(page, "animation-card");
   const rest = await pixels(page);
 

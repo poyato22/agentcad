@@ -22,12 +22,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
   // Plan 9 D1: the build's name in the top bar (focused) renames the build in place
   { combo: "F2", keys: "F2", action: "Rename the build (its name in the top bar focused)", scope: "topbar" },
   { combo: "Meta+K", keys: "⌘K", action: "Focus the command line", scope: "global" },
-  { combo: "Meta+N", keys: "⌘N", action: "New agent run", scope: "global" },
   { combo: "Meta+Shift+A", keys: "⇧⌘A", action: "Agent manager", scope: "global" },
   { combo: "Meta+Shift+.", keys: "⇧⌘.", action: "Stop all runs", scope: "global" },
   // Plan 10 E11: the user's own build edits (state/undo); a text field keeps its native undo
   { combo: "Meta+Z", keys: "⌘Z", action: "Undo your last change to the build (not in a text field)", scope: "global" },
   { combo: "Meta+Shift+Z", keys: "⇧⌘Z", action: "Redo it", scope: "global" },
+  // Plan 10 E11: history (state/nav; also the ← → buttons and the mouse's back / forward buttons);
+  // not while typing in a field, where they move the caret
+  { combo: "Meta+ArrowLeft", keys: "⌘← ⌘→", action: "Back / forward (where you were: page, part, agent, Home view)", scope: "global" },
   // FW-layout (D20): the floating surfaces fold to slim tabs (not under a modal: the immersive
   // views step with ⌘[ / ⌘])
   { combo: "Meta+]", keys: "⌘]", action: "Show / hide the agent dock", scope: "global" },

@@ -43,9 +43,9 @@ h1, h2, h3, h4 { font-family: var(--font-head); font-weight: 600; margin: 0; let
    Home (D23) has no top bar: its page spans the whole window (it keeps the traffic-light inset). */
 .app {
   --gap: 12px;
-  /* the dock: ≈440px by default but never more than 32% of the window (the model keeps the
-     middle at 1280); a width the user dragged (App sets --dock-w) is kept as dragged */
-  --console-w: var(--dock-w, max(360px, min(440px, 32vw)));
+  /* the dock (P10 E6): its columns' width (App sets --dock-w: 440 / 760 / 1080 px for 1 / 2 / 3
+     open columns, or as dragged), never so wide that the model keeps less than 360px */
+  --console-w: min(var(--dock-w, 440px), calc(100vw - 360px - 2 * var(--gap)));
   display: grid;
   grid-template-rows: var(--topbar-h) minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);

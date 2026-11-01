@@ -70,18 +70,15 @@ test("interview_card_answers_the_batch_by_keyboard_and_click", async ({ page, fa
 });
 
 for (const theme of ["dark", "light"] as const) {
-  test(`console_spec_strip_shows_the_spec_and_study_${theme}`, async ({ page, fake }) => {
+  test(`the_spec_lives_on_studies_not_in_the_dock_${theme}`, async ({ page, fake }) => {
+    // P10 E12: no Spec strip in the dock's Conversation; the requirements stay on Studies
     await fake.reset(withSpec({ spec: "fixture", studies: "fixture" }) as never);
     await open(page, theme);
-    const strip = page.locator("[data-spec-panel]");
-    await expect(strip).toBeVisible();
-    await expect(strip.getByRole("button", { expanded: false })).toContainText("2 pass");
-    await strip.getByRole("button", { expanded: false }).click();
-    await expect(strip.locator("[data-spec-card]")).toBeVisible();
-    await expect(strip.locator('[data-spec-card] [data-req="mass_budget"]')).toHaveAttribute("data-status", "pass");
-    await expect(strip.locator("[data-study-line]")).toContainText("meet");
-    await expect(strip.locator("[data-scatter]")).toHaveCount(0); // the chart lives on the Studies page
-    if (SHOTS) await page.locator(".region-console").screenshot({ path: `${SHOTS}/console-spec-${theme}.png` });
+    await expect(page.locator("[data-conversation]")).toBeVisible();
+    await expect(page.locator("[data-region=console] [data-spec-panel], [data-region=console] [data-spec-card]")).toHaveCount(0);
+    await page.getByRole("tab", { name: "Studies" }).click();
+    const sec = page.locator("[data-design-studies]");
+    await expect(sec.locator('[data-spec-card] [data-req="mass_budget"]')).toHaveAttribute("data-status", "pass");
   });
 
   test(`studies_page_design_study_preview_and_use_variant_${theme}`, async ({ page, fake }) => {

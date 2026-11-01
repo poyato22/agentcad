@@ -13,6 +13,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { conn } from "./state/store";
 import { atHome, goHome } from "./state/home";
+import { installNav } from "./state/nav";
 import { isTrustedKey, registerShortcut } from "./lib/keys";
 import { needsYou } from "./state/selection";
 import { HomePage } from "./ui/pages/home";
@@ -21,8 +22,7 @@ import { AssemblyView } from "./ui/assembly/AssemblyView";
 import { openPartId } from "./ui/assembly/focus";
 import { BootOverlay } from "./ui/boot/BootOverlay";
 import { ConsolePane } from "./ui/console/ConsolePane";
-import { DEFAULT_LAYOUT, dockLayout } from "./ui/console/dockLayout";
-import { NewRunDialog } from "./ui/dialogs/NewRunDialog";
+import { dockLayout, dockWidth } from "./ui/console/dockLayout";
 import { LeftPane } from "./ui/left/LeftPane";
 import {
   activePage, consoleCollapsed, installPageShortcuts, installSurfaceShortcuts, leftCollapsed, modalOpen, toggleConsole, toggleLeft,
@@ -124,6 +124,8 @@ export function App(): JSX.Element {
   useEffect(() => installSurfaceShortcuts(), []);
   // ⇧⌘. works on Home too, which has no top bar (D23)
   useEffect(() => installStopAllShortcut(), []);
+  // Plan 10 E11: back / forward through where the user went (← → buttons, ⌘← / ⌘→, mouse buttons)
+  useEffect(() => installNav(), []);
   // ⌘0 returns to the Home grid (not while a modal is open, and only on a real key press).
   useEffect(() => registerShortcut("Meta+0", (e) => {
     if (isTrustedKey(e) && !modalOpen()) goHome();
@@ -139,9 +141,9 @@ export function App(): JSX.Element {
   return (
     <div class="app" ref={appRef} data-region="app" data-conn={conn.value} data-home={home ? "" : undefined}
       data-page={page} data-console={folded ? "rail" : "open"} data-left={leftFolded ? "rail" : "open"}
-      // the agent dock's width (360–640 px, dragged at its left edge; ui/console/dockLayout)
-      // (never dragged: the default, which gives way to the model on narrow windows; base.css)
-      style={folded || dockLayout.value === DEFAULT_LAYOUT ? undefined : { "--dock-w": `${dockLayout.value.width}px` }}>
+      // the agent dock's width: its open columns plus a tab per closed one (P10 E6; ui/console/dockLayout)
+      // (capped in base.css so the model always keeps 360 px)
+      style={folded ? undefined : { "--dock-w": `${dockWidth(dockLayout.value)}px` }}>
       {home
         ? <div class="region region-page" data-region="page"><HomePage /></div>
         : <><div class="region region-topbar" data-region="topbar"><TopBar /></div><PageRegion /><ConsoleRegion /></>}
@@ -149,7 +151,6 @@ export function App(): JSX.Element {
       <ViewImmersiveRoot />
       <GenerativeRoot />
       <SketchReviewRoot />
-      <NewRunDialog />
       <AgentManager />
       <ProfilePane open={profileOpen.value} section={profileSection.value} onClose={closeProfile} />
       <SetupGate />

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import type { AgentRun } from "../../src/api/types";
-import { expect, openManualStudySetup, test } from "./fixtures";
+import { expect, homeMenu, openManualStudySetup, test } from "./fixtures";
 
 const BASE = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/base.json"), "utf8")) as Record<string, unknown> & { runs: AgentRun[] };
 const RUN = BASE.runs[0].id;   // a running designer run
@@ -87,26 +87,18 @@ test("C6_a_deleted_run_leaves_the_manager_and_cannot_be_opened", async ({ page, 
   await expect(page.locator("[data-conversation-head]")).not.toContainText("hello zulu");
 });
 
-test("C4_a_hidden_built_in_agent_is_not_offered_in_new_run", async ({ page, fake }) => {
+test("C4_a_hidden_built_in_agent_is_marked_hidden", async ({ page, fake }) => {
   await fake.reset("base");
   await open(page);
   await page.keyboard.press("Meta+Shift+KeyA");
   await manager(page).getByRole("button", { name: "Advanced ▸" }).click();
   await manager(page).getByRole("tab", { name: "Definitions" }).click();
   await manager(page).locator('[data-agent="designer"]').getByRole("button", { name: "Hide" }).click();
-  await expect(manager(page).locator('[data-agent="designer"]')).toContainText("hidden from New run");
+  await expect(manager(page).locator('[data-agent="designer"]')).toContainText("hidden");
   await page.keyboard.press("Escape");
+  // P10 E24: there is no New run (or its agent override) left to offer it in
   await page.keyboard.press("Meta+KeyN");
-  // R8: the agent list lives behind the "specific agent" override
-  const dlg = page.getByRole("dialog", { name: "New run" });
-  await dlg.getByRole("button", { name: "More options" }).click();
-  await dlg.getByRole("menuitem", { name: "Use a specific agent…" }).click();
-  const select = dlg.getByRole("combobox", { name: "Choose an agent" });
-  await expect(select).toBeVisible();
-  // the list loads from GET /agents: wait for it, then check it (the override's placeholder aside)
-  await expect(select.locator("option")).not.toHaveCount(0);
-  await expect.poll(() => select.locator("option").allTextContents().then((a) => a.filter((t) => t !== "Choose an agent"))).toEqual(["planner", "sim", "verifier"]);
-  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
 });
 
 test("C7_the_only_these_tools_picker_lists_every_registered_tool", async ({ page, fake }) => {
@@ -230,17 +222,6 @@ test("B1_10_a_cancelled_study_reads_cancelled_not_fail_and_offers_no_agent_fix",
 
 // ---- design study (B2)
 
-test("B2_3_open_in_studies_brings_the_design_study_into_view", async ({ page, fake }) => {
-  await fake.reset(withSpec({ spec: "fixture", studies: "fixture" }) as never);
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await open(page);
-  const strip = page.locator("[data-spec-panel]");
-  await strip.getByRole("button", { expanded: false }).click();
-  await strip.getByRole("button", { name: "Open in Studies" }).click();
-  await expect(page.getByTestId("studies")).toBeVisible();
-  await expect(page.locator("[data-design-studies]")).toBeInViewport();
-});
-
 const withSpec = (spec: Record<string, unknown>) => ({ ...BASE, spec });
 
 test("B2_1_a_study_that_finishes_without_an_event_turns_done_and_enables_use_this_variant", async ({ page, fake }) => {
@@ -300,7 +281,7 @@ test("empty_trash_refused_names_the_runs_that_block_it", async ({ page, fake }) 
   // D30: the Trash lives on Home (no builds menu any more)
   await page.getByRole("button", { name: "Home" }).click();
   const home = page.locator('[data-testid="home"]');
-  await home.getByRole("button", { name: /^Trash/ }).click();
+  await homeMenu(page, "Trash");
   await home.getByRole("button", { name: "Empty trash…" }).click();
   await home.getByRole("button", { name: "Empty trash", exact: true }).click();
   await expect(home.getByRole("alert")).toContainText("The Trash wasn't emptied: 1 run in a trashed build is still working (designer · still sanding)");

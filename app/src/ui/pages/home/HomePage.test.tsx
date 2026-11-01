@@ -8,7 +8,16 @@ import { builds } from "../../../state/builds";
 import { atHome, homeView, resetHome } from "../../../state/home";
 import { bindClient, resetStore } from "../../../state/store";
 import type { CoreClient } from "../../../api/client";
+import { agentManagerOpen, closeAgentManager } from "../../agents/manager";
+import { profileOpen, closeProfile } from "../../profile/open";
 import { HomePage, UNDO_MS } from "./index";
+
+/** Plan 10 E2: pick an item of Home's Settings menu. */
+function settings(item: string | RegExp): void {
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  const menu = screen.getByRole("menu", { name: "Settings" });
+  fireEvent.click(within(menu).getByRole(/Profile/.test(String(item)) ? "menuitem" : "menuitemcheckbox", { name: item }));
+}
 
 function build(p: Partial<Build>): Build {
   return { id: "b", name: "Build", created_at: 0, updated_at: 0, trashed_at: null,
@@ -76,7 +85,7 @@ describe("HomePage", () => {
     expect(within(header).getByRole("button", { name: "New build" }).className).toContain("btn-primary");
     expect(within(header).getByRole("button", { name: "Import drawing…" })).toBeTruthy();
     expect(home.querySelector(".imp-overlay-page")).not.toBeNull();     // drop anywhere on Home
-    fireEvent.click(screen.getByRole("button", { name: /^Trash/ }));
+    settings(/^Trash/);
     expect(screen.getByTestId("home").querySelector(".imp-overlay-page")).toBeNull();
   });
 
@@ -120,7 +129,7 @@ describe("HomePage", () => {
 
   it("shows trashed builds with Restore behind the Trash filter", () => {
     render(<HomePage />);
-    fireEvent.click(screen.getByRole("button", { name: /Trash/ }));
+    settings(/^Trash/);
     expect(screen.getByText("Scrap")).toBeTruthy();
     expect(screen.queryByText("Robot arm")).toBeNull();
     fireEvent.click(screen.getByText("Restore"));
@@ -175,7 +184,7 @@ describe("HomePage", () => {
 
   it("D30: a Trash tile deletes forever only after a confirm; Empty trash asks first", async () => {
     render(<HomePage />);
-    fireEvent.click(screen.getByRole("button", { name: /^Trash/ }));
+    settings(/^Trash/);
     fireEvent.click(screen.getByRole("button", { name: "Delete forever" }));
     expect(client.purgeBuild).not.toHaveBeenCalled();
     fireEvent.click(within(screen.getByRole("group", { name: "Confirm deleting Scrap" })).getByRole("button", { name: "Delete" }));
@@ -185,7 +194,7 @@ describe("HomePage", () => {
 
   it("D30: Empty trash confirms before purging", async () => {
     render(<HomePage />);
-    fireEvent.click(screen.getByRole("button", { name: /^Trash/ }));
+    settings(/^Trash/);
     fireEvent.click(screen.getByRole("button", { name: "Empty trash…" }));
     expect(client.emptyTrash).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Empty trash" }));
@@ -194,13 +203,63 @@ describe("HomePage", () => {
 
   it("D22: Onshape and the parts library open as Home sub-views with a way back", () => {
     render(<HomePage />);
-    fireEvent.click(screen.getByRole("button", { name: "Onshape" }));
+    settings("Onshape");
     expect(homeView.value).toBe("onshape");
     expect(screen.getByTestId("home").getAttribute("data-home-view")).toBe("onshape");
     fireEvent.click(screen.getByRole("button", { name: /Builds/ }));
     expect(homeView.value).toBe("builds");
-    fireEvent.click(screen.getByRole("button", { name: "Parts library" }));
+    settings("Parts library");
     expect(screen.getByTestId("home").getAttribute("data-home-view")).toBe("library");
+  });
+
+  it("E2: one Settings menu holds Parts library, Onshape, Trash and Profile & settings; no separate buttons", () => {
+    render(<HomePage />);
+    const header = screen.getByTestId("home").querySelector(".home-bar") as HTMLElement;
+    for (const name of [/^Onshape$/, /^Parts library$/, /^Trash/]) expect(within(header).queryByRole("button", { name })).toBeNull();
+    fireEvent.click(within(header).getByRole("button", { name: "Settings" }));
+    const menu = screen.getByRole("menu", { name: "Settings" });
+    expect([...menu.querySelectorAll("[role^=menuitem]")].map((b) => b.querySelector(".ovm-label")?.textContent))
+      .toEqual(["Parts library", "Onshape", "Trash", "Profile & settings"]);
+    expect(within(menu).getByRole("menuitemcheckbox", { name: /^Trash/ }).textContent).toContain("1");   // the count
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Profile & settings" }));
+    expect(profileOpen.value).toBe(true);
+    closeProfile();
+  });
+
+  it("E7: a Settings item closes its own view again; the Settings button closes its menu", () => {
+    render(<HomePage />);
+    settings("Parts library");
+    expect(homeView.value).toBe("library");
+    // the sub-view keeps the Settings menu, with its item checked
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(within(screen.getByRole("menu")).getByRole("menuitemcheckbox", { name: "Parts library" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    settings("Parts library");
+    expect(homeView.value).toBe("builds");
+    settings(/^Trash/);
+    expect(homeView.value).toBe("trash");
+    expect(screen.getByRole("heading", { name: "Trash" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Builds/ }));         // a visible way back (E13)
+    expect(homeView.value).toBe("builds");
+  });
+
+  it("E1: Agents opens the agent manager and clicking it again closes it", () => {
+    render(<HomePage />);
+    const btn = screen.getByRole("button", { name: /^Agents/ });
+    fireEvent.pointerDown(btn); fireEvent.click(btn);
+    expect(agentManagerOpen.value).toBe(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.pointerDown(btn); fireEvent.click(btn);
+    expect(agentManagerOpen.value).toBe(false);
+    closeAgentManager();
+  });
+
+  it("E11: the header has ← / → history buttons", () => {
+    render(<HomePage />);
+    const header = screen.getByTestId("home").querySelector(".home-bar") as HTMLElement;
+    expect(within(header).getByRole("button", { name: "Back" })).toBeTruthy();
+    expect(within(header).getByRole("button", { name: "Forward" })).toBeTruthy();
   });
 
   it("D24: a tile shows the mass when the core reports it", () => {

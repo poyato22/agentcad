@@ -15,6 +15,7 @@ import { ApprovalCard } from "./approvals/ApprovalCard";
 import { QuestionCard } from "./approvals/QuestionCard";
 import { expandedFolds, labelOf, logFrame, retainLogFrames, toggleFold } from "./derived";
 import { DiffView } from "./DiffView";
+import { isApiErrorText } from "./errorText";
 import { createFollow, type FollowController } from "./follow";
 import { callFoldKey, findStepRow, foldKey, itemKey, type LogItem } from "./logModel";
 import { ToolCallRow } from "./ToolCallRow";
@@ -200,7 +201,8 @@ function RowBody({ item, label }: { item: LogItem; label?: string }): JSX.Elemen
             <Prefix label={label} />
             {item.role === "user" && <span class="faint">you · </span>}
             {/* the agent's words render as Mises markup, as in the conversation view; yours stay plain */}
-            {item.role === "user"
+            {/* (P10 E3: Claude Code's API error echoed as a reply stays plain too) */}
+            {item.role === "user" || isApiErrorText(item.text)
               ? <span class="ink text">{item.text}</span>
               : <span class="ink text con-mk" data-agent-text><Markup source={item.text} collapsible={false} /></span>}
           </span>

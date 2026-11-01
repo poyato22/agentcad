@@ -20,7 +20,7 @@ import { partName } from "../../lib/names";
 import { activeBuildId } from "../../state/builds";
 import { agentFlash } from "../../state/partEdits";
 import { parts, selectedPartId } from "../../state/store";
-import { closePart, openPart } from "../assembly/focus";
+import { closePart, openPart, openPartId } from "../assembly/focus";
 import { ConfirmDelete } from "./ConfirmDelete";
 import { masses, rowMassText } from "./mass";
 import { AppearancePopover } from "./AppearancePopover";
@@ -396,8 +396,9 @@ export function PartList(): JSX.Element {
     click(e, id) {
       const multi = e.shiftKey || e.metaKey || e.ctrlKey;
       clickSelect(id, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey }, orderRef.current);
-      // Plan 9 D7: a plain click opens the part alone (a group has no model of its own)
-      if (!multi && (byId(id)?.kind ?? "part") !== "group") openPart(id);
+      // Plan 9 D7: a plain click opens the part alone (a group has no model of its own); Plan 10 E7:
+      // clicking the open part's row again goes back to the assembly
+      if (!multi && (byId(id)?.kind ?? "part") !== "group") { if (openPartId.peek() === id) closePart(); else openPart(id); }
     },
     rename(id) { setEditing(id); },
     renamed(id, v) { setEditing(null); if (v !== null) void renamePart(id, v); focusRow(id); },
