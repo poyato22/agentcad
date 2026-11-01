@@ -599,6 +599,16 @@ def _catalog_source(ctx: ToolContext, args: ShowArgs) -> dict:
             "domain": _host(url) if url else None}
 
 
+def _may_insert(ctx: ToolContext, catalog_id: str) -> bool:
+    """May this run insert a catalog item into the build? catalog_insert's Gate scope rule:
+    `*` or `catalog:<item>` in the run's edit scope."""
+    pol = getattr(ctx, "policy", None)
+    if pol is None:
+        return True
+    allowed = set(pol.edit_scope)
+    return "*" in allowed or f"catalog:{catalog_id}" in allowed
+
+
 async def _show_into_build(ctx: ToolContext, card: dict) -> None:
     """E15: put a shown part into the build and the parts list. Best-effort — a failure never
     fails the card. Sets card["part_id"] (catalog-backed) or card["item_id"] (shop page)."""
@@ -606,6 +616,11 @@ async def _show_into_build(ctx: ToolContext, card: dict) -> None:
     if not project:
         return
     if card.get("catalog_id"):
+        if not _may_insert(ctx, card["catalog_id"]):
+            # M1: the same scope rule as catalog_insert (`catalog:<item>` in the run's edit
+            # scope): a sub-agent scoped to one part shows the card but does not add a part
+            card["insert_skipped"] = "out_of_scope"
+            return
         try:
             from ..catalog.tools import _catalog, insert_catalog_item
             item = _catalog(ctx).get(card["catalog_id"])
@@ -657,7 +672,10 @@ async def part_show(ctx: ToolContext, args: ShowArgs) -> ToolOutput:
     return ToolOutput(
         summary=f"Showed the user part card {card['id']}"
                 + (f" (parts directory item {card['catalog_id']})" if card["catalog_backed"]
-                   else "") + f"{price}. {UNTRUSTED}",
+                   else "") + f"{price}"
+                + ("; not added to the build: inserting it is outside this run's scope (the "
+                   "build's lead adds it)" if card.get("insert_skipped") else "")
+                + f". {UNTRUSTED}",
         data={**ids, "card": ids, "part_id": card.get("part_id"),
               "item_id": card.get("item_id"),
               # the parts-list row the part sits in: a shop row, or the inserted part's auto row
