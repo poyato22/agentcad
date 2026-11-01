@@ -15,8 +15,10 @@ accuracy}) with the same chart shape as the study charts (sim/charts.py).
 from __future__ import annotations
 
 import base64
+import dataclasses
 import json
 import math
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -33,7 +35,7 @@ FT = 0.3048
 MARGIN_MIN, MARGIN_TARGET_HI, MARGIN_MAX = 1.0, 2.0, 3.0
 RAIL_EXIT_MIN = 13.4          # m/s (30 mph): the usual minimum for a stable rail exit
 DEPLOY_FAST = 15.0            # m/s: a chute opening faster than this risks a zipper / egg shock
-CHART_POINTS = 90
+CHART_POINTS = 50
 ROUGHNESS = {"polished": 2e-6, "smooth": 20e-6, "paint": 60e-6, "printed": 100e-6,
              "rough": 250e-6}
 ACCURACY = [
@@ -314,7 +316,7 @@ def _thin(pts: list) -> list:
     if len(pts) > CHART_POINTS:
         step = len(pts) / CHART_POINTS
         pts = [pts[int(i * step)] for i in range(CHART_POINTS)] + [pts[-1]]
-    return [[round(a, 3), round(b, 3)] for a, b in pts]
+    return [[round(a, 2), round(b, 2)] for a, b in pts]
 
 
 def _worst(statuses) -> str:
@@ -452,9 +454,10 @@ async def rocket_analyze(ctx: ToolContext, args: AnalyzeArgs) -> ToolOutput:
                             if 'ratio' in x else "") for x in frows))
     card = {"kind": "rocket_analyze", "title": "Rocket stability" + (
         f" · {motor.designation}" if motor else ""), "status": status, "metrics": metrics,
-        "rows": terms, "flutter": frows, "mass": mass_table, "charts": charts,
-        "warnings": warnings, "notes": fnotes + [f"geometry from the {r.built.source}"],
+        "charts": charts, "notes": fnotes + [f"geometry from the {r.built.source}"],
         "accuracy": ACCURACY[:1] + ACCURACY[3:]}
+    # the card's tables are data.terms / data.flutter / data.mass_table and its warnings the
+    # result's: nothing is sent twice (the gate spills a result over 16 KB to a file)
     data = {"project_id": r.project_id, "status": status, "cp_mm": round(r.cp_m * 1000, 1),
             "cn_alpha": round(r.cn, 3), "ref_diameter_mm": round(r.ref_d * 1000, 2),
             "length_mm": round(r.body.length * 1000, 1), "dry_mass_g": round(dry_kg * 1000, 1),
@@ -496,6 +499,12 @@ def _tune(r: Rocket, m: motorlib.Motor, args: FlightArgs, target: float, at_m: f
         if hi - lo < 0.0005:
             break
     b = (lo + hi) / 2
+    if b < 0:
+        # mass to take off: where it comes from decides the new margin, so none is claimed
+        return {"reachable": True, "ballast_g": round(b * 1000, 1),
+                "note": f"remove ~{-b * 1000:.0f} g to reach the target on {m.designation}; "
+                        "re-run rocket_analyze after the change (the margin depends on where "
+                        "the mass comes off)"}
     extra = MassRow("ballast", None, b, at_m, "tuned")
     _mt, cg = r.cg_at(m, 0.0, [extra])
     return {"reachable": True, "ballast_g": round(b * 1000, 1), "at_mm": round(at_m * 1000, 1),
@@ -634,12 +643,12 @@ async def rocket_flight(ctx: ToolContext, args: FlightArgs) -> ToolOutput:
                   "deploy": f"{args.delay_s:g} s after burnout" if args.delay_s is not None
                   else "at apogee", "chute_cd": args.chute_cd}
     card = {"kind": "rocket_flight", "title": "Rocket flight · " + ", ".join(
-        m.designation for m in mots), "status": status, "metrics": metrics, "rows": rows,
-        "charts": charts, "warnings": warnings, "conditions": conditions,
+        m.designation for m in mots), "status": status, "metrics": metrics,
+        "charts": charts, "conditions": conditions,
         "target": {"apogee_m": target, "time_s": args.target_time_s}, "accuracy": ACCURACY}
+    # the card's table is data.flights and its warnings the result's (see rocket_analyze)
     data = {"project_id": r.project_id, "status": status, "flights": rows,
-            "conditions": conditions, "dry_mass_g": round(r.mass.dry_kg * 1000, 1),
-            "motors": [m.summary() for m in mots], "card": card, "stream": "sim"}
+            "dry_mass_g": round(r.mass.dry_kg * 1000, 1), "card": card, "stream": "sim"}
     return ToolOutput(summary=summary, data=data, warnings=warnings, step_kind=StepKind.SIM_RUN)
 
 
@@ -695,7 +704,8 @@ async def _fetch_thrustcurve(ctx: ToolContext, name: str, mfr: str | None) -> tu
             sim = f.get("simfileId")
             return text, {"source": f"thrustcurve.org ({f.get('source') or 'simfile'})",
                           "license": f.get("license"),
-                          "url": f"https://www.thrustcurve.org/simfiles/{sim}/" if sim else None}
+                          "url": f"https://www.thrustcurve.org/simfiles/{sim}/" if sim else None,
+                          "designation": str(c.get("designation") or "")}
     raise MisesError(ErrorCode.NOT_FOUND, f"ThrustCurve has no RASP file for {name!r}")
 
 
@@ -761,7 +771,13 @@ async def rocket_motor(ctx: ToolContext, args: MotorArgs) -> ToolOutput:
     for how in (_fetch_thrustcurve, _fetch_mirror):
         try:
             text, meta = await how(ctx, args.name, args.manufacturer)
+            listed = meta.pop("designation", None)
             m = motorlib.parse_eng(text, **meta)
+            if listed and motorlib._norm(m.designation) != motorlib._norm(listed):
+                # a simfile's header can name a variant ("G64BF", "F52"): the catalog's
+                # designation is the one the user asks for by name
+                m = dataclasses.replace(m, designation=re.sub(r"[^A-Za-z0-9.\-/]", "",
+                                                              listed)[:40] or m.designation)
             motorlib.save(home, m, **meta)
             return ToolOutput(summary=f"fetched {m.designation} ({m.total_impulse_ns:.1f} Ns, "
                                       f"{m.burn_time_s:.2f} s) from {meta['source']}",

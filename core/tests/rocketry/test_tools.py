@@ -11,6 +11,7 @@ import pytest
 from mises.assembly.model import AssemblyStore, Instance
 from mises.cad import skeleton as sk
 from mises.events import tool_stream
+from mises.gate import MAX_OUTPUT_BYTES
 from mises.rocketry import motors
 from mises.rocketry import tools as rt
 from mises.store import AgentPolicy
@@ -52,7 +53,8 @@ async def test_analyze_cg_and_margin_from_parts_match_openrocket(ctx):
     card = d["card"]
     assert card["kind"] == "rocket_analyze" and d["stream"] == "sim"
     assert card["charts"][0]["bands"][0]["from"] == 1.0
-    assert {r["term"] for r in card["rows"]} == {"nose (ogive)", "fins (3)"}
+    assert {r["term"] for r in d["terms"]} == {"nose (ogive)", "fins (3)"}
+    assert len(out.model_dump_json().encode()) < MAX_OUTPUT_BYTES
     fl = d["flutter"][0]
     assert fl["status"] == "pass" and fl["ratio"] > 1.5 and fl["max_v_mps"] == pytest.approx(90, rel=0.03)
     assert "margin 1.8" in out.summary or "margin 1.9" in out.summary
@@ -164,6 +166,24 @@ def test_every_lead_is_told_to_fly_rocket_builds():
     assert "static margin (cal), apogee" in body and body.count("## Rocket builds") == 1
 
 
+async def test_four_motor_flight_fits_the_gates_output_cap(ctx):
+    """Over 16 KB the gate spills the result to a file and the card would be lost."""
+    out = await rt.rocket_flight.handler(ctx, rt.FlightArgs(
+        project_id="rkt", geometry=ref.geometry("A"), motors=["F44W", "F52C", "F67C", "G40W"],
+        target_apogee_ft=750, target_time_s=[36, 39], tune_mass=True, wind_mps=4))
+    assert len(out.data["flights"]) == 4
+    assert len(out.model_dump_json().encode()) < MAX_OUTPUT_BYTES
+
+
+async def test_tuning_down_says_how_much_to_remove(ctx):
+    out = await rt.rocket_flight.handler(ctx, rt.FlightArgs(
+        project_id="rkt", geometry=ref.geometry("A"), motors=["F52C"], target_apogee_m=330,
+        tune_mass=True))
+    t = out.data["flights"][0]["tune"]
+    assert t["reachable"] and t["ballast_g"] < 0 and "remove" in t["note"]
+    assert "margin_launch_cal" not in t
+
+
 def test_flight_args_need_a_motor():
     with pytest.raises(ValueError):
         rt.FlightArgs(project_id="rkt")
@@ -220,7 +240,8 @@ async def test_fetch_from_thrustcurve_api(ctx, tmp_path):
         "https://www.thrustcurve.org/api/v1/download.json": (
             "application/json", json.dumps({"results": [{
                 "simfileId": "s1", "format": "RASP", "source": "cert", "license": "PD",
-                "data": base64.b64encode(F39.encode()).decode()}]})),
+                # the simfile's header names it "F39": the catalog's "F39T" is kept
+                "data": base64.b64encode(F39.replace("F39T 24", "F39 24").encode()).decode()}]})),
     })
     ctx.services["browser_http"] = {"transport": web.transport, "resolve": _resolve}
     out = await rt.rocket_motor.handler(ctx, rt.MotorArgs(action="fetch", name="F39"))
