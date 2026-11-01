@@ -1,26 +1,25 @@
-/* The agent dock (Plan 9 D4 / D20 visual spec): three stacked streams separated by hairlines, plain
-   sentence-case section headers (12.5px semibold, no boxed bars), numbers in the mono face.
-   Tokens only; blue is for needs-you and an agent working (the running count). */
+/* The agent dock (P10 E6 on the Plan 9 D4 / D20 visual spec): View | Simulations | Conversation as
+   columns separated by hairlines, plain sentence-case headers (12.5px semibold, no boxed bars), a
+   closed column as a slim vertical tab, numbers in the mono face. Tokens only; blue is for
+   needs-you and an agent working (the running count). */
 .dock { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--paper); }
 .dock .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.dock-cols { flex: 1; min-height: 0; display: flex; flex-direction: row; }
 
-/* ---- a stream */
-.dock-s { display: flex; flex-direction: column; min-height: 0; flex: none; border-bottom: 1px solid var(--line); }
-.dock-s[data-sized] { flex: 0 0 auto; }
-.dock-s[data-fill] { flex: 1 1 0; border-bottom: 0; }
-.dock-s[data-fill][data-collapsed] { flex: none; }
-/* the Conversation folded away: the streams above share its room */
-.dock[data-text-collapsed] .dock-s[data-sized] { flex: 1 1 auto; }
-.dock-h { flex: none; display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 8px 0 6px; }
-/* the first header keeps clear of the pinned collapse button (base.css .console-collapse) */
-.dock-s:first-of-type .dock-h { padding-right: 32px; }
+/* ---- a column */
+.dock-s { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--line); }
+.dock-cols > .dock-s:first-child { border-left: 0; }
+.dock-h { flex: none; display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 8px 0 6px; min-width: 0; }
+/* the rightmost column's header (or tab) keeps clear of the pinned collapse button (base.css .console-collapse) */
+.dock-cols > .dock-s:last-child .dock-h { padding-right: 34px; }
 .dock-t {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px; border: 0; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: none; padding: 4px 6px; border: 0; border-radius: 6px;
   background: none; color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer; text-align: left;
 }
 .dock-t:hover { background: var(--paper2); }
+.dock-t[aria-disabled="true"] { cursor: default; }
+.dock-t[aria-disabled="true"]:hover { background: none; }
 .dock-t:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
-.dock-chev { width: 10px; color: var(--faint); font-size: 9px; }
 .dock-title { white-space: nowrap; }
 .dock-n { color: var(--faint); font-weight: 400; font-size: 11px; }
 .dock-running { display: inline-flex; align-items: center; gap: 4px; color: var(--blue2); font-weight: 400; font-size: 11px; }
@@ -31,15 +30,34 @@
   font-size: 10px; font-weight: 600; text-align: center; line-height: 1.3;
 }
 .dock-b { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
-.dock-s[data-fill] > .dock-b { overflow: hidden; }
-.dock-empty { margin: 0; padding: 0 14px 10px 28px; font-size: 11px; }
+.dock-s[data-stream="text"] > .dock-b { overflow: hidden; }
+.dock-empty { margin: 0; padding: 0 14px 10px 14px; font-size: 11px; }
 
-/* ---- dividers: a hairline you can drag (the stream above grows or shrinks) */
-.dock-div { flex: none; height: 7px; margin: -4px 0 -3px; position: relative; z-index: 2; cursor: row-resize; touch-action: none; }
-.dock-div:hover, .dock-div:focus-visible { background: linear-gradient(transparent 3px, var(--dim) 3px, var(--dim) 4px, transparent 4px); outline: none; }
-.dock-edge { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; z-index: 4; cursor: col-resize; touch-action: none; }
+/* ---- a closed column: a slim vertical tab (like the folded dock's own tab), its unread count */
+.dock-tab {
+  flex: none; width: 30px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0;
+  border: 0; border-left: 1px solid var(--line); background: none; color: var(--dim); cursor: pointer;
+  font: 500 12px/1 var(--font-ui);
+}
+.dock-cols > .dock-tab:first-child { border-left: 0; }
+.dock-cols > .dock-tab:last-child { padding-top: 40px; }
+.dock-tab:hover { color: var(--ink); background: var(--paper2); }
+.dock-tab:focus-visible { outline: 1px solid var(--blue); outline-offset: -2px; }
+.dock-tab-t { writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; }
+
+/* ---- dividers between open columns, and the dock's left edge: a hairline you can drag */
+.dock-div {
+  flex: none; width: 7px; margin: 0 -4px 0 -3px; position: relative; z-index: 2; cursor: col-resize; touch-action: none;
+  -webkit-user-select: none; user-select: none;
+}
+.dock-div:hover, .dock-div:focus-visible { background: linear-gradient(90deg, transparent 3px, var(--dim) 3px, var(--dim) 4px, transparent 4px); outline: none; }
+.dock-edge {
+  position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; z-index: 4; cursor: col-resize; touch-action: none;
+  -webkit-user-select: none; user-select: none;
+}
 .dock-edge:hover, .dock-edge:focus-visible { background: linear-gradient(90deg, transparent 2px, var(--dim) 2px, var(--dim) 3px, transparent 3px); outline: none; }
-
+/* E10: while an edge or divider is dragged nothing on the page selects, and the cursor holds */
+body.dock-resizing, body.dock-resizing * { -webkit-user-select: none !important; user-select: none !important; cursor: col-resize !important; }
 /* ---- Conversation header: whose thread, needs-you count, ⋯ */
 .dock-hx { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; justify-content: flex-end; }
 /* `.dock-hx .dock-who` outranks the global `.text` (pre-wrap): one line, ending in "…" */
@@ -50,21 +68,28 @@
   font-size: 10.5px; font-weight: 600; cursor: pointer;
 }
 .dock-needs:focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
-/* Plan 9 G-B: "Design focus: Engineering · Mixed · Design" (the build's design class; user-settable) */
-.dock-focus { display: inline-flex; align-items: center; gap: 3px; flex: none; margin-right: auto; font-size: 11px; white-space: nowrap; }
-.dock-focus-l { margin-right: 2px; }
-.dock-focus-sep { font-size: 10px; }
-.dock-focus-b { padding: 1px 5px; border: 0; border-radius: 6px; background: none; color: var(--dim); font: inherit; cursor: pointer; }
-.dock-focus-b:hover { color: var(--ink); background: var(--paper2); }
+/* Plan 9 G-B / P10 E23: the design focus as a compact segmented control (Eng | Mixed | Design, full
+   names in the tooltips). It shrinks before anything overlaps: the "Focus" label goes first in a
+   narrow header, then the segments' padding. */
+.dock-h { container-type: inline-size; container-name: dockh; }
+.dock-focus {
+  display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; margin-right: auto; font-size: 11px; white-space: nowrap;
+}
+.dock-focus-l { flex: none; }
+.dock-seg { display: inline-flex; flex: none; padding: 1px; border: 1px solid var(--line2); border-radius: 7px; background: var(--paper); }
+.dock-focus-b {
+  padding: 1px 6px; border: 0; border-radius: 5px; background: none; color: var(--dim); font: inherit; line-height: 16px; cursor: pointer;
+}
+.dock-focus-b:hover { color: var(--ink); }
 .dock-focus-b.on { color: var(--ink); background: var(--paper2); font-weight: 600; }
-.dock-focus-b:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
-.dock-focus-you { font-size: 10px; }
-/* the ⋯ menu is the shared OverflowMenu, restyled for the dock */
-.dock-more .ovm-btn { width: 26px; height: 22px; padding: 0; border: 0; border-radius: 7px; font-size: 14px; line-height: 1; }
-.dock-more .ovm-btn:hover, .dock-more .ovm-btn[aria-expanded="true"] { background: var(--paper2); color: var(--ink); }
-.dock-more .ovm-menu { top: calc(100% + 4px); min-width: 168px; padding: 4px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .28); }
-.dock-more .ovm-item { padding: 6px 10px; border-radius: 6px; font-size: 12px; }
-.dock-more .ovm-item:hover:not(:disabled), .dock-more .ovm-item:focus-visible { background: var(--paper); }
+.dock-focus-b:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+.dock-focus-you { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--dim); }
+@container dockh (max-width: 400px) {
+  .dock-focus-l { display: none; }
+}
+@container dockh (max-width: 330px) {
+  .dock-focus-b { padding: 1px 4px; }
+}
 
 /* which agent a View / Simulations card came from */
 .dock-run { font-size: 10.5px; margin: 0 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -77,7 +102,8 @@
 .vs-main > .vcard { max-width: none; flex: 1; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; min-height: 0; }
 .vs-main > .vcard .vcard-stage { flex: 1 1 auto; height: auto; min-height: 72px; }
 .vs-main > .vcard .vcard-foot { flex: none; }
-.vs-main > .crit { border-radius: 10px; }
+/* P10 E18: a critique round fills the stream like a view card */
+.vs-main > .crit { flex: 1; min-height: 0; border-radius: 10px; overflow: hidden; }
 .vs-main > .cv-line, .vs-main > .cv-announce { margin-left: 0; margin-right: 0; }
 .vs-strip { flex: none; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
 .vs-tile {

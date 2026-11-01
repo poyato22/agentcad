@@ -16,6 +16,17 @@
 .crit-shot img, .crit-shot-empty { display: block; width: 72px; height: 48px; border: 1px solid var(--line); background: var(--vp); object-fit: contain; }
 .crit-shot-empty { background-image: linear-gradient(135deg, transparent 49%, var(--line) 50%, transparent 51%); }
 .crit-arrow { font-size: var(--fs-small); }
+/* P10 E18: in the View column the before / after fill the card, as a view card's stage does */
+.crit-large { display: flex; flex-direction: column; }
+.crit-stage {
+  flex: 1 1 auto; min-height: 140px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch;
+  gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); background: var(--vp);
+}
+.crit-stage .crit-shot { min-height: 0; gap: 4px; }
+.crit-stage .crit-shot img, .crit-stage .crit-shot-empty { flex: 1 1 auto; width: 100%; height: auto; min-height: 0; border: 0; background: transparent; }
+.crit-stage .crit-shot-empty { border: 1px dashed var(--line2); }
+.crit-stage .crit-arrow { align-self: center; }
+.crit-large .crit-sum { flex: none; }
 .crit-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
 .crit-title { font: 700 var(--fs)/1.2 var(--font-head); color: var(--ink); }
 .crit-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--fs-small); }

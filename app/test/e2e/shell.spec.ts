@@ -1,9 +1,10 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, test, useDefaultDock } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("base");
   await page.setViewportSize({ width: 1440, height: 900 });
+  await useDefaultDock(page);           // P10 E6: the dock as it opens (the Conversation, two slim tabs)
 });
 
 test("layout_regions_exist", async ({ page }) => {
@@ -24,7 +25,7 @@ test("layout_regions_exist", async ({ page }) => {
   expect([viewer.x, viewer.y, viewer.width, viewer.height]).toEqual([0, 44, 1440, 900 - 44]);
   expect(left.width).toBe(240);
   expect([left.x, left.y]).toEqual([12, 44 + 12]);
-  expect(consoleBox.width).toBe(440);   // the agent dock's default width (Plan 9 visual spec)
+  expect(consoleBox.width).toBe(440 + 2 * 30);   // P10 E6: the Conversation column (440) + View / Simulations tabs
   expect(consoleBox.x + consoleBox.width).toBe(1440 - 12);
   expect(consoleBox.y).toBe(44 + 12);
   expect(consoleBox.height).toBe(900 - 44 - 24);
@@ -190,12 +191,6 @@ for (const size of [{ width: 1280, height: 800 }, { width: 1600, height: 1000 }]
       await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
       await expect(page.locator("[data-region=console] [data-card]").first()).toBeVisible();
       await measure(page, mode, "design + approval card");
-      // new-run dialog (composer)
-      await page.keyboard.press("Meta+n");   // the new-run dialog (the console's "New" is an inline form)
-      await expect(page.getByRole("dialog", { name: "New run" })).toBeVisible();
-      await measure(page, mode, "new-run dialog");
-      await page.getByRole("dialog", { name: "New run" }).getByRole("button", { name: "Close" }).click();
-      await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
       // Profile pane
       await page.getByRole("button", { name: "Profile" }).click();
       await expect(page.getByRole("dialog", { name: "Profile" })).toBeVisible();
@@ -298,12 +293,12 @@ test("cmd_1_to_4_navigate", async ({ page }) => {
 test("console_collapses_to_a_rail_and_expands", async ({ page }) => {
   await page.goto("/");
   const consoleRegion = page.locator("[data-region=console]");
-  expect((await consoleRegion.boundingBox())?.width).toBe(440);
+  expect((await consoleRegion.boundingBox())?.width).toBe(500);
   await page.getByRole("button", { name: "Collapse the agent console" }).click();
   // folded: a slim floating tab
   await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(34);
   await page.getByRole("button", { name: "Expand the agent console" }).click();
-  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(440);
+  await expect.poll(async () => (await consoleRegion.boundingBox())?.width).toBe(500);
 });
 
 test("theme_switch_persists_via_put_profile_and_sets_data_theme", async ({ page, fake }) => {
@@ -383,15 +378,15 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   // A6: /onshape/budget twice (the session figure, then the selected run's top-bar meter); A3: the
-  // builds (GET /projects + the profile's tabs); A7: the console spec strip loads the active
-  // build's spec and studies. (Plan 7 U2b: no Variables panel, so no GET /parts/{id}/source on boot.)
+  // builds (GET /projects + the profile's tabs). (P10 E12: no spec strip in the dock, so no
+  // spec / studies on boot; Plan 7 U2b: no Variables panel, so no GET /parts/{id}/source either.)
   await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
     // Plan 9: the build view loads the build's assembly (and its parts), the left pane the BOM
     // Plan 9 B3: the build's running background jobs (GET /jobs)
     ["/approvals", "/jobs", "/onshape/budget", "/onshape/budget", "/parts", "/parts", "/printers", "/profile", "/profile",
       // C-2/C-3: the running run's live activity and open questions are seeded on connect (GET
       // /runs/{id} carries `pending`, as the real core's does, so no GET /runs/{id}/pending)
-      "/projects", "/projects/{id}/assembly", "/projects/{id}/bom", "/projects/{id}/bom", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup",
+      "/projects", "/projects/{id}/assembly", "/projects/{id}/bom", "/projects/{id}/bom", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup",
       // FW-app I3: the dock's Simulations stream reads the build's study records (all, and its
       // assembly's) and its generative runs
       "/sims", "/sims", "/status", "/topopt"]);

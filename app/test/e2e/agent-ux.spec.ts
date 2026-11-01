@@ -4,6 +4,7 @@
 // parallel agents; a run that queues for a slot. Approval safety itself is approvals.spec.ts.
 import type { Page } from "@playwright/test";
 import { consoleMenu, expect, showRun, test } from "./fixtures";
+import { CORE_URL } from "./ports";
 
 const DES = "b7c79a57cbb4";
 const AID = "a332e73aa8f2";
@@ -39,8 +40,8 @@ test("dock_header_has_no_button_bar_and_stays_one_line_at_1280x800", async ({ pa
   const label = await head.locator("[data-run-label]").evaluate((el) => ({ h: el.getBoundingClientRect().height, ws: getComputedStyle(el).whiteSpace }));
   expect(label.ws).toBe("nowrap");
   expect(label.h).toBeLessThan(lineH * 1.6);
-  // the stream headers stay clear of the pinned collapse button
-  const top = await con.locator("[data-stream=view] .dock-t").boundingBox();
+  // the column headers stay clear of the pinned collapse button (P10 E6: the rightmost is the Conversation)
+  const top = await con.locator("[data-stream=text] [data-conversation-head]").boundingBox();
   const collapse = await page.getByRole("button", { name: "Collapse the agent console" }).boundingBox();
   expect(top && collapse && top.x + top.width <= collapse.x + 0.5).toBe(true);
 });
@@ -76,7 +77,8 @@ test("failed_calls_and_errors_are_red_inline_and_another_run_needing_you_is_one_
   await expect(fail).toContainText("use at least 0.8 mm");
   await expect(fail.locator("[data-activity-text]")).toHaveCSS("color", RED);
   const err = thread(page).locator("[data-error]");
-  await expect(err).toContainText("transient · provider timed out");
+  await expect(err.locator("[data-error-message]")).toHaveText("provider timed out");   // P10 E3: plain, wrapped
+  await expect(err.locator(".cv-err-code")).toHaveText("transient");
   await expect(err.locator(".cv-fail").first()).toHaveCSS("color", RED);
   // the designer's approval is still one click away
   const needs = page.getByRole("button", { name: "designer · thicken mount plate to 6 mm needs you · 1 waiting" });
@@ -85,54 +87,40 @@ test("failed_calls_and_errors_are_red_inline_and_another_run_needing_you_is_one_
   await expect(thread(page).locator(`[data-approval="${AID}"]`)).toBeVisible();
 });
 
-test("details_toggle_shows_the_dense_log_and_is_remembered", async ({ page }) => {
+// Plan 10 E22: the full log is a developer view (Profile → Developer), not the everyday dock: it
+// shows the same dense log, its Conversation button returns, and a relaunch starts on the
+// Conversation again.
+test("developer_full_log_shows_the_dense_log_and_is_not_remembered", async ({ page }) => {
   await open(page);
   await consoleMenu(page, "Full log");
+  await expect(page.getByRole("dialog", { name: "Profile" })).toHaveCount(0);
   await expect(consoleRegion(page).locator("[data-roster]")).toBeVisible();
   await expect(consoleRegion(page).locator("[data-filters]")).toBeVisible();
   await expect(page.locator(`[data-roster] [data-run="${DES}"]`)).toBeVisible();
-  await page.reload();
-  await expect(consoleRegion(page).locator("[data-roster]")).toBeVisible();
   await page.getByRole("button", { name: "Conversation" }).click();
   await expect(thread(page)).toBeVisible();
+  await consoleMenu(page, "Full log");
+  await page.reload();
+  await expect(thread(page)).toBeVisible();
+  await expect(consoleRegion(page).locator("[data-roster]")).toHaveCount(0);
 });
 
-test("inline_composer_starts_a_run_with_profile_defaults", async ({ page, fake }) => {
+test("the_first_message_starts_the_builds_lead_on_the_default_model", async ({ page, fake }) => {
   await open(page);
-  await consoleMenu(page, "New run…");
-  const form = page.getByRole("form", { name: "New run" });
-  await expect(form).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
-  // R8: no agent picker — the core routes from the prompt
-  await expect(form.getByLabel("Agent")).toHaveCount(0);
-  await expect(form).toContainText("Mises picks the right agent from your prompt.");
-  await expect(form.getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeVisible();
-  await form.getByLabel("Task").fill("stiffen the upright");
-  await form.getByLabel("Task").press("Enter");
-  await expect(form).toHaveCount(0);
-  const posts = (await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs");
-  expect(posts.map((c) => c.body)).toEqual([{ prompt: "stiffen the upright", model_ref: "claude-code/opus", edit_scope: ["*"], read_scope: ["*"], project_id: expect.any(String) }]);
+  // P10 E24: no New run form, no model picker in the dock; the chat starts the build's lead
+  await expect(page.getByRole("form", { name: "New run" })).toHaveCount(0);
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill("stiffen the upright");
+  await cmd.press("Enter");
+  await expect(cmd).toHaveValue("");
+  const calls = await fake.calls();
+  expect(calls.filter((c) => c.method === "POST" && /^\/projects\/[^/]+\/chat$/.test(c.path)).map((c) => c.body)).toEqual([{ text: "stiffen the upright" }]);
+  // the core started the lead on Claude Code (signed in)
+  const runs = await (await fetch(`${CORE_URL}/runs?limit=50`, { headers: { Authorization: `Bearer ${fake.token}` } })).json() as { role?: string; provider: string; task: string }[];
+  expect(runs.find((r) => r.role === "lead" && r.task === "stiffen the upright")?.provider).toBe("claude-code");
   await expect(thread(page).locator("[data-msg=user]").first()).toContainText("stiffen the upright");
   await expect(acts(page)).toHaveText(["measured mount plate · 8.0 cm³"]);
   await expect(thread(page).locator("[data-msg=agent]")).toContainText("Measuring the plate first.");
-});
-
-test("enter_in_the_picker's_other_model_box_never_starts_a_run", async ({ page, fake }) => {
-  await open(page);
-  await consoleMenu(page, "New run…");
-  const form = page.getByRole("form", { name: "New run" });
-  await expect(form.getByRole("button", { name: /^Model: Claude Code · opus/ })).toBeVisible();
-  await form.getByLabel("Task").fill("stiffen the upright");
-  await form.getByRole("button", { name: /^Model:/ }).click();
-  const other = form.getByLabel("Other model");
-  await other.fill("gemini");                                   // a partial ref
-  await other.press("Enter");
-  await other.fill("gemini/gemini-3-pro");                      // a full ref: Enter picks it, still no run
-  await other.press("Enter");
-  await expect(form.getByRole("button", { name: /^Model: gemini · gemini-3-pro/ })).toBeVisible();
-  await page.waitForTimeout(300);
-  expect((await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs")).toHaveLength(0);
-  await expect(form).toBeVisible();
 });
 
 test("scrolled_up_the_thread_counts_new_rows_and_a_new_card_comes_into_view", async ({ page, fake }) => {
@@ -164,9 +152,11 @@ test("scrolled_up_the_thread_counts_new_rows_and_a_new_card_comes_into_view", as
 
 test("model_picker_groups_badges_start_ollama_and_download_with_progress", async ({ page, fake }) => {
   await open(page);
-  await consoleMenu(page, "New run…");
-  const form = page.getByRole("form", { name: "New run" });
-  await form.getByRole("button", { name: /^Model:/ }).click();
+  // P10 E24: the dock has no model picker; the shared picker is Profile's default model
+  await page.getByRole("button", { name: "Profile" }).click();
+  await page.getByRole("dialog", { name: "Profile" }).getByRole("button", { name: "Agents & budgets" }).click();
+  const form = page.getByRole("region", { name: "Agents & budgets" });
+  await form.getByRole("button", { name: /^Default model:/ }).click();
   const panel = form.getByRole("region", { name: "Choose a model" });
   await expect(panel.getByRole("group")).toHaveText([/^Recommended/, /^Your Claude Code/, /^On this Mac \(Ollama\)/, /^Free \(OpenRouter\)/, /^API keys/]);
   const rec = panel.getByRole("group", { name: "Recommended" });
@@ -189,7 +179,7 @@ test("model_picker_groups_badges_start_ollama_and_download_with_progress", async
   await expect(local.locator("[data-pull='qwen3-coder:30b']")).toContainText(/\d+% · [\d.]+ of 19\.0 GB/);
   await expect(local.locator("[data-ref='ollama/qwen3-coder:30b']")).toContainText("qwen3-coder:30b · 19 GB");
   await local.locator("[data-ref='ollama/qwen3-coder:30b']").click();
-  await expect(form.getByRole("button", { name: /^Model: Ollama · qwen3-coder:30b/ })).toBeVisible();
+  await expect(form.getByRole("button", { name: /^Default model: Ollama · qwen3-coder:30b/ })).toBeVisible();
   const calls = await fake.calls();
   expect(calls.filter((c) => c.path === "/local/start")).toHaveLength(1);
   expect(calls.filter((c) => c.path === "/local/pull").map((c) => c.body)).toEqual([{ model: "qwen3-coder:30b" }]);
@@ -210,11 +200,9 @@ test("a_run_beyond_the_parallel_limit_waits_for_a_slot", async ({ page, fake }) 
   sc.status.parallel = { limit: 1, auto: true, reason: "M5 Pro · 24 GB · local model → 1" };
   await fake.reset(sc);
   await open(page);
-  await consoleMenu(page, "New run…");
-  const form = page.getByRole("form", { name: "New run" });
-  await expect(form).toContainText("1 running · queues for a free slot (Auto: 1)");
-  await form.getByLabel("Task").fill("add a gusset");
-  await form.getByRole("button", { name: "Start" }).click();
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill("add a gusset");
+  await cmd.press("Enter");
   await expect(thread(page)).toContainText("waiting for a free agent slot · Auto: 1 on this Mac");
   await expect(thread(page).locator("[data-msg=user]")).toContainText("add a gusset");
 });

@@ -55,11 +55,27 @@ export async function useDetailsView(page: import("@playwright/test").Page): Pro
   await page.addInitScript(() => { try { localStorage.setItem("mises.console.view", "details"); } catch { /* none */ } });
 }
 
-/** Pick an item of the Conversation header's ⋯ menu ("New run…", "Agent browser", "Full log"):
- *  the agent dock has no button bar (Plan 9 D2). */
-export async function consoleMenu(page: import("@playwright/test").Page, item: "New run…" | "Agent browser" | "Full log"): Promise<void> {
-  await page.getByRole("button", { name: "Conversation options" }).click();
-  await page.getByRole("menu", { name: "Conversation options" }).getByRole("menuitem", { name: item }).click();
+/** Open the full log or the agent browser: Profile & settings → Developer (Plan 10 E22). The dock
+ *  has no ⋯ menu any more (P10 E24 took New run, E22 the rest). */
+export async function consoleMenu(page: import("@playwright/test").Page, item: "Agent browser" | "Full log"): Promise<void> {
+  await developerView(page, item);
+}
+
+/** Plan 10 E22: open the dock's full log or agent browser from Profile & settings → Developer. */
+export async function developerView(page: import("@playwright/test").Page, item: "Agent browser" | "Full log"): Promise<void> {
+  await page.locator("[data-region=topbar]").getByRole("button", { name: "Profile", exact: true }).click();
+  const profile = page.getByRole("dialog", { name: "Profile" });
+  await profile.getByRole("navigation", { name: "Profile sections" }).getByRole("button", { name: "Developer" }).click();
+  await profile.getByRole("button", { name: item === "Full log" ? "Show full agent log" : "Show agent browser" }).click();
+}
+
+/** Plan 10 E2: pick an item of Home's Settings menu (Parts library, Onshape and Trash toggle their
+ *  view; Profile & settings opens the Profile panel). */
+export async function homeMenu(page: import("@playwright/test").Page, item: "Parts library" | "Onshape" | "Trash" | "Profile & settings"): Promise<void> {
+  await page.locator('[data-testid="home"] .home-bar').getByRole("button", { name: "Settings", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "Settings" });
+  if (item === "Profile & settings") await menu.getByRole("menuitem", { name: item }).click();
+  else await menu.getByRole("menuitemcheckbox", { name: item === "Trash" ? /^Trash/ : item }).click();
 }
 
 /** Show a run's thread in the dock, from the agent manager's run tree (the console has no run
@@ -99,10 +115,33 @@ export async function openHome(page: import("@playwright/test").Page): Promise<v
   await page.addInitScript(() => { try { localStorage.setItem("mises.home.open", "1"); } catch { /* none */ } });
 }
 
+/** P10 E6: the dock opens the Conversation alone by default. The specs about the View and
+ *  Simulations streams (written for three streams at once) see all three columns unless they
+ *  stored a layout of their own; the rest keep the default, so the model keeps its room for
+ *  viewport clicks. `useDefaultDock` (before page.goto) undoes the seed. */
+const ALL_COLUMNS = new Set(["agent-browser.spec.ts", "concept-sketch.spec.ts", "dock.spec.ts", "jobs.spec.ts", "generative.spec.ts", "geometry.spec.ts",
+  "motion.spec.ts", "studies-agent.spec.ts", "studies.spec.ts"]);
+export async function openAllDockColumns(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("mises.dock.columns")) localStorage.setItem("mises.dock.columns", JSON.stringify({ collapsed: { view: false, sim: false, text: false } }));
+    } catch { /* none */ }
+  });
+}
+export async function useDefaultDock(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => {
+    try { if (!sessionStorage.getItem("dock-default")) { sessionStorage.setItem("dock-default", "1"); localStorage.removeItem("mises.dock.columns"); } } catch { /* none */ }
+  });
+}
+
 export const test = base.extend<{ fake: FakeControl }>({
   // Existing specs drive the build shell; land there by default so launch-on-Home (R1) doesn't
   // hide the panes they assert. A Home spec opts back in with openHome().
-  page: async ({ page }, use) => { await openBuildShell(page); await use(page); },
+  page: async ({ page }, use, info) => {
+    await openBuildShell(page);
+    if (ALL_COLUMNS.has(info.file.split("/").pop() ?? "")) await openAllDockColumns(page);
+    await use(page);
+  },
   // eslint-disable-next-line no-empty-pattern
   fake: async ({}, use) => { await use(control()); },
 });

@@ -378,9 +378,33 @@ def view(store: Store, bom: BomStore, home: Path, project_id: str, *, catalog=No
     from ..projects import mass_rows
     masses = {r["id"]: r for r in mass_rows(store, home, project_id, material, versions=False)}
     items = [_finish(r, home, material, masses) for r in rows]
+    _geometry_refs(items, tree, home, catalog)
     items.sort(key=lambda i: 0 if i["kind"] == "made" else 1)
     return {"project_id": project_id, "material": material.upper(), "items": items,
             "totals": totals(items)}
+
+
+def _geometry_refs(items: list[dict], tree: dict, home: Path, catalog) -> None:
+    """Plan 10 E14: each row's `geometry_part_id` (the part in this build that draws it: the
+    row's own part, else a catalog part inserted from the same item) and `geometry` (the catalog
+    item's: "builtin" | "envelope" | null), so the app can show its 3D model."""
+    by_item: dict[str, str] = {}
+    for p in tree.values():
+        if p.kind == "catalog":
+            it = _catalog_part_item(home, p.id, catalog) if catalog is not None else None
+            try:
+                meta = safe_io.read_json(Path(home) / "parts" / p.id, "part.json")
+            except (OSError, ValueError, safe_io.UnsafePath):
+                meta = None
+            item_id = (it or {}).get("id") or (meta.get("catalog_item_id") if isinstance(meta, dict)
+                                               else None)
+            if item_id:
+                by_item.setdefault(item_id, p.id)
+    for it in items:
+        part = it.get("part_id")
+        it["geometry_part_id"] = part if part in tree else by_item.get(it.get("catalog_id") or "")
+        item = _catalog_item(catalog, it.get("catalog_id"))
+        it["geometry"] = (item or {}).get("geometry")
 
 
 def auto_rows(store: Store, home: Path, project_id: str, catalog=None,

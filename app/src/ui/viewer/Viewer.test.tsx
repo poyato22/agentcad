@@ -20,7 +20,7 @@ const fixtureBytes = (): ArrayBuffer =>
 
 const handle = vi.hoisted(() => ({
   setPart: vi.fn(), setParts: vi.fn(), setMode: vi.fn(), setHighlight: vi.fn(), fit: vi.fn(), resize: vi.fn(), dispose: vi.fn(),
-  pick: vi.fn(), toScreen: vi.fn((_p: [number, number, number]): [number, number] => [0, 0]), setMarker: vi.fn(), setMarkers: vi.fn(),
+  pick: vi.fn(), toScreen: vi.fn((_p: [number, number, number]): [number, number] => [0, 0]), setMarker: vi.fn(), setMarkers: vi.fn(), setHover: vi.fn(),
   onView: vi.fn(() => () => undefined),
 }));
 vi.mock("./scene", async (orig) => ({ ...(await orig<typeof import("./scene")>()), createViewer: (): DesignViewerHandle => handle }));
@@ -226,7 +226,7 @@ describe("Viewer", () => {
     expect(queryByTestId("pick-label")).toBeNull();
   });
 
-  it("measure: a click shows the metrics value at once, then the core's exact one; Shift adds a second pick", async () => {
+  it("measure: hover previews the snap target; a click shows the metrics value at once, then the core's exact one; a second click adds (E16)", async () => {
     const plate = treeParts().find((p) => p.part_id === "top_plate") as PartSummary;
     const top = plate.metrics!.face_list!.find((f) => f.normal?.[2] === 1)!;
     const bottom = plate.metrics!.face_list!.find((f) => f.normal?.[2] === -1)!;
@@ -250,6 +250,10 @@ describe("Viewer", () => {
     expect(panel.textContent).toContain("Click an edge, a face or a corner");
     await waitFor(() => expect(warmMeasure).toHaveBeenCalledWith("top_plate"));   // the core loads the shape ahead
     handle.pick.mockReturnValue({ partId: "top_plate", point: [0, 0, 1.5], normal: [0, 0, 1] });
+    // E16: hovering shows what a click would pick (the top face, tinted) before any click
+    fireEvent.pointerMove(getByTestId("viewer-canvas"), { clientX: 100, clientY: 5 });
+    await waitFor(() => expect(handle.setHover).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "face" })));
+    expect(getByTestId("viewer-canvas").getAttribute("data-hover")).toBe("face");
     fireEvent.pointerDown(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5 });
     fireEvent.pointerUp(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5 });
     await waitFor(() => expect(panel.querySelector('[data-value="area"] dd')?.textContent).toBe("1,600 mm²"));
@@ -258,12 +262,16 @@ describe("Viewer", () => {
     await waitFor(() => expect(panel.querySelector("[data-exact]")).not.toBeNull());
     handle.pick.mockReturnValue({ partId: "top_plate", point: [0, 0, -1.5], normal: [0, 0, -1] });
     fireEvent.pointerDown(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5 });
-    fireEvent.pointerUp(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5, shiftKey: true });
+    fireEvent.pointerUp(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5 });
     await waitFor(() => expect(measurePart).toHaveBeenLastCalledWith("top_plate", [{ face_id: top.id }, { face_id: bottom.id }], plate.version));
     await waitFor(() => expect(panel.querySelector('[data-value="distance"] dd')?.textContent).toBe("3 mm"));
     expect(panel.querySelector('[data-value="normal_distance"]')).toBeNull();   // the same number twice says nothing new
     expect(panel.querySelector('[data-value="angle"] dd')?.textContent).toBe("0°");
     expect(handle.setMarkers).toHaveBeenLastCalledWith([expect.objectContaining({ kind: "face" }), expect.objectContaining({ kind: "face" })]);
+    // Esc clears the picks first, then goes back to Select
+    act(() => { fireEvent.keyDown(window, { key: "Escape" }); });
+    expect(viewerTool.value).toBe("measure");
+    await waitFor(() => expect(handle.setMarkers).toHaveBeenLastCalledWith([]));
     act(() => { fireEvent.keyDown(window, { key: "Escape" }); });
     expect(viewerTool.value).toBe("select");
   });

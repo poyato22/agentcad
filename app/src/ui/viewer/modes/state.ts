@@ -17,6 +17,8 @@ export interface ModesState {
   section: SectionMode;
   /** 0 (assembled) … 1 (fully apart). */
   explode: number;
+  /** Plan 10 E36: 0 (assembled) … 1 (every part laid flat in a grid). Never with explode. */
+  layout?: number;
   /** Shown at full strength; the other parts stay as faint ghosts. null: no subset. */
   isolate: readonly string[] | null;
 }
@@ -29,6 +31,7 @@ export const MODES_OFF: ModesState = {
   xray: { opacity: 1, parts: null },
   section: { on: false, normal: [1, 0, 0], at: null },
   explode: 0,
+  layout: 0,
   isolate: null,
 };
 

@@ -103,7 +103,7 @@ export function AgentsPanel(): JSX.Element {
       {error && <div class="am-error tone-red text" role="alert">{`Couldn't read the builds: ${error}`}</div>}
       {notice && <div class="am-notice text" role="status">{notice}</div>}
       {builds === null && !error && <div class="am-empty faint">Loading agents…</div>}
-      {builds !== null && shown.length === 0 && !error && <div class="am-empty faint">No agents yet. Start one with New run (⌘N).</div>}
+      {builds !== null && shown.length === 0 && !error && <div class="am-empty faint">No agents yet. Message the build's agent in the dock to start one.</div>}
       {shown.map((b) => {
         const rows = b.view ? viewRows(b.view, collapsed) : { lead: [], others: [], earlier: [] };
         return (

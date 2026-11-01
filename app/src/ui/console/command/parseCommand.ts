@@ -1,7 +1,7 @@
 import type { AgentRun } from "../../../api/types";
 import { runLabel } from "../../../lib/names";
 
-export type SlashName = "new" | "stop" | "stopall" | "follow" | "filter" | "clear" | "help";
+export type SlashName = "stop" | "stopall" | "follow" | "filter" | "clear" | "help";
 
 export type Command =
   | { kind: "message"; target: "selected"; text: string }
@@ -10,7 +10,7 @@ export type Command =
   | { kind: "slash"; name: SlashName; arg: string }
   | { kind: "invalid"; reason: string };
 
-export const SLASH_NAMES: readonly SlashName[] = ["new", "stop", "stopall", "follow", "filter", "clear", "help"];
+export const SLASH_NAMES: readonly SlashName[] = ["stop", "stopall", "follow", "filter", "clear", "help"];
 
 const invalid = (reason: string): Command => ({ kind: "invalid", reason });
 
@@ -28,7 +28,7 @@ export function parseCommand(line: string, runs: readonly AgentRun[]): Command {
     const name = (m?.[1] ?? "").toLowerCase();
     const arg = (m?.[2] ?? "").trim();
     if (name === "approve") return invalid("approve on the card");
-    if (["new", "stop", "stopall", "clear"].includes(name) && arg) return invalid(`/${name} takes no argument`);
+    if (["stop", "stopall", "clear"].includes(name) && arg) return invalid(`/${name} takes no argument`);
     if ((SLASH_NAMES as readonly string[]).includes(name)) return { kind: "slash", name: name as SlashName, arg };
     return invalid(`unknown command /${name} — try /help`);
   }
@@ -53,7 +53,7 @@ export function parseCommand(line: string, runs: readonly AgentRun[]): Command {
     }
     if (!best) {
       const word = /^\S*/.exec(rest)?.[0] ?? "";
-      return invalid(`no run matches @${word} — use /new to start one`);
+      return invalid(`no run matches @${word} — your message goes to the build's lead without one`);
     }
     const body = rest.slice(best.key.length).trim();
     return body ? { kind: "message", target: { label: best.label }, text: body } : invalid(`nothing to send to @${best.run.agent}`);

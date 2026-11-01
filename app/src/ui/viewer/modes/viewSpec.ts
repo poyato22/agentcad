@@ -23,7 +23,7 @@ import type { AnimateStep, PartSummary } from "../../../api/types";
 import { parseAnimateSteps } from "../../../state/assemblyAnimation";
 import { MODES_OFF, XRAY_OPACITY, type ModesState, type Vec3 } from "./state";
 
-export const VIEW_KINDS = ["orbit", "internal", "section", "exploded", "subset", "animation", "section_sweep"] as const;
+export const VIEW_KINDS = ["orbit", "internal", "section", "exploded", "subset", "animation", "section_sweep", "laid_out"] as const;
 export type ViewKind = (typeof VIEW_KINDS)[number];
 
 export interface ViewCamera { azimuth: number; elevation: number; distance: number | null }
@@ -173,7 +173,9 @@ export function modesForSpec(s: ViewSpec, all: readonly PartSummary[] = []): Mod
       ? { on: true, normal: s.section.normal, at: dot(unitV(s.section.normal), s.section.origin) }
       : s.kind === "section" ? { on: true, normal: [1, 0, 0], at: null } : MODES_OFF.section,
     // an exploded view with no amount (or 0) goes fully apart; other kinds only when asked
-    explode: s.kind === "exploded" ? (s.explode || 1) : s.explode ?? 0,
+    explode: s.kind === "exploded" ? (s.explode || 1) : s.kind === "laid_out" ? 0 : s.explode ?? 0,
+    // Plan 10 E36: every part flat in a grid, named
+    layout: s.kind === "laid_out" ? 1 : 0,
     // ghosts at all: the shown parts are the isolated set (a subset names its parts; with no
     // build at hand its ghosts are not known yet, so it still isolates)
     isolate: ghosts.length || (s.kind === "subset" && s.ghost === "build") ? shownForSpec(s, all) : null,
@@ -186,5 +188,5 @@ function dot(a: Vec3, b: Vec3): number { return a[0] * b[0] + a[1] * b[1] + a[2]
 /** Plain words for the kind (the card's label). */
 export const VIEW_KIND_TEXT: Record<ViewKind, string> = {
   orbit: "Orbit", internal: "Inside (X-ray)", section: "Section", exploded: "Exploded", subset: "Selected parts",
-  animation: "Animation", section_sweep: "Section sweep",
+  animation: "Animation", section_sweep: "Section sweep", laid_out: "Laid out",
 };

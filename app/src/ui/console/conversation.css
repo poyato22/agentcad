@@ -28,7 +28,12 @@
   background: none; color: var(--faint); font: inherit; font-size: var(--fs-label); cursor: pointer;
   opacity: 0; transition: opacity .1s;
 }
-.cv-agent:hover .cv-copy, .cv-copy:focus-visible { opacity: 1; }
+.cv-agent:hover .cv-copy, .cv-user:hover .cv-copy, .cv-copy:focus-visible { opacity: 1; }
+/* P10 E9: Cancel on a queued message is always visible (it is the one thing you can do now) */
+.cv-copy.cv-cancel-q { opacity: 1; color: var(--dim); border-color: var(--line2); }
+.cv-copy.cv-cancel-q:hover { color: var(--ink); }
+.cv-edited { font-size: var(--fs-label); }
+.cv-user.is-edited > .cv-text { color: var(--dim); }
 .cv-copy:hover { color: var(--ink); border-color: var(--line2); }
 .cv-copy:focus-visible { outline: 1px solid var(--blue); }
 @media (prefers-reduced-motion: reduce) { .cv-copy { transition: none; } }
@@ -44,7 +49,26 @@ button.cv-x { border: 1px solid var(--line2); }
 .cv-hint { display: block; }
 .cv-open { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
 .cv-details { margin: 0; }
-.cv-error { margin: 2px 0; }
+/* P10 E3: an error is a small card of plain wrapped text: what happened, the likely cause, what
+   to do, Retry. One column, so a long unbroken code (UNABLE_TO_GET_ISSUER_CERT_LOCALLY) wraps
+   inside the card instead of squeezing the row to one character per line. */
+.cv-err {
+  display: flex; flex-direction: column; gap: 4px; margin: 6px 10px; padding: 8px 10px; min-width: 0;
+  border: 1px solid var(--line2); border-left: 3px solid var(--red); border-radius: 6px; background: var(--paper2);
+}
+.cv-err-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.cv-err-glyph { flex: none; font-size: 11px; }
+.cv-err-title { font-weight: 600; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.cv-err-code { margin-left: auto; font-size: var(--fs-label); overflow-wrap: anywhere; }
+.cv-err-msg, .cv-err-line { margin: 0; font-size: var(--fs-small); line-height: 1.45; color: var(--ink); min-width: 0; }
+.cv-err-msg { color: var(--dim); }
+.cv-err-l { display: block; font-size: var(--fs-label); font-weight: 600; color: var(--dim); }
+.cv-err-actions { display: flex; margin-top: 2px; }
+.cv-retry { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--fs-small); }
+.cv-retry-btn { font-size: var(--fs-small); padding: 2px 10px; }
+/* a working run with no sign of life for 90 s */
+.cv-stall { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 10px 8px; padding: 6px 8px; border: 1px dashed var(--amber); border-radius: 6px; font-size: var(--fs-small); color: var(--ink); }
+.cv-stall > .text { flex: 1 1 160px; min-width: 0; }
 .cv-note { padding: 1px 10px 1px 40px; font-size: 10.5px; }
 .cv-fold {
   margin: 1px 10px 1px 40px; text-align: left; color: var(--faint); font: inherit; font-size: 10.5px;

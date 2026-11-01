@@ -1,0 +1,380 @@
+[
+ {
+  "part_id": "robot_chassis",
+  "vars": {},
+  "label": "Chassis",
+  "order": 0,
+  "color": "#5b6b7a",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520000.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 168000.0,
+   "area_mm2": 37600.0,
+   "bbox": {
+    "min": [
+     -60.0,
+     -40.0,
+     0.0
+    ],
+    "max": [
+     60.0,
+     40.0,
+     30.0
+    ],
+    "size": [
+     120.0,
+     80.0,
+     30.0
+    ]
+   },
+   "center_of_mass": [
+    -0.0,
+    -0.0,
+    11.4286
+   ],
+   "holes": [],
+   "faces": 11,
+   "edges": 24,
+   "solids": 1,
+   "mass_g": 208.32
+  }
+ },
+ {
+  "part_id": "robot_battery",
+  "vars": {},
+  "label": "Battery",
+  "order": 1,
+  "color": "#c9a227",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520001.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 36000.0,
+   "area_mm2": 7800.0,
+   "bbox": {
+    "min": [
+     -30.0,
+     -20.0,
+     -7.5
+    ],
+    "max": [
+     30.0,
+     20.0,
+     7.5
+    ],
+    "size": [
+     60.0,
+     40.0,
+     15.0
+    ]
+   },
+   "center_of_mass": [
+    -0.0,
+    0.0,
+    0.0
+   ],
+   "holes": [],
+   "faces": 6,
+   "edges": 12,
+   "solids": 1,
+   "mass_g": 44.64
+  }
+ },
+ {
+  "part_id": "robot_wheel",
+  "vars": {},
+  "label": "Wheel",
+  "order": 2,
+  "color": "#2b2f36",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520002.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 14551.857,
+   "area_mm2": 5227.61,
+   "bbox": {
+    "min": [
+     -22.0,
+     -22.0,
+     -6.0
+    ],
+    "max": [
+     22.0,
+     22.0,
+     6.0
+    ],
+    "size": [
+     44.0,
+     44.0,
+     12.0
+    ]
+   },
+   "center_of_mass": [
+    0.0,
+    0.0,
+    -0.0
+   ],
+   "holes": [],
+   "faces": 7,
+   "edges": 9,
+   "solids": 1,
+   "mass_g": 18.044
+  }
+ },
+ {
+  "part_id": "robot_lidar",
+  "vars": {},
+  "label": "Lidar",
+  "order": 3,
+  "color": "#3d8bff",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520003.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 3769.911,
+   "area_mm2": 1382.301,
+   "bbox": {
+    "min": [
+     -10.0,
+     -10.0,
+     0.0
+    ],
+    "max": [
+     10.0,
+     10.0,
+     12.0
+    ],
+    "size": [
+     20.0,
+     20.0,
+     12.0
+    ]
+   },
+   "center_of_mass": [
+    0.0,
+    0.0,
+    6.0
+   ],
+   "holes": [],
+   "faces": 3,
+   "edges": 3,
+   "solids": 1,
+   "mass_g": 4.675
+  }
+ },
+ {
+  "part_id": "robot_turret",
+  "vars": {},
+  "label": "Turret",
+  "order": 4,
+  "color": "#8a6fd1",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520004.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 39269.908,
+   "area_mm2": 7068.583,
+   "bbox": {
+    "min": [
+     -25.0,
+     -25.0,
+     0.0
+    ],
+    "max": [
+     25.0,
+     25.0,
+     20.0
+    ],
+    "size": [
+     50.0,
+     50.0,
+     20.0
+    ]
+   },
+   "center_of_mass": [
+    -0.0,
+    0.0,
+    10.0
+   ],
+   "holes": [],
+   "faces": 3,
+   "edges": 3,
+   "solids": 1,
+   "mass_g": 48.695
+  }
+ },
+ {
+  "part_id": "robot_upper_arm",
+  "vars": {},
+  "label": "Upper arm",
+  "order": 5,
+  "color": "#e07a3f",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520005.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 15680.0,
+   "area_mm2": 4872.0,
+   "bbox": {
+    "min": [
+     -7.0,
+     -7.0,
+     0.0
+    ],
+    "max": [
+     7.0,
+     7.0,
+     80.0
+    ],
+    "size": [
+     14.0,
+     14.0,
+     80.0
+    ]
+   },
+   "center_of_mass": [
+    0.0,
+    0.0,
+    40.0
+   ],
+   "holes": [],
+   "faces": 6,
+   "edges": 12,
+   "solids": 1,
+   "mass_g": 19.443
+  }
+ },
+ {
+  "part_id": "robot_forearm",
+  "vars": {},
+  "label": "Forearm",
+  "order": 6,
+  "color": "#e07a3f",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520006.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 10080.0,
+   "area_mm2": 3648.0,
+   "bbox": {
+    "min": [
+     0.0,
+     -6.0,
+     -6.0
+    ],
+    "max": [
+     70.0,
+     6.0,
+     6.0
+    ],
+    "size": [
+     70.0,
+     12.0,
+     12.0
+    ]
+   },
+   "center_of_mass": [
+    35.0,
+    0.0,
+    0.0
+   ],
+   "holes": [],
+   "faces": 6,
+   "edges": 12,
+   "solids": 1,
+   "mass_g": 12.499
+  }
+ },
+ {
+  "part_id": "robot_palm",
+  "vars": {},
+  "label": "Palm",
+  "order": 7,
+  "color": "#4fae7a",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520007.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 4800.0,
+   "area_mm2": 1880.0,
+   "bbox": {
+    "min": [
+     0.0,
+     -15.0,
+     -8.0
+    ],
+    "max": [
+     10.0,
+     15.0,
+     8.0
+    ],
+    "size": [
+     10.0,
+     30.0,
+     16.0
+    ]
+   },
+   "center_of_mass": [
+    5.0,
+    -0.0,
+    0.0
+   ],
+   "holes": [],
+   "faces": 6,
+   "edges": 12,
+   "solids": 1,
+   "mass_g": 5.952
+  }
+ },
+ {
+  "part_id": "robot_finger",
+  "vars": {},
+  "label": "Finger",
+  "order": 8,
+  "color": "#4fae7a",
+  "kind": "part",
+  "version": 1,
+  "mtime": 1793520008.0,
+  "metrics": {
+   "valid": true,
+   "volume_mm3": 720.0,
+   "area_mm2": 584.0,
+   "bbox": {
+    "min": [
+     0.0,
+     -2.0,
+     -5.0
+    ],
+    "max": [
+     18.0,
+     2.0,
+     5.0
+    ],
+    "size": [
+     18.0,
+     4.0,
+     10.0
+    ]
+   },
+   "center_of_mass": [
+    9.0,
+    0.0,
+    -0.0
+   ],
+   "holes": [],
+   "faces": 6,
+   "edges": 12,
+   "solids": 1,
+   "mass_g": 0.893
+  }
+ }
+]

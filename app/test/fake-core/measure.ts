@@ -23,6 +23,8 @@ export interface MeasureDeps {
   newRun(task: string, projectId: string): AgentRun;
   appendStep(s: { kind: Step["kind"]; payload: Record<string, unknown> }, runId: string): Step;
   emit(ev: EventIn): void;
+  /** Plan 10 E35: an instance of the build's assembly (an assembly pin names one). */
+  instance?(projectId: string, instanceId: string): { part_id: string; name: string } | null;
 }
 
 const bad = (message: string, hint?: string) => mises("invalid_input", message, hint);
@@ -160,6 +162,14 @@ export function measureRoutes(d: MeasureDeps): Route[] {
           face_id: faceId, nearby_feature: f ? { area_mm2: f.area, center: f.center, face_id: f.id, type: f.type } : null,
           nearby_hole: null, part: d.partLabel(partId) ?? partId, part_id: partId, point, text,
         };
+        // Plan 10 E35 (core lead.submit_feedback): an assembly pin names the instance and the world point
+        if (b.instance_id !== undefined && b.instance_id !== null) {
+          const wp = b.world_point;
+          if (wp !== undefined && wp !== null && !(Array.isArray(wp) && wp.length === 3 && wp.every((c) => typeof c === "number" && Number.isFinite(c)))) throw missing("world_point", b);
+          const inst = d.instance?.(pid, String(b.instance_id)) ?? null;
+          if (!inst || inst.part_id !== partId) throw mises("not_found", `no instance '${String(b.instance_id)}' of '${partId}' in this build's assembly`);
+          Object.assign(pin, { instance_id: String(b.instance_id), instance: inst.name, world_point: (wp as number[] | undefined) ?? point });
+        }
         const lead = d.runs().filter((r) => r.provider !== "ui" && r.parent_id === null && r.project_id === pid && !r.archived)
           .sort((x, y) => y.created_at - x.created_at)[0] ?? d.newRun(text, pid);
         const step = d.appendStep({ kind: "decision", payload: { feedback: pin } }, lead.id);

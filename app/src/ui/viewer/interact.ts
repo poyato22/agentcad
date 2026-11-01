@@ -78,12 +78,14 @@ export function refOf(p: Picked): MeasureRef {
 
 const keyOf = (p: Picked): string => JSON.stringify(refOf(p));
 
-/** Measure's selection after a click: a plain click replaces it, Shift adds (a pick made twice
- *  is dropped again). */
-export function togglePick(list: readonly Picked[], p: Picked, add: boolean): Picked[] {
-  if (!add) return [p];
+/** Measure's selection after a click (Plan 10 E16): a click adds to the first pick (two picks →
+ *  the distance / angle between them), a third starts a new pair; a pick made twice is dropped
+ *  again. Shift keeps adding past two (several edges' total length, several faces' area). */
+export function togglePick(list: readonly Picked[], p: Picked, add = false): Picked[] {
   const k = keyOf(p);
-  return list.some((x) => keyOf(x) === k) ? list.filter((x) => keyOf(x) !== k) : [...list, p];
+  if (list.some((x) => keyOf(x) === k)) return list.filter((x) => keyOf(x) !== k);
+  if (!add && list.length >= 2) return [p];
+  return [...list, p];
 }
 
 const val = (key: string, label: string, value: number, unit: string): MeasureValue => ({ key, label, value, unit });

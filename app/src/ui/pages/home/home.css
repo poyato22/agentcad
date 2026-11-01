@@ -313,6 +313,13 @@
   font: 500 var(--fs)/1 var(--font-ui);
   cursor: pointer;
 }
+/* the history buttons and "← Builds" sit before the title, after the traffic lights */
+.home-bar .nav-btns { margin-right: -10px; }
+.home-bar .home-back { margin-right: -6px; }
+
+/* E2: the Settings menu button reads like the other header tools (gear + label) */
+.home-tools .home-settings-btn { gap: 7px; padding: 0 11px; border: 0; font: 500 var(--fs)/1 var(--font-ui); line-height: 1; }
+.home-tools .home-settings-btn[aria-expanded="true"] { color: var(--ink); background: var(--raised); }
 .home-back:hover { color: var(--ink); background: var(--raised); }
 .home-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 

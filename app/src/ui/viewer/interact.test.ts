@@ -45,10 +45,14 @@ describe("measure picks", () => {
     expect(refOf(b)).toEqual({ face_id: "f2" });
     expect(refOf({ kind: "vertex", point: [1, 2, 3] })).toEqual({ point: [1, 2, 3] });
   });
-  it("a click replaces, a shift-click adds (or drops a pick made twice)", () => {
-    expect(togglePick([a], b, false)).toEqual([b]);
-    expect(togglePick([a], b, true)).toEqual([a, b]);
-    expect(togglePick([a, b], { kind: "edge", edge: edge40 }, true)).toEqual([b]);
+  it("E16: a second click adds to the first (never replaces it), a third starts a new pair, a pick made twice drops", () => {
+    expect(togglePick([], a)).toEqual([a]);
+    expect(togglePick([a], b)).toEqual([a, b]);
+    const c: Picked = { kind: "vertex", point: [1, 2, 3] };
+    expect(togglePick([a, b], c)).toEqual([c]);
+    expect(togglePick([a, b], { kind: "edge", edge: edge40 })).toEqual([b]);
+    // Shift keeps adding past two (a total length / area)
+    expect(togglePick([a, b], c, true)).toEqual([a, b, c]);
   });
   it("one pick shows its metrics values at once (the core's exact values replace them)", () => {
     expect(provisionalValues([a]).map((v) => fmtMeasure(v))).toEqual(["Length 40 mm"]);

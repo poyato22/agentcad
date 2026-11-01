@@ -1,0 +1,10 @@
+/* ← / → history buttons (Plan 10 E11): quiet glyph buttons like the top bar's ⌂ (radius 7). */
+.nav-btns { display: inline-flex; align-items: center; gap: 0; flex: none; }
+.nav-btn {
+  flex: none; width: 26px; height: 28px; display: grid; place-items: center;
+  background: none; border: 0; border-radius: var(--r-btn); color: var(--dim); cursor: pointer;
+  transition: background-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.nav-btn:hover:not(:disabled) { color: var(--ink); background: var(--raised); }
+.nav-btn:disabled { color: var(--faint); cursor: default; }
+.nav-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

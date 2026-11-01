@@ -108,7 +108,7 @@ export function DirectoryPage(): JSX.Element {
             <input class="dir-search" type="search" aria-label="Search parts" placeholder="Search: 2207, M3, 608, 30.5…" value={q}
               onInput={(e) => setQ(e.currentTarget.value)}
               onKeyDown={(e) => { if (e.key === "Enter") setQuery(q.trim()); }} />
-            <div ref={importBtn} class="dir-import-btn"><Button onClick={() => openPanel({ kind: "import" })} aria-expanded={panel?.kind === "import"}>Import from link</Button></div>
+            <div ref={importBtn} class="dir-import-btn"><Button onClick={() => (panel?.kind === "import" ? closePanel() : openPanel({ kind: "import" }))} aria-expanded={panel?.kind === "import"}>Import from link</Button></div>
           </div>
           {error && <p class="dir-err" role="alert">{error}</p>}
           {items === null && !error && <p class="faint dir-note">Loading parts…</p>}
@@ -119,7 +119,7 @@ export function DirectoryPage(): JSX.Element {
             <ul class="dir-grid" aria-label={`${items.length} parts`}>
               {items.map((it) => (
                 <li key={it.id}>
-                  <ItemCard item={it} selected={panel?.kind === "item" && panel.id === it.id} onOpen={() => openPanel({ kind: "item", id: it.id })} />
+                  <ItemCard item={it} selected={panel?.kind === "item" && panel.id === it.id} onOpen={() => (panel?.kind === "item" && panel.id === it.id ? closePanel() : openPanel({ kind: "item", id: it.id }))} />
                 </li>
               ))}
             </ul>

@@ -25,4 +25,16 @@ describe("ActivityPill", () => {
     expect(agentManagerOpen.value).toBe(true);
     expect(agentManagerTab.value).toBe("agents");
   });
+
+  it("E7: clicking the pill again closes the agent manager", () => {
+    recordActivity(act("r1", "writing"));
+    render(<ActivityPill />);
+    const pill = screen.getByRole("button", { name: /working/i });
+    fireEvent.click(pill);
+    expect(agentManagerOpen.value).toBe(true);
+    expect(pill.getAttribute("aria-expanded")).toBe("true");
+    expect(pill.getAttribute("aria-label")).toContain("Close the agent manager");
+    fireEvent.click(pill);
+    expect(agentManagerOpen.value).toBe(false);
+  });
 });

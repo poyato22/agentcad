@@ -1,5 +1,5 @@
 // How starting a run (or messaging the build's lead) failed, in plain words, for the composer
-// and the New run dialog. A 429 is the lead's full message queue (U3c lead.QUEUE_MAX): nothing
+// (P10 E24: the chat). A 429 is the lead's full message queue (U3c lead.QUEUE_MAX): nothing
 // was lost, the user waits or stops the lead.
 import { CoreError } from "../../api/client";
 

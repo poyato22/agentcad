@@ -44,17 +44,17 @@ test("design: Tab reaches Home, the part list, View, the dock headers and the co
   await openPartView(page);
   await page.locator("[data-region=viewer]").click({ position: { x: 300, y: 400 } });
   const stops = await tabStops(page);
-  for (const want of [/^Home$/, /^View options$/, /Assembly/, /^Command line$/, /^(Send|Stop)$/, /^Conversation options$/, /^Resize the agent dock$/, /mount plate/, /^Build: Default/]) {
+  for (const want of [/^Home$/, /^View options$/, /Assembly/, /^Command line$/, /^(Send|Stop)$/, /^Resize the agent dock$/, /mount plate/, /^Build: Default/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });
 
-test("home: Tab reaches search, sort, Agents, Onshape, the parts library, Trash, New build and the tiles with their ⋯", async ({ page }) => {
+test("home: Tab reaches ← →, search, sort, Agents, Settings, New build and the tiles with their ⋯", async ({ page }) => {
   await openHome(page);
   await page.goto("/");
   await expect(page.locator('[data-testid="home"]')).toBeVisible();
   const stops = await tabStops(page);
-  for (const want of [/^Search builds$/, /^Sort builds$/, /^Agents/, /Show trashed builds|^Trash/, /New build/, /Import drawing/, /^Open Default$/, /^More for Default$/, /^Onshape$/, /^Parts library$/]) {
+  for (const want of [/^Search builds$/, /^Sort builds$/, /^Agents/, /^Settings$/, /New build/, /Import drawing/, /^Open Default$/, /^More for Default$/]) {
     expect(has(stops, want), `${want} in ${JSON.stringify(stops)}`).toBe(true);
   }
 });

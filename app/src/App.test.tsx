@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { CoreClient } from "./api/client";
 import { atHome, resetHome } from "./state/home";
-import { actions, approvals, bindClient, conn, resetStore } from "./state/store";
+import { approvals, bindClient, conn, resetStore } from "./state/store";
 import { resetDockMemory, setConsoleCollapsed, setLeftCollapsed } from "./ui/pages/router";
 import { closeProfile } from "./ui/profile/open";
 import { ApprovalCard } from "./ui/console/approvals/ApprovalCard";
@@ -53,12 +53,12 @@ describe("App shell", () => {
     expect(container.querySelector("[data-stub]")).toBeNull(); // no placeholder left anywhere
   });
 
-  it("the_conversation_menu_opens_the_inline_composer", async () => {
+  it("one chat per build: no New run anywhere (P10 E24)", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "New run…" }));
-    expect(await screen.findByRole("form", { name: "New run" })).toBeTruthy();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Conversation options" })).toBeNull();   // E22 took the rest
+    expect(screen.queryByRole("menuitem", { name: /New run/ })).toBeNull();
+    expect(screen.queryByRole("form", { name: "New run" })).toBeNull();
+    expect(screen.queryByText("No runs yet.")).toBeNull();
   });
 
   it("reflects_connection_state", async () => {
@@ -86,15 +86,6 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
     expect(await screen.findByRole("dialog", { name: "Profile" })).toBeTruthy();
     closeProfile();
-  });
-
-  it("new_run_dialog_opens_from_store", async () => {
-    render(<App />);
-    actions.openNewRun();
-    expect(await screen.findByRole("dialog")).toBeTruthy();
-    fireEvent.click(screen.getByText("Close"));
-    await Promise.resolve();
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("collapsed_rail_shows_a_blue_needs_you_count", () => {

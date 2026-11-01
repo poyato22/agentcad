@@ -29,6 +29,8 @@ export interface ShownPart {
   id: string; scene: PartScene; color: string | null; focus: boolean;
   /** Plan 7 U8: the part's look (lib/appearance materialOf); absent = the plain drafting material. */
   material?: MaterialParams;
+  /** Plan 10 E36: the name shown under it when laid out (default: its id). */
+  label?: string;
 }
 
 /** A click on a shown part: where (world = the part's CAD frame, mm) and the surface normal. */
@@ -64,6 +66,9 @@ export interface DesignViewerHandle extends ViewerHandle {
   setMarker(m: PickMarker): void;
   /** Several markers at once (measure's picks); replaces setMarker's. */
   setMarkers(list: readonly PickMarker[]): void;
+  /** Plan 10 E16: what a click would pick, under the pointer: the face tinted, the edge drawn
+   *  thick (a vertex is the overlay's big dot). null clears it. Optional for test doubles. */
+  setHover?(m: PickMarker): void;
   /** Called after every frame (the camera moved, the canvas resized): HTML overlays re-place
    *  themselves with toScreen. Returns the unsubscribe. */
   onView(cb: () => void): () => void;
@@ -90,7 +95,15 @@ export interface ModeHost {
   onRestyle(cb: () => void): () => void;
   /** Section planes clip per material (needs the renderer's local clipping). */
   enableLocalClipping(): void;
+  /** Plan 10 E4: who places whom (by shown part id), so the explode follows the assembly's
+   *  structure. Absent: the explode infers it (a part inside another is its child). */
+  structure?(): ReadonlyMap<string, ExplodeLink>;
+  /** CSS px of the canvas the floating surfaces cover at each side (re-framing fits the rest). */
+  insets?(): { left: number; right: number };
 }
+
+/** One shown part's place in the assembly: its parent and the placing joint's world axis/origin. */
+export interface ExplodeLink { parent: string | null; axis: [number, number, number] | null; origin: [number, number, number] | null }
 
 /** The slice of WebGLRenderer the viewer uses (lets tests stub it). */
 export interface RendererLike {
@@ -371,7 +384,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
 
   // Follow the theme live: <html data-theme> changes (profile toggle) and OS light/dark changes
   // (theme "system") re-read the tokens and repaint.
-  const onTheme = () => { colors = viewerColors(); applyStyle(); setMarkerObjs(lastMarkers); requestRender(); };
+  const onTheme = () => { colors = viewerColors(); applyStyle(); setMarkerObjs(lastMarkers); setHoverObj(lastHover); requestRender(); };
   const themeObserver = typeof MutationObserver === "function" && typeof document !== "undefined"
     ? new MutationObserver(onTheme) : null;
   themeObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -505,6 +518,53 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     return mesh;
   }
 
+  // ---- hover marker (E16): lighter than a pick, and thick so it reads at a glance
+  let hoverObj: THREE.Object3D | null = null;
+  let lastHover: PickMarker = null;
+  function clearHover(): void {
+    if (!hoverObj) return;
+    scene.remove(hoverObj);
+    hoverObj.traverse((o) => { if (o instanceof THREE.Mesh || o instanceof THREE.Line) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); } });
+    hoverObj = null;
+  }
+  function setHoverObj(m: PickMarker): void {
+    clearHover();
+    lastHover = m;
+    if (!m) { requestRender(); return; }
+    const blue = new THREE.Color(colors.highlight);
+    if (m.kind === "face") {
+      const tris = planeTriangles(m.partId, new THREE.Vector3(...m.normal), new THREE.Vector3(...m.point), m.tol);
+      if (tris.length) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(tris, 3));
+        const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }));
+        mesh.renderOrder = 9;
+        hoverObj = mesh;
+      }
+    } else {
+      // a tube a little thicker than the edge lines, whatever the zoom (from the part's size)
+      const box = new THREE.Box3();
+      for (const it of items) box.union(it.scene.bbox);
+      const r = Math.max((box.isEmpty() ? 10 : box.getSize(new THREE.Vector3()).length()) * 0.0045, 0.02);
+      let pts: THREE.Vector3[];
+      if (m.kind === "edge") pts = [new THREE.Vector3(...m.a), new THREE.Vector3(...m.b)];
+      else {
+        const ax = new THREE.Vector3(...m.axis).normalize();
+        const u = new THREE.Vector3().crossVectors(ax, Math.abs(ax.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0)).normalize();
+        const v = new THREE.Vector3().crossVectors(ax, u);
+        const c = new THREE.Vector3(...m.center);
+        pts = Array.from({ length: 65 }, (_, i) => { const t = (i / 64) * Math.PI * 2; return c.clone().addScaledVector(u, Math.cos(t) * m.radius).addScaledVector(v, Math.sin(t) * m.radius); });
+      }
+      const curve = new THREE.CatmullRomCurve3(pts, m.kind === "ring", "catmullrom", 0);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, m.kind === "ring" ? 64 : 1, r, 8, m.kind === "ring"),
+        new THREE.MeshBasicMaterial({ color: blue, transparent: true, opacity: 0.85, depthTest: false, toneMapped: false }));
+      tube.renderOrder = 11;
+      hoverObj = tube;
+    }
+    if (hoverObj) scene.add(hoverObj);
+    requestRender();
+  }
+
   function setMarkerObjs(list: readonly PickMarker[]): void {
     clearMarker();
     lastMarkers = list;
@@ -527,6 +587,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
     toScreen,
     setMarker(m) { setMarkerObjs(m ? [m] : []); },
     setMarkers(list) { setMarkerObjs(list); },
+    setHover(m) { if (JSON.stringify(m) !== JSON.stringify(lastHover)) setHoverObj(m); },
     onView(cb) { viewListeners.add(cb); return () => { viewListeners.delete(cb); }; },
     restyle() { applyStyle(); requestRender(); },
     fit,
@@ -534,6 +595,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       scene, camera, controls, canvas, parts: () => items, requestRender,
       onRestyle(cb) { restyled.add(cb); return () => { restyled.delete(cb); }; },
       enableLocalClipping() { renderer.localClippingEnabled = true; },
+      insets: () => ({ left: insetL, right: insetR }),
     }),
     resize(w, h) {
       width = Math.max(1, w); height = Math.max(1, h);
@@ -556,6 +618,7 @@ export function createViewer(canvas: HTMLCanvasElement, deps: ViewerDeps = {}): 
       restyled.clear();
       if (frame) cancelAnimationFrame(frame);
       clearMarker();
+      clearHover();
       viewListeners.clear();
       envTex?.dispose();
       softbox?.dispose();

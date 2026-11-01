@@ -50,7 +50,9 @@ function Issue({ i, fixed }: { i: CritiqueIssue; fixed: boolean }): JSX.Element 
   );
 }
 
-export function CritiqueCard({ round: r }: { round: CritiqueRound }): JSX.Element {
+/** `large` (the View column, P10 E18): the before / after renders fill the card like a view
+ *  card's stage, the summary line under them. */
+export function CritiqueCard({ round: r, large = false }: { round: CritiqueRound; large?: boolean }): JSX.Element {
   const [open, setOpen] = useState(false);
   const tone = scoreTone(r);
   const roundText = r.round !== null ? `Round ${r.round}${r.maxRounds !== null ? ` of ${r.maxRounds}` : ""}` : "Critique";
@@ -62,13 +64,23 @@ export function CritiqueCard({ round: r }: { round: CritiqueRound }): JSX.Elemen
   const detail = /^\d+ fixed\b/i.test(r.detail) ? "" : r.detail;
   const canOpen = r.fixed.length > 0 || r.open.length > 0 || r.iou.length > 0 || detail !== "";
   return (
-    <article class="crit" data-testid="critique-card" data-round={r.round ?? ""} data-open={open ? "true" : "false"} aria-label={`Critique ${roundText.toLowerCase()}`}>
-      <button type="button" class="crit-sum" aria-expanded={open} disabled={!canOpen} onClick={() => setOpen(!open)}>
-        <span class="crit-shots">
+    <article class={`crit${large ? " crit-large" : ""}`} data-testid="critique-card" data-round={r.round ?? ""} data-open={open ? "true" : "false"}
+      data-large={large ? "" : undefined} aria-label={`Critique ${roundText.toLowerCase()}`}>
+      {large && (
+        <div class="crit-stage" data-crit-stage>
           <Shot image={r.before} label="before" />
           <span class="crit-arrow faint" aria-hidden="true">→</span>
           <Shot image={r.after} label="after" />
-        </span>
+        </div>
+      )}
+      <button type="button" class="crit-sum" aria-expanded={open} disabled={!canOpen} onClick={() => setOpen(!open)}>
+        {!large && (
+          <span class="crit-shots">
+            <Shot image={r.before} label="before" />
+            <span class="crit-arrow faint" aria-hidden="true">→</span>
+            <Shot image={r.after} label="after" />
+          </span>
+        )}
         <span class="crit-main">
           <span class="crit-title">{`Critique · ${roundText}`}</span>
           <span class="crit-line">

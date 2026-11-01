@@ -140,6 +140,8 @@
 
 .vx-pins { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .vx-dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; background: var(--blue); border-radius: 50%; }
+/* E16: the corner a click would snap to: big, ringed */
+.vx-dot-hover { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; background: color-mix(in srgb, var(--blue) 45%, transparent); box-shadow: 0 0 0 2px var(--blue); pointer-events: none; }
 /* a map-pin flag: its corner sits on the spot */
 .vx-pin {
   position: absolute; pointer-events: auto; width: 18px; height: 18px; margin: -18px 0 0 0; padding: 0;

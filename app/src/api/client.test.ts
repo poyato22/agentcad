@@ -222,3 +222,26 @@ describe("CoreClient.runLive (C-2, C-3)", () => {
     expect(await client.runLive(run.id)).toEqual({ activity: null, questions: null });
   });
 });
+
+describe("P10 one chat per build and queued-message cancel (core C1, optional)", () => {
+  it("chat posts the text to the build and parses the run answer", async () => {
+    const { client, f } = clientWith(async () => json({ run_id: "lead1", role: "lead", new_lead: true, queued: false, notes: [] }));
+    expect(await client.chat("b 1", "hello")).toMatchObject({ run_id: "lead1", new_lead: true });
+    const [url, init] = f.mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:7400/projects/b%201/chat");
+    expect(JSON.parse(String(init.body))).toEqual({ text: "hello" });
+  });
+
+  it("a core without the routes answers null / false; its own errors still throw", async () => {
+    const { client } = clientWith(async () => json({ detail: "Not Found" }, 404));
+    expect(await client.chat("b1", "hi")).toBeNull();
+    expect(await client.cancelQueued("r1", "m1")).toBe(false);
+    const { client: c2 } = clientWith(async () => json({ detail: "Method Not Allowed" }, 405));
+    expect(await c2.chat("b1", "hi")).toBeNull();
+    const { client: c3 } = clientWith(async () => json({ error: "not_found", message: "unknown project b1", hint: null, retryable: false }, 404));
+    expect((await caught(c3.chat("b1", "hi"))).message).toBe("unknown project b1");
+    const { client: c4, f } = clientWith(async () => json({ ok: true }));
+    expect(await c4.cancelQueued("r1", "m 1")).toBe(true);
+    expect(f.mock.calls[0][0]).toBe("http://127.0.0.1:7400/runs/r1/queued/m%201/cancel");
+  });
+});

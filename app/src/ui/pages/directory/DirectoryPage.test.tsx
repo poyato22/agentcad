@@ -123,6 +123,20 @@ describe("DirectoryPage", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Import from link" })));
   });
 
+  it("E7: Import from link and a part card close their panel when clicked again", async () => {
+    render(<DirectoryPage />);
+    const imp = await screen.findByRole("button", { name: "Import from link" });
+    fireEvent.click(imp);
+    expect(imp.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(imp);
+    await waitFor(() => expect(document.querySelector(".dir-panel")).toBeNull());
+    const card = await found('[data-item="motor_2207_class"]');
+    fireEvent.click(card);
+    await found('[data-detail="motor_2207_class"]');
+    fireEvent.click(document.querySelector('[data-item="motor_2207_class"]') as HTMLElement);
+    await waitFor(() => expect(document.querySelector("[data-detail]")).toBeNull());
+  });
+
   it("Use with agent adds a context chip and opens the composer", async () => {
     render(<DirectoryPage />);
     fireEvent.click(await found('[data-item="motor_2207_class"]'));

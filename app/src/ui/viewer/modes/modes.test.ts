@@ -4,7 +4,8 @@ import { loadPart, type PartScene } from "../loadPart";
 import { createViewer, type DesignViewerHandle, type ModeHost, type RendererLike } from "../scene";
 import { currentView, dirFromAzEl, frameView, liveBox, Orbiter, viewDirection, zoomForDistance } from "./camera";
 import { ModesController } from "./controller";
-import { bodies, EXPLODE_MS, explodeOffset, explodeVectors } from "./explode";
+import { bodies, EXPLODE_MS, explodeOffset } from "./explode";
+import { explodePlan } from "./explodePlan";
 import { easeInOutCubic, tween, type Clock } from "./motion";
 import { capColor, clipPlane, sectionRange } from "./section";
 import { GHOST_OPACITY, MODES_OFF, type ModesState } from "./state";
@@ -156,8 +157,9 @@ describe("section", () => {
   });
 });
 
-/** Two plates (40 × 20 × 6) at x = ±10, fully exploded: each goes out by 1.2× its distance plus 0.45× the diagonal. */
-const APART = 10 + 10 * 1.2 + Math.hypot(60, 20, 6) * 0.45;
+/** Two plates (40 × 20 × 6) at x = ±10, fully exploded. */
+/** Where explodePlan (E4) sends them: the case stays, the board steps off it along +X. */
+const apart = (scenes: PartScene[]) => explodePlan(scenes.map((s, i) => ({ id: ["case", "board"][i], box: s.bbox })));
 
 describe("explode", () => {
   it("groups a part's per-face meshes into solids: one plate is one body, two apart are two", async () => {
@@ -170,15 +172,15 @@ describe("explode", () => {
     expect(bodies(two)).toHaveLength(2);
   });
 
-  it("pushes units out from the middle along their own direction; concentric ones stack on Z", () => {
-    const overall = new THREE.Box3(new THREE.Vector3(-10, -10, -10), new THREE.Vector3(10, 10, 10));
-    const s = new THREE.Vector3(2, 2, 2);
-    const v = explodeVectors([new THREE.Vector3(5, 0, 0), new THREE.Vector3(-5, 0, 0)], [s, s], overall);
-    const far = 5 * 1.2 + Math.hypot(20, 20, 20) * 0.45;   // its own distance, and a share of the whole
-    expect(v[0].x).toBeCloseTo(far); expect(v[1].x).toBeCloseTo(-far);
-    const st = explodeVectors([new THREE.Vector3(0, 0, 0.1), new THREE.Vector3(0, 0, -0.1)], [s, s], overall);
-    expect(st[0].z).toBeGreaterThan(0); expect(st[1].z).toBeLessThan(0);
-    expect(st[0].x).toBe(0);
+  it("re-plans when the parts' rest pose or the structure changes (E4)", async () => {
+    const { c, scenes, host } = await setup(["case", "board"], [[-10, 0, 0], [10, 0, 0]]);
+    c.set(modes({ explode: 1 }));
+    const before = scenes[1].object.position.x;
+    // a structure saying the board hangs off the case on a Z slide: it comes off along Z now
+    (host as { structure?: () => ReadonlyMap<string, unknown> }).structure = () => new Map([["board", { parent: "case", axis: [0, 0, 1], origin: [10, 0, 0] }]]);
+    c.set(modes({ explode: 1 }));
+    expect(scenes[1].object.position.x).toBeCloseTo(10);
+    expect(scenes[1].object.position.x).not.toBeCloseTo(before);
   });
 
   it("glides smoothly to the target (eased, monotone, lands exactly)", async () => {
@@ -191,8 +193,8 @@ describe("explode", () => {
     // no frame jumps more than a fifth of the way
     const total = xs[xs.length - 1] - 10;
     for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeLessThan(total / 5);
-    expect(scenes[1].object.position.x).toBeCloseTo(APART);
-    expect(scenes[0].object.position.x).toBeCloseTo(-APART);
+    expect(scenes[1].object.position.x).toBeCloseTo(10 + apart(scenes)[1].x);
+    expect(scenes[0].object.position.x).toBeCloseTo(-10);
     expect(c.exploder.value).toBe(1);
     c.set(modes({ explode: 0 }));
     expect(scenes[1].object.position.x).toBeCloseTo(10);
@@ -202,7 +204,7 @@ describe("explode", () => {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {} }));
     const { c, scenes } = await setup(["case", "board"], [[-10, 0, 0], [10, 0, 0]]);
     c.set(modes({ explode: 1 }), { animate: true });
-    expect(scenes[1].object.position.x).toBeCloseTo(APART);
+    expect(scenes[1].object.position.x).toBeCloseTo(10 + apart(scenes)[1].x);
   });
 
   it("zooms out to keep the exploded parts in view, and back when assembled", async () => {
@@ -230,7 +232,7 @@ describe("explode", () => {
     const src: THREE.Mesh[] = [];
     scenes[0].object.traverse((o) => { if (o instanceof THREE.Mesh) src.push(o); });
     expect(stencil.matrixWorld.equals(src[0].matrixWorld)).toBe(true);
-    expect(c.caps.caps()[1].position.x).toBeCloseTo(APART);
+    expect(c.caps.caps()[1].position.x).toBeCloseTo(10 + apart(scenes)[1].x);
   });
 });
 

@@ -23,21 +23,27 @@ async function open(page: Page): Promise<void> {
   await openPartView(page);              // Plan 9 D7: the part viewer is one tree click away
 }
 
-/** ⌘N → designer + task → Start. Returns the new run id (from the fake core's call log). */
+/** The build's first message (P10 E24: one chat per build; the core routes "make the plate …" to
+ *  the designer and starts the lead). A later run of the same build comes from an agent tool
+ *  (POST /runs with the agent named), as only agents start more runs now. Returns the run id. */
 async function startRun(page: Page, fake: FakeControl, task = TASK): Promise<string> {
-  await page.keyboard.press("Meta+n");
-  const dialog = page.getByRole("dialog", { name: "New run" });
-  await expect(dialog).toBeVisible();
-  // R8: no agent picker by default — reveal the override to pin the designer for a deterministic run
-  await dialog.getByRole("button", { name: "More options" }).click();   // R8: override the router
-  await dialog.getByRole("menuitem", { name: "Use a specific agent…" }).click();
-  await dialog.getByLabel("Choose an agent").selectOption("designer");
-  await dialog.getByLabel("Task").fill(task);
-  await dialog.getByRole("button", { name: "Start" }).click();
-  await expect(dialog).toBeHidden();
+  const before = await (await fetch(`${CORE_URL}/runs`, { headers: { Authorization: `Bearer ${fake.token}` } })).json() as { role?: string | null }[];
+  if (!before.some((r) => r.role === "lead")) {
+    const cmd = page.getByLabel("Command line");
+    await cmd.fill(task);
+    await cmd.press("Enter");
+    await expect(cmd).toHaveValue("");
+  } else {
+    await fetch(`${CORE_URL}/runs`, { method: "POST", headers: { Authorization: `Bearer ${fake.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ agent: "designer", prompt: task }) });
+  }
+  await expect.poll(async () => ((await (await fetch(`${CORE_URL}/runs`, { headers: { Authorization: `Bearer ${fake.token}` } })).json()) as { task: string }[])
+    .some((r) => r.task === task)).toBe(true);
   const runs = await (await fetch(`${CORE_URL}/runs`, { headers: { Authorization: `Bearer ${fake.token}` } })).json() as { id: string; task: string }[];
   const run = runs.find((r) => r.task === task);
   if (!run) throw new Error("run not created");
+  // an agent-started run: show it from the roster (the chat shows the lead's own)
+  if (before.some((r) => r.role === "lead")) await page.locator(`[data-roster] [data-run="${run.id}"]`).click();
   return run.id;
 }
 

@@ -121,10 +121,10 @@ describe("hidden instances (FW-app I1: the tree's Hide / Isolate drive the build
       canvas.dispatchEvent(new PointerEvent("pointerup", { clientX: 200, clientY: 150 }));
     };
     click();
-    expect(onSelect).toHaveBeenLastCalledWith("a");
+    expect(onSelect).toHaveBeenLastCalledWith("a", expect.anything());
     sc.setInstances([{ id: "a", template: t, color: null, hidden: true }]);
     click();
-    expect(onSelect).toHaveBeenLastCalledWith(null);
+    expect(onSelect).toHaveBeenLastCalledWith(null, expect.anything());
   });
 });
 
