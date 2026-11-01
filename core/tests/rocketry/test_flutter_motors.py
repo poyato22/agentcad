@@ -29,6 +29,22 @@ def test_flutter_speed_hand_calculation():
     assert 150 < vf < 300
 
 
+def test_flutter_against_apogees_published_worked_example():
+    """Independent check: Z. Howard, "How To Calculate Fin Flutter Speed", Apogee Peak of
+    Flight #291 (2011) p. 6, worked example: root 9.75 in, tip 3.75 in, semi-span 4.75 in,
+    t 0.125 in, G 380000 psi, at 3000 ft (P 13.19 psi, a 1105.26 ft/s) -> V_f = 788.6 ft/s.
+    That article's Equation 1 carries an extra 2 under the root (2(AR+2) for TN-4197's (A+2):
+    its "plate theory" torsional modulus); Mises keeps eq. 18 as printed in the report, so the
+    same fin must come out exactly 788.6 / sqrt(2) here, with the same AR, taper and t/c."""
+    vf = flutter.flutter_speed(380000.0, root=9.75, tip=3.75, span=4.75, thickness=0.125,
+                               a=1105.26, p=13.19)
+    assert vf * math.sqrt(2) == pytest.approx(788.6, rel=0.003)
+    # the article's own flight data (J. Taylor's rocket): 449 mph flew, 631 mph broke the fins.
+    # Mises' reading (557 ft/s = 380 mph at 3000 ft) flags both: conservative by sqrt(2).
+    mph = vf / 1.46667
+    assert 375 < mph < 385 and mph < 449 < 631
+
+
 def test_flutter_is_unit_free_and_monotonic():
     kw = dict(root=120, tip=50, span=65, a=340.0)
     v1 = flutter.flutter_speed(800e6, thickness=3.2, p=101325, **kw)
@@ -68,6 +84,10 @@ def test_bundled_files_are_all_public_domain_and_sourced():
     files = {p.name for p in motors.BUNDLED_DIR.glob("*.eng")}
     assert files == set(src)
     assert all(v["license"] == "PD" for v in src.values())
+    import hashlib
+    for name, meta in src.items():      # byte for byte the recorded copy
+        assert hashlib.sha256((motors.BUNDLED_DIR / name).read_bytes()).hexdigest() == \
+            meta["sha256"], name
 
 
 def test_find_by_common_name_and_designation():

@@ -218,8 +218,9 @@ class ClaudeCodeSession:
             if defn is not None and run.role == "lead":
                 # Plan 7: the build's lead is this main session; its sub-agents are Mises
                 # spawns (mcp__mises__agent_spawn only), so the run tree matches native leads
-                from ..orchestrator.lead import lead_definition
-                defn, lead = lead_definition(defn), True
+                from ..orchestrator.lead import is_rocket_build, lead_definition
+                defn, lead = lead_definition(defn, rocket=is_rocket_build(
+                    self.runtime.store, run.project_id, run.task)), True
             if defn is not None:     # Plan 9 D27: the design-class block (design / mixed)
                 from ..design_intensity import rules_for
                 defn = rules_for(defn, run.role, run.design_class)

@@ -1,16 +1,26 @@
 {
-  "note": "Thrust curves bundled with Mises. Every file is a RASP .eng simfile from ThrustCurve.org whose license class there is Public Domain ('PD'), as recorded per simfile in ThrustCurve's data (mirrored in the OpenRocket motor-database, https://github.com/openrocket/motor-database, thrust_curves.license). Files are unmodified. Curves whose ThrustCurve license is not PD (e.g. AeroTech F39T, F42T, F52T, G64W, Estes F15) are NOT bundled; the PD Estes C6 user file was left out because its curve integrates to 10.0 Ns against the 8.82 Ns certified total. Every bundled curve integrates within 3% of ThrustCurve's listed total impulse (tests/rocketry). Unbundled curves: rocket_motor fetches them at runtime into the user's home, or the agent passes the .eng text it opened on thrustcurve.org.",
+  "note": "Thrust curves bundled with Mises. Every file is a ThrustCurve.org RASP simfile whose licence class there is Public Domain ('PD'). How they were obtained: thrustcurve.org itself answered command-line clients with a Cloudflare challenge on 2026-11-01, so each file was copied byte for byte from the OpenRocket motor-database's cache of ThrustCurve simfiles (https://github.com/openrocket/motor-database, main branch, data/thrustcurve.org/<manufacturer>/<name>_<simfile>.eng) and its licence read from that project's motors.db (thrust_curves.license, which it takes from the ThrustCurve API per simfile). The files are unmodified relative to that cache (sha256 below); odd numbers such as F67C's header 0.08567000000000001 are in that copy as published. Curves whose ThrustCurve licence is not PD (e.g. AeroTech F39T, F42T, F52T, G64W, Estes F15) are NOT bundled; the PD Estes C6 user file was left out because its curve integrates to 10.0 Ns against the 8.82 Ns certified total. Every bundled curve integrates within 3% of ThrustCurve's listed total impulse (tests/rocketry). Unbundled curves: rocket_motor fetches them at runtime into the user's home, or the agent passes the .eng text it opened on thrustcurve.org.",
   "retrieved": "2026-11-01",
   "files": {
     "AeroTech_F44W.eng": {"designation": "F44W", "manufacturer": "AeroTech", "simfile": "5f4294d20002e900000007ef", "data_source": "mfr", "license": "PD",
-                          "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007ef/"},
+                          "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007ef/",
+                          "copied_from": "openrocket/motor-database data/thrustcurve.org/AeroTech/F44_5f4294d20002e900000007ef.eng",
+                          "sha256": "f51524e8a43b3e2f1322a2cf4871cd754dcdc0155d205def15284095802bbe6a"},
     "AeroTech_F52C.eng": {"designation": "F52C", "manufacturer": "AeroTech", "simfile": "5f5e5a6a1e865c0004c95620", "data_source": "cert (TMT)", "license": "PD",
-                          "url": "https://www.thrustcurve.org/simfiles/5f5e5a6a1e865c0004c95620/"},
+                          "url": "https://www.thrustcurve.org/simfiles/5f5e5a6a1e865c0004c95620/",
+                          "copied_from": "openrocket/motor-database data/thrustcurve.org/AeroTech/F52_5f5e5a6a1e865c0004c95620.eng",
+                          "sha256": "1d11186b4f2e3a71e44c283c6cd9811b63a91539e8966da803a0bcc57b34997e"},
     "AeroTech_F67C.eng": {"designation": "F67C", "manufacturer": "AeroTech", "simfile": "639413fa1766e20004fd1199", "data_source": "cert", "license": "PD",
-                          "url": "https://www.thrustcurve.org/simfiles/639413fa1766e20004fd1199/"},
+                          "url": "https://www.thrustcurve.org/simfiles/639413fa1766e20004fd1199/",
+                          "copied_from": "openrocket/motor-database data/thrustcurve.org/AeroTech/F67_639413fa1766e20004fd1199.eng",
+                          "sha256": "9b35727d682dffc511996c8f9acce4bfd8f08cc9ba577f30a3178f687a4544e0"},
     "AeroTech_G25W.eng": {"designation": "G25W", "manufacturer": "AeroTech", "simfile": "5f4294d20002e900000007ea", "data_source": "cert", "license": "PD",
-                          "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007ea/"},
+                          "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007ea/",
+                          "copied_from": "openrocket/motor-database data/thrustcurve.org/AeroTech/G25_5f4294d20002e900000007ea.eng",
+                          "sha256": "47ddafb0683be2a77bef56314aad7d2d52919582bafceda28f748a50beece9c6"},
     "Estes_G40W.eng": {"designation": "G40W", "manufacturer": "Estes (AeroTech-made)", "simfile": "5f4294d20002e900000007b0", "data_source": "cert", "license": "PD",
-                       "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007b0/"}
+                       "url": "https://www.thrustcurve.org/simfiles/5f4294d20002e900000007b0/",
+                       "copied_from": "openrocket/motor-database data/thrustcurve.org/Estes Industries/G40_5f4294d20002e900000007b0.eng",
+                       "sha256": "305748143760fc5df43b84ce8980135d93f09608a742a7ad8449a2501196672f"}
   }
 }

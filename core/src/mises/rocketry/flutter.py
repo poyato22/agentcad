@@ -11,8 +11,15 @@ where 39.3 = (24 eps / pi) gamma p0 with eps = 0.25 (elastic axis at the 50% cho
     V_f = a sqrt( G (t/c)^3 (A + 2) / (1.337 A^3 (lambda + 1) p) ),   1.337 = 12 eps gamma / pi
 
 A = span^2 / fin area (aspect ratio of one fin), lambda = tip / root chord, t/c = thickness over
-root chord, a and p at the flight condition. Some popular restatements carry an extra 1/2 in the
-denominator, which raises V_f by sqrt(2) (unconservative); this module follows the report.
+root chord, a and p at the flight condition.
+
+Independent check (tests/rocketry): Z. Howard, "How To Calculate Fin Flutter Speed", Apogee Peak
+of Flight #291 (2011), works a fin (root 9.75 in, tip 3.75, semi-span 4.75, t 0.125, G 380000 psi,
+3000 ft) to 788.6 ft/s with an equation that carries an extra 2 under the root (2 (A + 2); the
+article credits a plate-theory torsional modulus). This module gives the same fin 788.6 /
+sqrt(2) = 557 ft/s, so the geometry terms agree and the one difference is that factor: Mises
+keeps the report's eq. 18 and is sqrt(2) (29%) conservative against the article, whose own five
+flights (449 mph safe, 631 mph broken, three more) its variant called right.
 
 The method is a screening estimate (the report's own data scatter; real fins add glue joints and
 print-layer weakness): Mises asks for V_f >= 1.5 x the maximum flight speed and fails at <= 1.0.

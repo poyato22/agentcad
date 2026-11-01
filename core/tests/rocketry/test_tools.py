@@ -159,11 +159,38 @@ def test_every_lead_is_told_to_fly_rocket_builds():
     from mises.agent.definitions import AgentDefinition
     from mises.orchestrator.lead import lead_definition
     lead = lead_definition(AgentDefinition(name="designer", description="d", body="# Role",
-                                           tools=["mirror_part_create"]))
+                                           tools=["mirror_part_create"]), rocket=True)
     assert {"rocket_analyze", "rocket_flight", "rocket_motor"} <= set(lead.tools)
     body = lead.body
     assert "CURRENT rules" in body and "rocketrychallenge.org" in body
     assert "static margin (cal), apogee" in body and body.count("## Rocket builds") == 1
+
+
+def test_a_non_rocket_lead_gets_one_line_not_the_rules():
+    from mises.agent.definitions import AgentDefinition
+    from mises.orchestrator.lead import is_rocket_text, lead_definition
+    lead = lead_definition(AgentDefinition(name="designer", description="d", body="# Role",
+                                           tools=["mirror_part_create"]))
+    assert "rocketrychallenge" not in lead.body and "ARC" not in lead.body
+    assert "egg" not in lead.body and lead.body.count("rocket_analyze") == 1
+    assert "rocket_flight" in lead.tools           # the tools stay offered (READ, cheap)
+    for t in ("ARC model rocket carrying 2 eggs", "a TARC entry", "egg lofter on an F39",
+              "a 3D-printed nose cone and fins"):
+        assert is_rocket_text(t), t
+    for t in ("a 6-axis robot arm", "sketch an arc and extrude it", "a CNC spindle mount",
+              "a camera gimbal"):
+        assert not is_rocket_text(t), t
+
+
+def test_rocket_build_is_read_from_the_build_name_and_spec():
+    from mises.orchestrator.lead import is_rocket_build
+    from mises.store import Store
+    store = Store(":memory:")
+    p = store.create_project("Rocket").id
+    q = store.create_project("Robot arm").id
+    assert is_rocket_build(store, p, "make the fins") and not is_rocket_build(store, q, "make it")
+    store.put_spec(q, {"goal": "ARC model rocket, 2 eggs, 750 ft"})
+    assert is_rocket_build(store, q, "make it")
 
 
 async def test_four_motor_flight_fits_the_gates_output_cap(ctx):
@@ -221,6 +248,8 @@ class _Web:
         self.urls.append(url)
         for prefix, (ctype, body) in self.pages.items():
             if url.startswith(prefix):
+                if ctype == "redirect":
+                    return httpx.Response(302, headers={"Location": body})
                 return httpx.Response(200, content=body.encode(), headers={"Content-Type": ctype})
         return httpx.Response(403, content=b"challenge", headers={"Content-Type": "text/html"})
 
@@ -240,7 +269,7 @@ async def test_fetch_from_thrustcurve_api(ctx, tmp_path):
                                                          "availability": "regular"}]})),
         "https://www.thrustcurve.org/api/v1/download.json": (
             "application/json", json.dumps({"results": [{
-                "simfileId": "s1", "format": "RASP", "source": "cert", "license": "PD",
+                "simfileId": "5f4294d20002e90000000287", "format": "RASP", "source": "cert", "license": "PD",
                 # the simfile's header names it "F39": the catalog's "F39T" is kept
                 "data": base64.b64encode(F39.replace("F39T 24", "F39 24").encode()).decode()}]})),
     })
@@ -249,7 +278,7 @@ async def test_fetch_from_thrustcurve_api(ctx, tmp_path):
     assert out.data["designation"] == "F39T" and out.data["license"] == "PD"
     assert "commonName=F39" in web.urls[0]
     m = motors.find("F39", tmp_path)
-    assert m is not None and m.url == "https://www.thrustcurve.org/simfiles/s1/"
+    assert m is not None and m.url == "https://www.thrustcurve.org/simfiles/5f4294d20002e90000000287/"
 
 
 async def test_fetch_falls_back_to_the_openrocket_mirror(ctx, tmp_path):

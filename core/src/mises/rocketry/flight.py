@@ -7,10 +7,14 @@
 - Mass: the dry rocket plus the motor, whose propellant burns in proportion to the impulse
   delivered (motors.Motor.mass_kg). Drag: aero.drag at the local Mach and Reynolds number, ISA
   atmosphere from the launch site.
-- Recovery: the parachute opens at the ejection (burnout + delay) or at apogee; after it opens,
-  its drag (Cd x area) adds to the rocket's. The peak load on the payload at deployment uses an
-  opening-shock factor (default 1.5, a typical value for small flat / hemispherical chutes).
-- RK4 at 5 ms during the burn, 20 ms after.
+- Recovery: the parachute opens at the ejection (burnout + delay) or at apogee and inflates
+  over its filling time t_f = n D / v (Knacke's filling-distance rule, n = 8 for a solid flat
+  canopy), its drag area growing with (t / t_f)^2; its drag (Cd x area) adds to the rocket's.
+  The payload's peak load at deployment is the largest deceleration the integration sees while
+  it opens (a finite-mass opening: the rocket slows as the canopy fills).
+- RK4 at 5 ms during the burn, 20 ms after; under the chute the step shrinks with the drag's
+  stiffness (rate rho v CdA / m) so a big chute opening early never diverges, and a state that
+  is non-finite or faster than V_ABSURD raises FlightError instead of returning numbers.
 
 The model matches OpenRocket's vertical flights within a few percent (tests/rocketry: OpenRocket
 24.12 reference flights); it does not model roll, coning, staging or rail friction.
@@ -25,8 +29,14 @@ from .motors import Motor
 
 DT_BURN = 0.005
 DT_COAST = 0.02
+DT_MIN = 1e-4
 T_MAX = 900.0
 MAX_SAMPLES = 400
+V_ABSURD = 3000.0       # m/s: no F/G-class model rocket gets near this; a sign of divergence
+
+
+class FlightError(Exception):
+    """The integration produced non-finite or physically absurd numbers."""
 
 
 @dataclass
@@ -45,7 +55,7 @@ class FlightSetup:
     delay_s: float | None = None       # None: the chute opens at apogee
     chute_d_m: float | None = None     # None: no chute (ballistic)
     chute_cd: float = 0.8
-    opening_shock: float = 1.5
+    fill_n: float = 8.0                # canopy filling distance in diameters (Knacke)
 
 
 @dataclass
@@ -72,6 +82,8 @@ class FlightResult:
     burnout_mass_kg: float = 0.0
     thrust_to_weight: float = 0.0
     cd_at_max_v: float = 0.0
+    lifted_off: bool = False
+    landed: bool = False            # False: still in the air at T_MAX (flight_time is a floor)
     samples: list[tuple[float, float, float, float]] = field(default_factory=list)  # t, alt, v, a
 
     def summary(self) -> dict:
@@ -98,12 +110,19 @@ def simulate(s: FlightSetup) -> FlightResult:
     burn = s.motor.burn_time_s
     t_deploy = burn + s.delay_s if s.delay_s is not None else None
     deployed = False
+    t_dep = t_fill = 0.0
     on_rail = True
     x = z = vx = vz = 0.0
     t = 0.0
     samples: list[tuple[float, float, float, float]] = []
     lifted = False
     prev_vz = 0.0
+
+    def chute_cda(t_: float) -> float:
+        if not deployed:
+            return 0.0
+        f = min(1.0, max(0.0, (t_ - t_dep) / t_fill)) ** 2
+        return s.chute_cd * chute_area * f
 
     def accel(t_: float, x_: float, z_: float, vx_: float, vz_: float, rail: bool,
               chute: bool) -> tuple[float, float, float, float]:
@@ -118,7 +137,7 @@ def simulate(s: FlightSetup) -> FlightResult:
             hx, hz = ax_ / va, az_ / va
         cd = _cd(s, va, air)
         q = 0.5 * air.rho * va * va
-        dragf = q * cd * aref + (q * s.chute_cd * chute_area if chute else 0.0)
+        dragf = q * cd * aref + (q * chute_cda(t_) if chute else 0.0)
         fx = thrust * hx - (dragf * ax_ / va if va > 1e-9 else 0.0)
         fz = thrust * hz - (dragf * az_ / va if va > 1e-9 else 0.0) - m * G0
         if rail:
@@ -130,6 +149,17 @@ def simulate(s: FlightSetup) -> FlightResult:
     while t < T_MAX:
         dt = DT_BURN if t < burn + 0.1 else DT_COAST
         chute = deployed
+        if chute:
+            # quadratic drag is stiff under a big chute (rate rho v CdA / m): keep RK4 well
+            # inside its stability limit (|lambda dt| < 2.8) so an early opening never diverges
+            air = isa(max(z, 0.0), t0_k=s.site_t0_k, p0_pa=s.site_p0_pa)
+            m_now = s.dry_mass_kg + s.motor.mass_kg(t)
+            va = math.hypot(vx - s.wind_mps, vz)
+            lam = air.rho * va * (s.chute_cd * chute_area + 0.6 * aref) / m_now
+            if lam > 0:
+                dt = max(DT_MIN, min(dt, 0.5 / lam))
+            if t - t_dep < t_fill:
+                dt = min(dt, max(DT_MIN, t_fill / 20))   # resolve the opening itself
         a1 = accel(t, x, z, vx, vz, on_rail, chute)
         k1 = (vx, vz, a1[0], a1[1])
         a2 = accel(t + dt / 2, x + k1[0] * dt / 2, z + k1[1] * dt / 2, vx + k1[2] * dt / 2,
@@ -146,6 +176,10 @@ def simulate(s: FlightSetup) -> FlightResult:
         vx += dt / 6 * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2])
         vz += dt / 6 * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3])
         t += dt
+        if not all(math.isfinite(q) for q in (x, z, vx, vz)) or math.hypot(vx, vz) > V_ABSURD:
+            raise FlightError(f"the flight model diverged at t = {t:.2f} s (speed "
+                              f"{math.hypot(vx, vz):.3g} m/s): this chute / delay / mass "
+                              "combination is outside what it can integrate")
         if not lifted and (vz > 0 or z > 0):
             lifted = True
         if not lifted:
@@ -154,6 +188,7 @@ def simulate(s: FlightSetup) -> FlightResult:
             continue
         if z < 0:
             res.flight_time_s = t
+            res.landed = True
             res.landing_v_mps = math.hypot(vx, vz)
             res.drift_m = x
             break
@@ -168,6 +203,8 @@ def simulate(s: FlightSetup) -> FlightResult:
             res.max_mach = max(res.max_mach, v / air_a)
         if not deployed:
             res.max_accel_mps2 = max(res.max_accel_mps2, acc)
+        elif t - t_dep <= 3 * t_fill + 0.5:
+            res.deploy_shock_g = max(res.deploy_shock_g or 0.0, acc / G0)
         if res.burnout_t_s == 0.0 and t >= burn:
             res.burnout_t_s, res.burnout_alt_m, res.burnout_v_mps = t, z, v
         if z > res.apogee_m:
@@ -177,17 +214,17 @@ def simulate(s: FlightSetup) -> FlightResult:
         if not deployed and chute_area > 0 and (
                 (t_deploy is not None and t >= t_deploy) or (t_deploy is None and at_apogee)):
             deployed = True
-            air = isa(z, t0_k=s.site_t0_k, p0_pa=s.site_p0_pa)
             va = math.hypot(vx - s.wind_mps, vz)
-            m = s.dry_mass_kg + s.motor.mass_kg(t)
+            t_dep = t
+            t_fill = min(3.0, max(0.05, s.fill_n * (s.chute_d_m or 0.0) / max(va, 1.0)))
             res.deploy_t_s, res.deploy_alt_m, res.deploy_v_mps = t, z, va
-            res.deploy_shock_g = (0.5 * air.rho * va * va * s.chute_cd * chute_area
-                                  * s.opening_shock) / (m * G0)
+            res.deploy_shock_g = 0.0
         if deployed:
             res.descent_mps = -vz
         samples.append((t, z, v, acc / G0))
     if res.flight_time_s == 0.0:
         res.flight_time_s = t
+    res.lifted_off = lifted
     if len(samples) > MAX_SAMPLES:
         step = len(samples) / MAX_SAMPLES
         samples = [samples[int(i * step)] for i in range(MAX_SAMPLES)] + [samples[-1]]

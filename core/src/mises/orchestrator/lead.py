@@ -149,15 +149,47 @@ over the same range to catch interference.
 """
 
 
-def lead_definition(defn: AgentDefinition) -> AgentDefinition:
+#: one line for a build that is not (yet) a rocket: the tools exist, the rules stay out
+LEAD_ROCKETRY_HINT = ("## Rockets\n- If the build turns out to be a rocket, check it with "
+                      "`rocket_analyze` and `rocket_flight`.\n\n")
+_ROCKET_WORDS = re.compile(r"(?i:\brockets?\b|\brocketry\b|\btarc\b|\bnose ?cones?\b|"
+                           r"\bapogee\b|\begg ?lofter\b|\bthrustcurve\b)|\bARC\b")
+
+
+def is_rocket_text(*texts: str | None) -> bool:
+    """Does the user's request / build name / spec read as a rocket build? A cheap keyword prior
+    (ARC only in capitals: "arc" is also a sketch curve)."""
+    return any(t and _ROCKET_WORDS.search(t) for t in texts)
+
+
+def is_rocket_build(store, project_id: str | None, *texts: str | None) -> bool:
+    """The keyword prior over the request texts, the build's name and its spec goal."""
+    more: list[str | None] = []
+    if store is not None and project_id:
+        try:
+            more.append(store.get_project(project_id).name)
+        except Exception:  # noqa: BLE001 - no such build: the texts decide
+            pass
+        try:
+            spec = store.get_spec(project_id) or {}
+            more.append(str(spec.get("goal") or ""))
+        except Exception:  # noqa: BLE001
+            pass
+    return is_rocket_text(*texts, *more)
+
+
+def lead_definition(defn: AgentDefinition, *, rocket: bool = False) -> AgentDefinition:
     """The routed agent, as this build's lead. The "after studies" rule is RESPONSE_RULES'
-    (every prompt path carries it); delegation on Claude Code is in its tool-only section."""
+    (every prompt path carries it); delegation on Claude Code is in its tool-only section.
+    `rocket` (is_rocket_build) adds the rocketry rules; any other build gets one line."""
     tools = None if defn.tools is None else list(dict.fromkeys([*defn.tools, *LEAD_TOOLS]))
     has_assembly = "assembly_animate" in defn.body and "assembly_check" in defn.body
     has_engineering = all(m in defn.body for m in ENGINEERING_MARKERS)
+    rocketry = ("" if "rocket_analyze" in defn.body
+                else LEAD_ROCKETRY if rocket else LEAD_ROCKETRY_HINT)
     lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY,
                               engineering="" if has_engineering else LEAD_ENGINEERING,
-                              rocketry="" if "rocket_analyze" in defn.body else LEAD_ROCKETRY)
+                              rocketry=rocketry)
     return defn.model_copy(update={"tools": tools,
                                    "body": defn.body.rstrip() + "\n\n" + lead})
 

@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field, model_validator
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
 from . import aero, flutter, motors as motorlib
-from .flight import FlightResult, FlightSetup, chute_for, simulate
+from .flight import FlightError, FlightResult, FlightSetup, chute_for, simulate
 from .geometry import (Built, MassItem, MassModel, MassRow, RocketGeometry, build_body,
                        from_skeleton, gather)
 
@@ -199,6 +199,32 @@ class Rocket:
         return FlightSetup(self.body, m, self.mass.dry_kg + kw.pop("ballast_kg", 0.0),
                            site_t0_k=t0, site_p0_pa=p0, roughness_m=ROUGHNESS[args.finish],
                            parasitic_cd=parasitic, cd_override=args.cd_override, **kw)
+
+
+def _sim(setup: FlightSetup) -> FlightResult:
+    """simulate(), with a diverged or absurd flight turned into a failed call: numbers that are
+    not physical never reach a card."""
+    try:
+        res = simulate(setup)
+    except FlightError as e:
+        raise MisesError(ErrorCode.TOOL_FAILED, str(e),
+                         hint="use a later ejection (delay_s) or a smaller chute; check the "
+                              "mass and the motor") from e
+    vals = [v for v in res.summary().values() if isinstance(v, float)]
+    if not all(math.isfinite(v) for v in vals):
+        raise MisesError(ErrorCode.TOOL_FAILED, "the flight model returned non-finite numbers")
+    return res
+
+
+def _motor_notes(m: motorlib.Motor, home: Path | None) -> list[str]:
+    """A curve from the user's cache (fetched or saved) that shares a bundled one's name."""
+    if m.source == "bundled":
+        return []
+    out = [f"{m.designation}: thrust curve from {m.source}"]
+    if any(motorlib._norm(b.designation) == motorlib._norm(m.designation)
+           for b in motorlib.bundled()):
+        out.append(f"{m.designation}: your saved curve replaces the bundled one of that name")
+    return out
 
 
 def _home(ctx: ToolContext) -> Path:
@@ -390,6 +416,8 @@ async def rocket_analyze(ctx: ToolContext, args: AnalyzeArgs) -> ToolOutput:
     warnings = list(r.warnings)
     motor = motorlib.resolve(args.motor, args.motor_eng, r.home) \
         if (args.motor or args.motor_eng) else None
+    if motor is not None:
+        warnings += _motor_notes(motor, r.home)
     dry_kg, dry_cg = r.cg_at(None, 0.0)
     metrics = [_metric("CP", round(r.cp_m * 1000, 1), "mm from tip"),
                _metric("CN alpha", round(r.cn, 3), "/rad"),
@@ -420,7 +448,7 @@ async def rocket_analyze(ctx: ToolContext, args: AnalyzeArgs) -> ToolOutput:
                              ("margin", "cal"), [("margin", series)],
                              bands=[{"label": "target 1-2 cal", "axis": "y", "from": 1.0,
                                      "to": 2.0}]))
-        fl = simulate(r.setup(motor, args))
+        fl = _sim(r.setup(motor, args))
         if vmax is None:
             vmax, alt_vmax = fl.max_v_mps, fl.max_v_alt_m
         if fl.rail_exit_mps < RAIL_EXIT_MIN:
@@ -480,7 +508,7 @@ def _nearest_delay(m: motorlib.Motor, ideal: float) -> float | None:
 def _tune(r: Rocket, m: motorlib.Motor, args: FlightArgs, target: float, at_m: float) -> dict:
     """Ballast (kg, may be negative = mass to remove) that puts the apogee on target."""
     def apo(b: float) -> float:
-        return simulate(r.setup(m, args, ballast_kg=b, rail_m=args.rail_length_m,
+        return _sim(r.setup(m, args, ballast_kg=b, rail_m=args.rail_length_m,
                                 rail_angle_deg=args.rail_angle_deg,
                                 wind_mps=args.wind_mps)).apogee_m
     dry = r.mass.dry_kg
@@ -512,7 +540,7 @@ def _tune(r: Rocket, m: motorlib.Motor, args: FlightArgs, target: float, at_m: f
 
 
 def _fly(r: Rocket, m: motorlib.Motor, args: FlightArgs, chute_d: float, ballast: float = 0.0):
-    return simulate(r.setup(m, args, ballast_kg=ballast, rail_m=args.rail_length_m,
+    return _sim(r.setup(m, args, ballast_kg=ballast, rail_m=args.rail_length_m,
                             rail_angle_deg=args.rail_angle_deg, wind_mps=args.wind_mps,
                             delay_s=args.delay_s, chute_d_m=chute_d, chute_cd=args.chute_cd))
 
@@ -566,8 +594,22 @@ async def rocket_flight(ctx: ToolContext, args: FlightArgs) -> ToolOutput:
                "landing_v_mps": round(fl.landing_v_mps, 2), "drift_m": round(fl.drift_m, 0),
                "chute_mm": round(chute * 1000), "margin_cal": round(margin, 2),
                "margin_status": ms, "optimal_delay_s": round(ideal, 1),
-               "motor_delay_s": _nearest_delay(m, ideal), "cd": round(fl.cd_at_max_v, 3)}
+               "motor_delay_s": _nearest_delay(m, ideal), "cd": round(fl.cd_at_max_v, 3),
+               "motor_source": m.source}
         st = [ms]
+        warnings += _motor_notes(m, r.home)
+        if not fl.lifted_off or fl.apogee_m < 1.0:
+            st.append("fail")
+            warnings.append(f"{m.designation}: the rocket does not lift off (peak thrust-to-"
+                            f"weight {fl.thrust_to_weight:.1f})")
+        if not fl.landed:
+            st.append("warn")
+            warnings.append(f"{m.designation}: still in the air at {fl.flight_time_s:.0f} s "
+                            "(the simulation's limit): the flight time is a lower bound")
+        if fl.max_mach > 0.8:
+            st.append("warn")
+            warnings.append(f"{m.designation}: Mach {fl.max_mach:.2f}: past the subsonic "
+                            "Barrowman / drag model's range")
         if fl.rail_exit_mps < RAIL_EXIT_MIN:
             st.append("warn")
             warnings.append(f"{m.designation}: rail exit {fl.rail_exit_mps:.1f} m/s < "
@@ -674,12 +716,50 @@ MFR_DIRS = {"aerotech": "AeroTech", "estes": "Estes Industries", "cesaroni": "Ce
             "loki": "Loki Research", "aerotech/rcs": "AeroTech"}
 
 
+#: the only hosts a motor fetch talks to (and may be redirected to): ThrustCurve's API and the
+#: OpenRocket motor-database mirror on GitHub
+FETCH_HOSTS = frozenset({"www.thrustcurve.org", "thrustcurve.org", "api.github.com",
+                         "raw.githubusercontent.com"})
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .\-/]{0,39}$")
+SAFE_META_RE = re.compile(r"[^A-Za-z0-9 ._()/:-]")
+
+
+def _host_of(url: str) -> str:
+    from urllib.parse import urlsplit
+    return (urlsplit(url).hostname or "").lower()
+
+
+def _plain(what: str, s: str | None) -> str | None:
+    """A designation / manufacturer the agent typed: words and part numbers only (the browser's
+    query rule), so the fetch URLs carry nothing else to a third party."""
+    if s is None:
+        return None
+    from ..browser.tools import looks_random, plain_query_ok
+    if not NAME_RE.match(s) or not plain_query_ok(s) or any(looks_random(w) for w in s.split()) \
+            or len(re.sub(r"[^A-Za-z0-9]", "", s)) > 20:
+        raise _bad(f"{what} must be a plain motor name like 'F39T' or 'AeroTech'")
+    return s
+
+
+def _meta(s, n: int = 80) -> str | None:
+    """A string from a remote JSON (source, license): clamped to a short plain charset."""
+    return SAFE_META_RE.sub("", str(s))[:n] or None if s is not None else None
+
+
 async def _get(ctx: ToolContext, url: str, types=("application/json", "text/plain")) -> str:
+    """One GET under the agent browser's rules: only FETCH_HOSTS (redirects too), each request
+    charged to the run family's web-fetch budget (shared with web_search / web_open)."""
     from ..catalog.importer import fetch
+    if _host_of(url) not in FETCH_HOSTS:
+        raise MisesError(ErrorCode.DENIED, f"motor fetch refused a link to {_host_of(url)!r}")
+    if getattr(ctx, "store", None) is not None and (ctx.services or {}).get("browser"):
+        from ..browser.tools import _charge
+        _charge(ctx, 1)
     http = (ctx.services or {}).get("browser_http") or (ctx.services or {}).get(
         "catalog_http") or {}
     page = await fetch(url, types=types, user_agent="Mises-rocketry/0.1",
-                       accept="application/json,text/plain;q=0.9", **http)
+                       accept="application/json,text/plain;q=0.9",
+                       redirect_ok=lambda host: host.lower() in FETCH_HOSTS, **http)
     return page.text
 
 
@@ -702,8 +782,9 @@ async def _fetch_thrustcurve(ctx: ToolContext, name: str, mfr: str | None) -> tu
                 continue
             text = base64.b64decode(raw).decode("utf-8", "replace")
             sim = f.get("simfileId")
-            return text, {"source": f"thrustcurve.org ({f.get('source') or 'simfile'})",
-                          "license": f.get("license"),
+            sim = sim if isinstance(sim, str) and re.fullmatch(r"[0-9a-f]{6,32}", sim) else None
+            return text, {"source": f"thrustcurve.org ({_meta(f.get('source'), 20) or 'simfile'})",
+                          "license": _meta(f.get("license"), 20),
                           "url": f"https://www.thrustcurve.org/simfiles/{sim}/" if sim else None,
                           "designation": str(c.get("designation") or "")}
     raise MisesError(ErrorCode.NOT_FOUND, f"ThrustCurve has no RASP file for {name!r}")
@@ -720,8 +801,9 @@ async def _fetch_mirror(ctx: ToolContext, name: str, mfr: str | None) -> tuple[s
                 and str(x.get("name", "")).endswith(".eng")]
         for h in hits:
             url = h.get("download_url")
-            if not isinstance(url, str):
-                continue
+            if not isinstance(url, str) or _host_of(url) != "raw.githubusercontent.com" \
+                    or not url.startswith("https://raw.githubusercontent.com/openrocket/"):
+                continue                                   # only the mirror's own files
             text = await _get(ctx, url, types=("text/plain", "application/octet-stream"))
             try:
                 m = motorlib.parse_eng(text)
@@ -730,9 +812,11 @@ async def _fetch_mirror(ctx: ToolContext, name: str, mfr: str | None) -> tuple[s
             if motorlib._norm(m.designation).startswith(motorlib._norm(
                     motorlib._strip_mfr(name))) or len(hits) == 1:
                 sim = str(h["name"]).rsplit("_", 1)[-1].split(".")[0]
+                ok = re.fullmatch(r"[0-9a-f]{6,32}", sim) is not None
                 return text, {"source": "thrustcurve.org via the OpenRocket motor-database",
                               "license": None,
-                              "url": f"https://www.thrustcurve.org/simfiles/{sim}/"}
+                              "url": f"https://www.thrustcurve.org/simfiles/{sim}/" if ok
+                              else None}
     raise MisesError(ErrorCode.NOT_FOUND, f"no RASP file for {name!r} in the mirror")
 
 
@@ -767,10 +851,12 @@ async def rocket_motor(ctx: ToolContext, args: MotorArgs) -> ToolOutput:
                           step_kind=StepKind.DIFF)
     if not args.name:
         raise _bad("fetch needs name (e.g. 'F39T')")
+    name = _plain("name", args.name)
+    mfr = _plain("manufacturer", args.manufacturer)
     errors = []
     for how in (_fetch_thrustcurve, _fetch_mirror):
         try:
-            text, meta = await how(ctx, args.name, args.manufacturer)
+            text, meta = await how(ctx, name, mfr)
             listed = meta.pop("designation", None)
             m = motorlib.parse_eng(text, **meta)
             if listed and motorlib._norm(m.designation) != motorlib._norm(listed):
@@ -782,8 +868,12 @@ async def rocket_motor(ctx: ToolContext, args: MotorArgs) -> ToolOutput:
             return ToolOutput(summary=f"fetched {m.designation} ({m.total_impulse_ns:.1f} Ns, "
                                       f"{m.burn_time_s:.2f} s) from {meta['source']}",
                               data=m.summary(), step_kind=StepKind.DIFF)
-        except (MisesError, ValueError, KeyError) as e:
-            errors.append(f"{how.__name__.strip('_')}: {getattr(e, 'message', None) or e}")
+        except MisesError as e:
+            if e.code in (ErrorCode.BUDGET_EXHAUSTED, ErrorCode.DENIED):
+                raise                                   # the guard's answer, not a miss
+            errors.append(f"{how.__name__.strip('_')}: {e.message}"[:200])
+        except (ValueError, KeyError, TypeError) as e:
+            errors.append(f"{how.__name__.strip('_')}: {e}"[:200])
     raise MisesError(ErrorCode.NOT_FOUND, f"could not fetch {args.name!r}: " + "; ".join(errors),
                      hint="open the motor's RASP file on thrustcurve.org with web_open and "
                           "pass its text to rocket_motor (action 'save') or as motor_eng")
