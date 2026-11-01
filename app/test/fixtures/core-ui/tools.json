@@ -42,6 +42,13 @@
     "open_world": false
   },
   {
+    "name": "assembly_add_loop",
+    "description": "Close a kinematic loop (four-bar, slider-crank, Jansen leg, parallel gripper): a joint between two bodies already connected through the joint tree. The solve then adjusts the free joints on the loop's path so the two frames meet whenever a driver moves. Refused when the loop cannot close at the current pose.",
+    "safety": "local_mutate",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
     "name": "assembly_add_part",
     "description": "Bring a part into the build's assembly in one call: adds an instance and a default joint. The first part is grounded (fixed); later ones are joined to the grounded instance (or place.mate.instance_id) with a fixed joint unless place.mate.kind says otherwise. place.on_face + place.mate.face_id sit one face on another; place.offset shifts the placement in mm.",
     "safety": "local_mutate",
@@ -226,6 +233,13 @@
     "open_world": false
   },
   {
+    "name": "drivetrain_plan",
+    "description": "Actuator + reduction options for a joint: given its peak torque and speed (from dyn_torque or a static estimate), the catalog actuators (servos, steppers, Dynamixel, BLDC actuators, gearmotors; torque-speed lines) combined with direct drive, a GT2 belt, a planetary, a cycloidal, a compound planetary or a worm reduction, filtered by margin, speed, mass and size, lightest and cheapest first. Insert the chosen reduction with mech_insert.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
     "name": "fixture_merge",
     "description": "test-only irreversible tool",
     "safety": "irreversible",
@@ -263,6 +277,34 @@
   {
     "name": "loads_impact",
     "description": "Equivalent static load for an impact/crash: F = m\u00b7g\u00b7k (k is the dynamic amplification factor you choose for the severity). Returns newtons flagged as an estimate. Use its newtons for a crash/impact load case and keep estimate=true.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "material_pick",
+    "description": "Rank materials for a part from the one materials table (PLA, PETG, ABS, ASA, PC, PA12, PA6-CF, PA-CF, TPU 95A, POM, Al 6061-T6 / 7075-T6, steels 1018 / 4140, 304 stainless, brass C360, CF plate, plus custom ones) by specific stiffness / strength, service temperature, process, cost and failure mode, with the reasons. apply=true sets the top pick on the part (mass, studies and the BOM follow).",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "mech_check",
+    "description": "Check a mechanism (a mech_insert group) or every joint of the build: mobility vs intended DOF, its sizing results (contact ratio, Lewis bending SF, Grashof and transmission angle, belt teeth in mesh, screw buckling and back-drive, bearing L10...), the E27 joint design rules (bearing or bushing at every revolute, shaft retention, FDM clearance 0.2-0.4 mm, fastener size, ROM limits), loop closure, and with sweep a collision check through each input's range of motion. Each result is pass / warn / fail.",
+    "safety": "read",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "mech_insert",
+    "description": "Insert a library mechanism into the build: builds its parts (real gears, pulleys, shafts, bearings, links...), adds the instances and joints (including gear/belt/rack/screw couplings and loop closures, so driving the input moves everything), and returns its card: ports (where to attach motors and loads), joints, mobility, transmission (ratio or curve), ROM, sizing results and warnings. Then run mech_check.",
+    "safety": "local_mutate",
+    "implied_classes": [],
+    "open_world": false
+  },
+  {
+    "name": "mech_list",
+    "description": "Find mechanisms in the library (43: gear pairs, planetary and cycloidal reducers, belts, screws, rails, shaft supports, motor mounts, linkages, legs, grippers, hinges, ball/universal joints, cams, Geneva...) by what they must do. Returns ranked ids with a summary, motion type, checks and the parameter schema of the top hits. Insert one with mech_insert.",
     "safety": "read",
     "implied_classes": [],
     "open_world": false
@@ -444,7 +486,7 @@
   },
   {
     "name": "part_set_material",
-    "description": "Set the material a part is made of (its mass is volume x this material's density; the BOM and the assembly total follow). Use a name from the materials table (PLA, PETG, ABS, ASA, PA-CF, TPU or a custom study material); null goes back to the build default. Does not change the geometry or the look (use part_set_appearance for that).",
+    "description": "Set the material a part is made of (its mass is volume x this material's density; the BOM and the assembly total follow). Use a name from the materials table (PLA, PETG, ABS, ASA, PC, PA12, PA6-CF, PA-CF, TPU 95A, POM, Al 6061-T6, Al 7075-T6, Steel 1018, Steel 4140, 304 stainless, Brass C360, CF plate, TPU or a custom study material; material_pick ranks them); null goes back to the build default. Does not change the geometry or the look (use part_set_appearance for that).",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false

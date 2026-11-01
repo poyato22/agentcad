@@ -63,7 +63,7 @@
     "reasons": [],
     "part_tests": [
       {
-        "sim_id": "sim_3e2b05d14336",
+        "sim_id": "sim_4a2b1bfc1dab",
         "e_mpa": 2104.62170075425,
         "e_study_mpa": 2300.0,
         "predicted_deflection_mm": 1.7386005354056846,
@@ -112,11 +112,22 @@
       "z_strength": "calibrated (1 test)"
     },
     "fdm_strength_factor": 1.0,
+    "process": "fdm",
+    "uts_mpa": null,
+    "elongation_pct": null,
+    "failure": "ductile",
+    "max_service_c": null,
+    "fatigue_limit_mpa": null,
+    "hyperelastic": null,
+    "printable": true,
+    "cost_per_kg": null,
+    "notes": "",
     "allowable_mpa": 26.349999999999998,
     "e_eff_mpa": 2036.3582715522537,
     "tangent_eff_mpa": 20.363582715522536,
     "tangent_source": "estimate (1% of E)",
-    "model": "isotropic linear elastic; strength x FDM knock-down 0.85; printed parts are weaker across layers"
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.85; printed parts are weaker across layers",
+    "min_safety_factor": 2.0
   },
   "datasheet": {
     "name": "PLA",
@@ -141,11 +152,22 @@
     "calibration": null,
     "basis_by_property": null,
     "fdm_strength_factor": 1.0,
+    "process": "fdm",
+    "uts_mpa": null,
+    "elongation_pct": null,
+    "failure": "ductile",
+    "max_service_c": null,
+    "fatigue_limit_mpa": null,
+    "hyperelastic": null,
+    "printable": true,
+    "cost_per_kg": null,
+    "notes": "",
     "allowable_mpa": 35.699999999999996,
     "e_eff_mpa": 2300.0,
     "tangent_eff_mpa": 23.0,
     "tangent_source": "estimate (1% of E)",
-    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+    "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+    "min_safety_factor": 2.0
   },
   "basis": "calibrated E (3), strength (3), Z strength (1), low confidence",
   "status": "ok",

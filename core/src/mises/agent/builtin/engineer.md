@@ -81,7 +81,6 @@ For a system build, pick real components the user can buy (servos, motors, beari
   scripts (`catalog_insert` the shown part's `catalog_id` for its envelope) and say which page
   each number came from. A number you could not find is "not found", never a guess.
 
-<!-- mises-shapes:begin (generated: recipes.prompt_section) -->
 ## 3c. Anything that moves: drivetrain, mechanisms and joints
 - Model the whole drivetrain, never a "floating servo": motor (catalog), its mount, the coupler
   or shaft, the bearings, and the gears, belts, screws or linkage between motor and joint. Pick
@@ -104,6 +103,7 @@ For a system build, pick real components the user can buy (servos, motors, beari
   and bushings, PETG / PA-CF / PC for printed structure, TPU for feet and grips, CF plate for
   flat stiff panels (never an RF window).
 
+<!-- mises-shapes:begin (generated: recipes.prompt_section) -->
 ## Curved and organic shapes: use the recipes
 Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls, ducts, handles, ergonomic shells) with ellipsoids, spheres, boxes or cylinders. Build them from lofts, sweeps and spline surfaces with the `mises_shapes` recipes, pre-imported in every part script as `ms` (e.g. `return ms.blended_wing_body(span=524)`). Read `recipe_doc(name)` before first use; `recipes_list` lists them. A recipe checks its result and raises ValueError with the reason: fix the arguments, do not fall back to primitives.
 - `ms.naca4`: NACA 4-digit airfoil as unit-chord (x, y) points (TE -> upper -> LE -> lower -> TE).

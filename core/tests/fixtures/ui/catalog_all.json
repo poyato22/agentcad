@@ -1,5 +1,1880 @@
 [
   {
+    "id": "gearmotor_25d_class",
+    "name": "25D metal gearmotor class",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "25 dia x 60",
+        "unit": "mm",
+        "note": "typical incl. gearbox"
+      },
+      {
+        "key": "mass",
+        "value": 90,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 1.0,
+        "unit": "N\u00b7m",
+        "note": "0.5-2 depending on ratio (Pololu)"
+      },
+      {
+        "key": "price",
+        "value": 25,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "diameter_mm": 25,
+      "height_mm": 60,
+      "mass_g": 90
+    },
+    "mount": {
+      "pattern": "face M3",
+      "hole_d": 3,
+      "spacing_mm": [
+        17
+      ],
+      "thread": "M3",
+      "layout": "face"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "cylinder",
+      "d": 25,
+      "h": 60,
+      "bore": 0
+    },
+    "perf": {
+      "type": "dc_geared",
+      "voltage_v": 12.0,
+      "stall_torque_nm": 1.0,
+      "no_load_rpm": 200,
+      "rated_torque_nm": 0.25,
+      "stall_current_a": 2.1,
+      "idle_current_a": 0.1,
+      "gear_ratio": 47,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 2.0,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        60
+      ],
+      "rom_deg": null,
+      "price_usd": 25
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "gearmotor_37d_class",
+    "name": "37D metal gearmotor class",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "37 dia x 65",
+        "unit": "mm",
+        "note": "typical incl. gearbox"
+      },
+      {
+        "key": "mass",
+        "value": 200,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 2.0,
+        "unit": "N\u00b7m",
+        "note": "1-4 depending on ratio (Pololu)"
+      },
+      {
+        "key": "price",
+        "value": 35,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "diameter_mm": 37,
+      "height_mm": 65,
+      "mass_g": 200
+    },
+    "mount": {
+      "pattern": "face M3",
+      "hole_d": 3,
+      "spacing_mm": [
+        31
+      ],
+      "thread": "M3",
+      "layout": "face"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "cylinder",
+      "d": 37,
+      "h": 65,
+      "bore": 0
+    },
+    "perf": {
+      "type": "dc_geared",
+      "voltage_v": 12.0,
+      "stall_torque_nm": 2.0,
+      "no_load_rpm": 150,
+      "rated_torque_nm": 0.6,
+      "stall_current_a": 5.5,
+      "idle_current_a": 0.2,
+      "gear_ratio": 50,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 2.0,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        65
+      ],
+      "rom_deg": null,
+      "price_usd": 35
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "gimbal_bldc_5010_class",
+    "name": "BLDC 5010 class (for printed cycloid / planetary)",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "56 dia x 26",
+        "unit": "mm",
+        "note": "typical"
+      },
+      {
+        "key": "mass",
+        "value": 100,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 0.3,
+        "unit": "N\u00b7m",
+        "note": "typical"
+      },
+      {
+        "key": "price",
+        "value": 30,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "diameter_mm": 56,
+      "height_mm": 26,
+      "mass_g": 100
+    },
+    "mount": {
+      "pattern": "25x25",
+      "hole_d": 3,
+      "spacing_mm": [
+        25,
+        25
+      ],
+      "thread": "M3",
+      "layout": "cross"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "cylinder",
+      "d": 56,
+      "h": 26,
+      "bore": 0
+    },
+    "perf": {
+      "type": "bldc",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 0.3,
+      "no_load_rpm": 6000,
+      "rated_torque_nm": 0.12,
+      "stall_current_a": 15.0,
+      "idle_current_a": 0.5,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": 3e-05,
+      "backlash_deg": 0,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        26
+      ],
+      "rom_deg": null,
+      "price_usd": 30
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "cubemars_ak80_9_actuator",
+    "name": "CubeMars AK80-9 actuator (BLDC + 9:1 planetary)",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "98 dia x 61.5",
+        "unit": "mm",
+        "note": "vendor"
+      },
+      {
+        "key": "mass",
+        "value": 485,
+        "unit": "g"
+      },
+      {
+        "key": "rated_torque",
+        "value": 9,
+        "unit": "N\u00b7m",
+        "note": "vendor; 18 N\u00b7m peak, 24-48 V"
+      },
+      {
+        "key": "price",
+        "value": 420,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "diameter_mm": 98,
+      "height_mm": 61.5,
+      "mass_g": 485
+    },
+    "mount": {
+      "pattern": "bolt circle",
+      "hole_d": 3,
+      "spacing_mm": [],
+      "thread": "M3",
+      "layout": "circle"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "cylinder",
+      "d": 98,
+      "h": 61.5,
+      "bore": 0
+    },
+    "perf": {
+      "type": "bldc_geared",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 18.0,
+      "no_load_rpm": 390,
+      "rated_torque_nm": 9.0,
+      "stall_current_a": 25.0,
+      "idle_current_a": 0.3,
+      "gear_ratio": 9,
+      "rotor_inertia_kgm2": 6e-05,
+      "backlash_deg": 0.2,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        61.5
+      ],
+      "rom_deg": null,
+      "price_usd": 420
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "servo_ds3218_class",
+    "name": "DS3218 20 kg digital servo",
+    "specs": [
+      {
+        "key": "body",
+        "value": "40 x 20 x 40.5",
+        "unit": "mm",
+        "note": "typical"
+      },
+      {
+        "key": "mass",
+        "value": 60,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 1.9,
+        "unit": "N\u00b7m",
+        "note": "typical, 5 V (2.1 at 6.8 V)"
+      },
+      {
+        "key": "price",
+        "value": 15,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "length_mm": 40,
+      "width_mm": 20,
+      "height_mm": 40.5,
+      "tab_length_mm": 54,
+      "mass_g": 60
+    },
+    "mount": {
+      "pattern": "49.5",
+      "hole_d": 4.5,
+      "spacing_mm": [
+        49.5
+      ],
+      "thread": null,
+      "layout": "inline"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "servo",
+      "l": 40,
+      "w": 20,
+      "h": 40.5,
+      "tab_l": 54,
+      "tab_t": 2.5,
+      "tab_z": 28,
+      "spacing": 49.5,
+      "hole_d": 4.5
+    },
+    "perf": {
+      "type": "servo",
+      "voltage_v": 5.0,
+      "stall_torque_nm": 1.9,
+      "no_load_rpm": 62,
+      "rated_torque_nm": 0.6,
+      "stall_current_a": 2.5,
+      "idle_current_a": 0.01,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 1.0,
+      "feedback": "pot",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        10.0,
+        0,
+        40.5
+      ],
+      "rom_deg": [
+        -135,
+        135
+      ],
+      "price_usd": 15
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "dynamixel_xl430_w250_t",
+    "name": "Dynamixel XL430-W250-T",
+    "specs": [
+      {
+        "key": "body",
+        "value": "28.5 x 46.5 x 34",
+        "unit": "mm",
+        "note": "e-Manual"
+      },
+      {
+        "key": "mass",
+        "value": 57.2,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 1.4,
+        "unit": "N\u00b7m",
+        "note": "e-Manual, 11.1 V, 1.3 A"
+      },
+      {
+        "key": "price",
+        "value": 50,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "length_mm": 46.5,
+      "width_mm": 28.5,
+      "height_mm": 34,
+      "mass_g": 57.2
+    },
+    "mount": {
+      "pattern": "Dynamixel X frame",
+      "hole_d": 2.5,
+      "spacing_mm": [],
+      "thread": "M2.5",
+      "layout": "frame"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "box",
+      "l": 46.5,
+      "w": 28.5,
+      "h": 34
+    },
+    "perf": {
+      "type": "servo",
+      "voltage_v": 11.1,
+      "stall_torque_nm": 1.4,
+      "no_load_rpm": 57,
+      "rated_torque_nm": 0.5,
+      "stall_current_a": 1.3,
+      "idle_current_a": 0.05,
+      "gear_ratio": 258.5,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 0.25,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        11.0,
+        0,
+        34
+      ],
+      "rom_deg": [
+        -180,
+        180
+      ],
+      "price_usd": 50
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "dynamixel_xm430_w350_t",
+    "name": "Dynamixel XM430-W350-T",
+    "specs": [
+      {
+        "key": "body",
+        "value": "28.5 x 46.5 x 34",
+        "unit": "mm",
+        "note": "e-Manual"
+      },
+      {
+        "key": "mass",
+        "value": 82,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 4.1,
+        "unit": "N\u00b7m",
+        "note": "e-Manual, 12 V, 2.3 A"
+      },
+      {
+        "key": "price",
+        "value": 290,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "length_mm": 46.5,
+      "width_mm": 28.5,
+      "height_mm": 34,
+      "mass_g": 82
+    },
+    "mount": {
+      "pattern": "Dynamixel X frame",
+      "hole_d": 2.5,
+      "spacing_mm": [],
+      "thread": "M2.5",
+      "layout": "frame"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "box",
+      "l": 46.5,
+      "w": 28.5,
+      "h": 34
+    },
+    "perf": {
+      "type": "servo",
+      "voltage_v": 12.0,
+      "stall_torque_nm": 4.1,
+      "no_load_rpm": 46,
+      "rated_torque_nm": 1.5,
+      "stall_current_a": 2.3,
+      "idle_current_a": 0.06,
+      "gear_ratio": 353.5,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 0.25,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        11.0,
+        0,
+        34
+      ],
+      "rom_deg": [
+        -180,
+        180
+      ],
+      "price_usd": 290
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "servo_sts3215_bus",
+    "name": "Feetech STS3215 bus servo (12-bit encoder)",
+    "specs": [
+      {
+        "key": "body",
+        "value": "45.2 x 24.7 x 35",
+        "unit": "mm",
+        "note": "vendor"
+      },
+      {
+        "key": "mass",
+        "value": 55,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 1.9,
+        "unit": "N\u00b7m",
+        "note": "vendor, 7.4 V"
+      },
+      {
+        "key": "price",
+        "value": 20,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "length_mm": 45.2,
+      "width_mm": 24.7,
+      "height_mm": 35,
+      "mass_g": 55
+    },
+    "mount": {
+      "pattern": "bus servo case",
+      "hole_d": 2.5,
+      "spacing_mm": [],
+      "thread": "M2.5",
+      "layout": "case"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "box",
+      "l": 45.2,
+      "w": 24.7,
+      "h": 35
+    },
+    "perf": {
+      "type": "servo",
+      "voltage_v": 7.4,
+      "stall_torque_nm": 1.9,
+      "no_load_rpm": 45,
+      "rated_torque_nm": 0.6,
+      "stall_current_a": 2.7,
+      "idle_current_a": 0.05,
+      "gear_ratio": 345,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 0.5,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        11.0,
+        0,
+        35
+      ],
+      "rom_deg": [
+        -180,
+        180
+      ],
+      "price_usd": 20
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "gimbal_bldc_2804_class",
+    "name": "Gimbal BLDC 2804 class",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "33 dia x 15",
+        "unit": "mm",
+        "note": "typical"
+      },
+      {
+        "key": "mass",
+        "value": 40,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 0.05,
+        "unit": "N\u00b7m",
+        "note": "typical, direct drive"
+      },
+      {
+        "key": "price",
+        "value": 20,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "diameter_mm": 33,
+      "height_mm": 15,
+      "mass_g": 40
+    },
+    "mount": {
+      "pattern": "16x19",
+      "hole_d": 2,
+      "spacing_mm": [
+        16,
+        19
+      ],
+      "thread": "M2",
+      "layout": "cross"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "cylinder",
+      "d": 33,
+      "h": 15,
+      "bore": 0
+    },
+    "perf": {
+      "type": "bldc",
+      "voltage_v": 12.0,
+      "stall_torque_nm": 0.05,
+      "no_load_rpm": 1500,
+      "rated_torque_nm": 0.02,
+      "stall_current_a": 2.0,
+      "idle_current_a": 0.1,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": 4e-06,
+      "backlash_deg": 0,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        15
+      ],
+      "rom_deg": null,
+      "price_usd": 20
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "gimbal_bldc_4108_class",
+    "name": "Gimbal BLDC 4108 class",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "46 dia x 25",
+        "unit": "mm",
+        "note": "typical"
+      },
+      {
+        "key": "mass",
+        "value": 90,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 0.2,
+        "unit": "N\u00b7m",
+        "note": "typical, direct drive"
+      },
+      {
+        "key": "price",
+        "value": 35,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "diameter_mm": 46,
+      "height_mm": 25,
+      "mass_g": 90
+    },
+    "mount": {
+      "pattern": "25x25",
+      "hole_d": 3,
+      "spacing_mm": [
+        25,
+        25
+      ],
+      "thread": "M3",
+      "layout": "cross"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "cylinder",
+      "d": 46,
+      "h": 25,
+      "bore": 0
+    },
+    "perf": {
+      "type": "bldc",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 0.2,
+      "no_load_rpm": 900,
+      "rated_torque_nm": 0.08,
+      "stall_current_a": 3.0,
+      "idle_current_a": 0.1,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": 2e-05,
+      "backlash_deg": 0,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        25
+      ],
+      "rom_deg": null,
+      "price_usd": 35
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "actuator_mini_cheetah_class",
+    "name": "Mini-Cheetah-class actuator (BLDC + 6:1 planetary)",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "96 dia x 40",
+        "unit": "mm",
+        "note": "Katz 2018"
+      },
+      {
+        "key": "mass",
+        "value": 480,
+        "unit": "g"
+      },
+      {
+        "key": "peak_torque",
+        "value": 17,
+        "unit": "N\u00b7m",
+        "note": "Katz 2018; ~40 rad/s"
+      },
+      {
+        "key": "price",
+        "value": 300,
+        "unit": "USD",
+        "note": "typical clone"
+      }
+    ],
+    "dims": {
+      "diameter_mm": 96,
+      "height_mm": 40,
+      "mass_g": 480
+    },
+    "mount": {
+      "pattern": "bolt circle",
+      "hole_d": 3,
+      "spacing_mm": [],
+      "thread": "M3",
+      "layout": "circle"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "cylinder",
+      "d": 96,
+      "h": 40,
+      "bore": 0
+    },
+    "perf": {
+      "type": "bldc_geared",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 17.0,
+      "no_load_rpm": 380,
+      "rated_torque_nm": 6.0,
+      "stall_current_a": 40.0,
+      "idle_current_a": 0.3,
+      "gear_ratio": 6,
+      "rotor_inertia_kgm2": 3.3e-05,
+      "backlash_deg": 0.3,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        40
+      ],
+      "rom_deg": null,
+      "price_usd": 300
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "n20_gearmotor",
+    "name": "N20 micro gearmotor (6 V, 100:1)",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "12 x 10 x 34",
+        "unit": "mm",
+        "note": "typical incl. gearbox"
+      },
+      {
+        "key": "mass",
+        "value": 10,
+        "unit": "g"
+      },
+      {
+        "key": "stall_torque",
+        "value": 0.1,
+        "unit": "N\u00b7m",
+        "note": "typical 100:1 (0.05-0.2 over ratios)"
+      },
+      {
+        "key": "price",
+        "value": 5,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "length_mm": 34,
+      "width_mm": 12,
+      "height_mm": 10,
+      "mass_g": 10
+    },
+    "mount": {
+      "pattern": "M1.6 x2",
+      "hole_d": 1.6,
+      "spacing_mm": [
+        9
+      ],
+      "thread": "M1.6",
+      "layout": "face"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "box",
+      "l": 12,
+      "w": 10,
+      "h": 34
+    },
+    "perf": {
+      "type": "dc_geared",
+      "voltage_v": 6.0,
+      "stall_torque_nm": 0.1,
+      "no_load_rpm": 300,
+      "rated_torque_nm": 0.03,
+      "stall_current_a": 0.7,
+      "idle_current_a": 0.05,
+      "gear_ratio": 100,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 3.0,
+      "feedback": "none",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        34
+      ],
+      "rom_deg": null,
+      "price_usd": 5
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "nema14_stepper",
+    "name": "NEMA14 stepper (35 mm frame)",
+    "specs": [
+      {
+        "key": "frame",
+        "value": 35.2,
+        "unit": "mm"
+      },
+      {
+        "key": "mass",
+        "value": 150,
+        "unit": "g",
+        "note": "typical 34 mm body"
+      },
+      {
+        "key": "holding_torque",
+        "value": 0.18,
+        "unit": "N\u00b7m",
+        "note": "typical"
+      },
+      {
+        "key": "price",
+        "value": 12,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "face_mm": 35.2,
+      "length_mm": 34,
+      "shaft_d_mm": 5,
+      "mass_g": 150
+    },
+    "mount": {
+      "pattern": "26",
+      "hole_d": 3,
+      "spacing_mm": [
+        26,
+        26
+      ],
+      "thread": "M3",
+      "layout": "square"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "stepper",
+      "face": 35.2,
+      "length": 34,
+      "pilot_d": 22,
+      "pilot_h": 2,
+      "shaft_d": 5,
+      "shaft_len": 20,
+      "pattern": 26,
+      "hole_d": 3
+    },
+    "perf": {
+      "type": "stepper",
+      "voltage_v": 12.0,
+      "stall_torque_nm": 0.18,
+      "no_load_rpm": 600,
+      "rated_torque_nm": 0.12,
+      "stall_current_a": 1.0,
+      "idle_current_a": 0.5,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": 1.2e-06,
+      "backlash_deg": 0,
+      "feedback": "none",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        0
+      ],
+      "rom_deg": null,
+      "price_usd": 12
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "nema17_stepper_48mm",
+    "name": "NEMA17 stepper, 48 mm body",
+    "specs": [
+      {
+        "key": "frame",
+        "value": 42.3,
+        "unit": "mm"
+      },
+      {
+        "key": "mass",
+        "value": 360,
+        "unit": "g"
+      },
+      {
+        "key": "holding_torque",
+        "value": 0.52,
+        "unit": "N\u00b7m",
+        "note": "typical"
+      },
+      {
+        "key": "price",
+        "value": 14,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "face_mm": 42.3,
+      "length_mm": 48,
+      "shaft_d_mm": 5,
+      "mass_g": 360
+    },
+    "mount": {
+      "pattern": "31",
+      "hole_d": 3,
+      "spacing_mm": [
+        31,
+        31
+      ],
+      "thread": "M3",
+      "layout": "square"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "stepper",
+      "face": 42.3,
+      "length": 48,
+      "pilot_d": 22,
+      "pilot_h": 2,
+      "shaft_d": 5,
+      "shaft_len": 24,
+      "pattern": 31,
+      "hole_d": 3
+    },
+    "perf": {
+      "type": "stepper",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 0.52,
+      "no_load_rpm": 600,
+      "rated_torque_nm": 0.35,
+      "stall_current_a": 2.0,
+      "idle_current_a": 1.0,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": 8.2e-06,
+      "backlash_deg": 0,
+      "feedback": "none",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        0
+      ],
+      "rom_deg": null,
+      "price_usd": 14
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "nema23_stepper_56mm",
+    "name": "NEMA23 stepper, 56 mm body",
+    "specs": [
+      {
+        "key": "frame",
+        "value": 56.4,
+        "unit": "mm"
+      },
+      {
+        "key": "mass",
+        "value": 700,
+        "unit": "g"
+      },
+      {
+        "key": "holding_torque",
+        "value": 1.2,
+        "unit": "N\u00b7m",
+        "note": "typical"
+      },
+      {
+        "key": "price",
+        "value": 25,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "face_mm": 56.4,
+      "length_mm": 56,
+      "shaft_d_mm": 6.35,
+      "mass_g": 700
+    },
+    "mount": {
+      "pattern": "47.14",
+      "hole_d": 5,
+      "spacing_mm": [
+        47.14,
+        47.14
+      ],
+      "thread": null,
+      "layout": "square"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "stepper",
+      "face": 56.4,
+      "length": 56,
+      "pilot_d": 38.1,
+      "pilot_h": 1.6,
+      "shaft_d": 6.35,
+      "shaft_len": 21,
+      "pattern": 47.14,
+      "hole_d": 5
+    },
+    "perf": {
+      "type": "stepper",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 1.2,
+      "no_load_rpm": 600,
+      "rated_torque_nm": 0.8,
+      "stall_current_a": 2.8,
+      "idle_current_a": 1.4,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": 2.8e-05,
+      "backlash_deg": 0,
+      "feedback": "none",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        0
+      ],
+      "rom_deg": null,
+      "price_usd": 25
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "nema23_stepper_76mm",
+    "name": "NEMA23 stepper, 76 mm body",
+    "specs": [
+      {
+        "key": "frame",
+        "value": 56.4,
+        "unit": "mm"
+      },
+      {
+        "key": "mass",
+        "value": 1000,
+        "unit": "g"
+      },
+      {
+        "key": "holding_torque",
+        "value": 1.9,
+        "unit": "N\u00b7m",
+        "note": "typical"
+      },
+      {
+        "key": "price",
+        "value": 32,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "face_mm": 56.4,
+      "length_mm": 76,
+      "shaft_d_mm": 8,
+      "mass_g": 1000
+    },
+    "mount": {
+      "pattern": "47.14",
+      "hole_d": 5,
+      "spacing_mm": [
+        47.14,
+        47.14
+      ],
+      "thread": null,
+      "layout": "square"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "stepper",
+      "face": 56.4,
+      "length": 76,
+      "pilot_d": 38.1,
+      "pilot_h": 1.6,
+      "shaft_d": 8,
+      "shaft_len": 21,
+      "pattern": 47.14,
+      "hole_d": 5
+    },
+    "perf": {
+      "type": "stepper",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 1.9,
+      "no_load_rpm": 500,
+      "rated_torque_nm": 1.2,
+      "stall_current_a": 2.8,
+      "idle_current_a": 1.4,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": 4.8e-05,
+      "backlash_deg": 0,
+      "feedback": "none",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        0
+      ],
+      "rom_deg": null,
+      "price_usd": 32
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
+    "id": "unitree_go_m8010_actuator",
+    "name": "Unitree GO-M8010-6 actuator",
+    "specs": [
+      {
+        "key": "envelope",
+        "value": "96 dia x 43",
+        "unit": "mm",
+        "note": "typical"
+      },
+      {
+        "key": "mass",
+        "value": 530,
+        "unit": "g"
+      },
+      {
+        "key": "peak_torque",
+        "value": 23.7,
+        "unit": "N\u00b7m",
+        "note": "vendor, 6.33:1"
+      },
+      {
+        "key": "price",
+        "value": 250,
+        "unit": "USD",
+        "note": "typical"
+      }
+    ],
+    "dims": {
+      "diameter_mm": 96,
+      "height_mm": 43,
+      "mass_g": 530
+    },
+    "mount": {
+      "pattern": "bolt circle",
+      "hole_d": 3,
+      "spacing_mm": [],
+      "thread": "M3",
+      "layout": "circle"
+    },
+    "geometry": "envelope",
+    "shape": {
+      "kind": "cylinder",
+      "d": 96,
+      "h": 43,
+      "bore": 0
+    },
+    "perf": {
+      "type": "bldc_geared",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 23.7,
+      "no_load_rpm": 300,
+      "rated_torque_nm": 7.0,
+      "stall_current_a": 40.0,
+      "idle_current_a": 0.3,
+      "gear_ratio": 6.33,
+      "rotor_inertia_kgm2": 3.5e-05,
+      "backlash_deg": 0.3,
+      "feedback": "encoder",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        43
+      ],
+      "rom_deg": null,
+      "price_usd": 250
+    },
+    "category": "actuator",
+    "source": "builtin",
+    "url": null,
+    "vendor": null,
+    "mass_source": "catalog",
+    "sources": [
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XL430-W250-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/"
+      },
+      {
+        "title": "ROBOTIS e-Manual, Dynamixel XM430-W350-T",
+        "url": "https://emanual.robotis.com/docs/en/dxl/x/xm430-w350/"
+      },
+      {
+        "title": "CubeMars AK80-9 product page",
+        "url": "https://www.cubemars.com/goods-1031-AK80-9.html"
+      },
+      {
+        "title": "Katz, Low-cost, high-performance actuators for dynamic robots (MIT thesis, 2018)",
+        "url": "https://dspace.mit.edu/handle/1721.1/118671"
+      },
+      {
+        "title": "Pololu 25D and 37D metal gearmotors",
+        "url": "https://www.pololu.com/category/115/25d-metal-gearmotors"
+      },
+      {
+        "title": "Typical values",
+        "url": null,
+        "note": "retailer typicals for DS3218, STS3215, NEMA14/23, gimbal BLDC, N20 and Unitree GO-M8010-6; verify per SKU. Prices are typical single-unit retail (USD), not quotes. perf: torque at the stated voltage; output_origin_mm is in the part's own coordinates"
+      }
+    ],
+    "project_id": null
+  },
+  {
     "id": "lipo_4s_1500mah",
     "name": "4S 1500 mAh LiPo pack",
     "specs": [
@@ -4306,6 +6181,34 @@
       "hole_d": 4.5
     },
     "category": "servo",
+    "perf": {
+      "type": "servo",
+      "voltage_v": 6.0,
+      "stall_torque_nm": 1.08,
+      "no_load_rpm": 60,
+      "rated_torque_nm": 0.35,
+      "stall_current_a": 2.5,
+      "idle_current_a": 0.01,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 1.0,
+      "feedback": "pot",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        10.15,
+        0,
+        42.9
+      ],
+      "rom_deg": [
+        -90,
+        90
+      ],
+      "price_usd": 8
+    },
     "source": "builtin",
     "url": null,
     "vendor": null,
@@ -4388,6 +6291,34 @@
       "hole_d": 2
     },
     "category": "servo",
+    "perf": {
+      "type": "servo",
+      "voltage_v": 4.8,
+      "stall_torque_nm": 0.177,
+      "no_load_rpm": 100,
+      "rated_torque_nm": 0.06,
+      "stall_current_a": 0.65,
+      "idle_current_a": 0.01,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": null,
+      "backlash_deg": 2.0,
+      "feedback": "pot",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        5.5,
+        0,
+        22.7
+      ],
+      "rom_deg": [
+        -90,
+        90
+      ],
+      "price_usd": 3
+    },
     "source": "builtin",
     "url": null,
     "vendor": null,
@@ -4488,6 +6419,31 @@
       "hole_d": 3
     },
     "category": "stepper",
+    "perf": {
+      "type": "stepper",
+      "voltage_v": 24.0,
+      "stall_torque_nm": 0.4,
+      "no_load_rpm": 600,
+      "rated_torque_nm": 0.28,
+      "stall_current_a": 1.7,
+      "idle_current_a": 0.85,
+      "gear_ratio": null,
+      "rotor_inertia_kgm2": 5.4e-06,
+      "backlash_deg": 0,
+      "feedback": "none",
+      "output_axis": [
+        0,
+        0,
+        1
+      ],
+      "output_origin_mm": [
+        0,
+        0,
+        0
+      ],
+      "rom_deg": null,
+      "price_usd": 12
+    },
     "source": "builtin",
     "url": null,
     "vendor": null,

@@ -21,9 +21,20 @@
   "calibration": null,
   "basis_by_property": null,
   "fdm_strength_factor": 1.0,
+  "process": "fdm",
+  "uts_mpa": null,
+  "elongation_pct": null,
+  "failure": "ductile",
+  "max_service_c": null,
+  "fatigue_limit_mpa": null,
+  "hyperelastic": null,
+  "printable": true,
+  "cost_per_kg": null,
+  "notes": "",
   "allowable_mpa": 31.499999999999996,
   "e_eff_mpa": 3800.0,
   "tangent_eff_mpa": 38.0,
   "tangent_source": "estimate (1% of E)",
-  "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers"
+  "model": "isotropic linear elastic; strength x FDM knock-down 0.7; printed parts are weaker across layers",
+  "min_safety_factor": 2.0
 }
