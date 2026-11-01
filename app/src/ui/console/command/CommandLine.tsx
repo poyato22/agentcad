@@ -20,6 +20,7 @@ import { leadUnreachable } from "../leadFollow";
 import { shownPending } from "../queued";
 import { startErrorText } from "../startError";
 import { stopBusy, stoppable as anyStoppable } from "../stopTarget";
+import { ThinkControl } from "../think/ThinkControl";
 import { composerOpen } from "../view";
 import { allTargets } from "./isExternal";
 import { parseCommand, type Command } from "./parseCommand";
@@ -271,6 +272,7 @@ export function CommandLine(): JSX.Element {
         </div>
       )}
       <div class="cmd-row">
+        <ThinkControl />
         <textarea
           ref={input}
           class="cmd-input"

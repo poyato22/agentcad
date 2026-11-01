@@ -17,6 +17,7 @@ import { INSTALL_DEPS } from "../../src/api/types";
 import { assemblyFrom, assemblyRoutes, DEFAULT_PROJECT, DEFAULT_PROJECT_ROW, type AssemblyScenario, type FakeAssembly } from "./assembly";
 import { agentEdit, buildRoutes, buildsFrom, fakeTreeMass, type BuildsDeps, type BuildsScenario, type FakeBuilds } from "./builds";
 import { measureRoutes } from "./measure";
+import { thinkOnChat, thinkRoutes } from "./think";
 import { conceptFrom, conceptRoutes, conceptSeedSteps, stopConcept, type ConceptScenario, type FakeConcept } from "./concept";
 import { handleControl } from "./control";
 import { directoryFrom, directoryRoutes, type DirectoryScenario, type FakeDirectory } from "./directory";
@@ -649,6 +650,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   const QUEUE_MAX = 20;
   /** Waiting messages per lead, oldest first. */
   const leadQueues = new Map<string, { message_id: string; text: string }[]>();
+  const thinkDefaults = new Map<string, string>();      // Plan 11 F8: build id -> Think default
   /** Leads an earlier "core process" drove (restartCore): this one can't reach them. */
   const unreachableLeads = new Set<string>();
   const effPid = (r: AgentRun): string | null => r.project_id ?? state.assembly.projects[0]?.id ?? null;
@@ -865,6 +867,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       method: "POST", re: /^\/projects\/([^/]+)\/chat$/, h: (m, q, raw, r, res) => {
         const text = req(asBody(raw), "text", "string");
         const projectId = decodeURIComponent(m[1]);
+        thinkOnChat(asBody(raw), findLead(projectId)?.id ?? null, (st, id) => appendStep(st, id));   // Plan 11 F8
         const signedIn = models().vendors.some((v) => v.vendor === CLAUDE_CODE && v.key === "signed_in");
         const profileDefault = (state.setup.profile as { default_model?: string | null }).default_model ?? null;
         const modelRef = findLead(projectId) ? null : profileDefault ?? (signedIn ? `${CLAUDE_CODE}/sonnet` : null);
@@ -1312,6 +1315,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     }),
     ...assemblyRoutes({ get: () => state.assembly, parts: () => state.parts, emit: (ev) => { emit(ev); },
       massOf: (id) => fakeTreeMass(state.parts, state.builds.rows, id) }),
+    // Plan 11 F8: the Think control's build default
+    ...thinkRoutes(thinkDefaults, (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null)),
     // Plan 9 G-A: the concept stage
     ...conceptRoutes({
       get: () => state.concept, liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null),
