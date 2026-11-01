@@ -148,7 +148,7 @@ test("g1_the_divider_resizes_the_top_area_is_closed_to_a_bar_with_its_counts_bot
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await expect.poll(async () => Math.round((await stream(page, "text").boundingBox())!.height)).toBe(Math.round(h));
   // close the top area to its slim bar; a study lands meanwhile: Simulations' tab counts it
-  await con(page).getByRole("button", { name: "Close View and Simulations" }).click();
+  await con(page).getByRole("button", { name: "Hide View and Simulations" }).click();
   await expect(con(page).locator("[data-dock] [data-stream=top]")).toHaveAttribute("data-collapsed", "");
   await fake.emit({ type: "tool_call", run_id: LEAD, data: { call_id: CALL.payload.call_id, name: "sim_run", input: CALL.payload.input } }, { steps: [stepOf(CALL)] });
   await expect(con(page).locator("[data-stream-tab=sim] [data-unread]")).toHaveText("1");

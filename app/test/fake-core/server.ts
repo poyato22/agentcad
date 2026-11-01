@@ -1559,6 +1559,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     scriptStarted = false;
     clearSimTimers(state.sims);
     topopt.reset();
+    thinkDefaults.clear();                 // G8: a build's Think pick is per scenario, like the core's meta
     dropSockets();
     stopPrinting(state.print);
     // the live activity belongs to the old scenario's runs (GET /runs/{id} serves it, C-3)

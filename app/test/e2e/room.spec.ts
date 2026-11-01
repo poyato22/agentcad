@@ -142,7 +142,7 @@ test("a wide dock gives way so the model keeps 520 px and the Parts surface stay
   const left = await box(page, "[data-region=left]");
   expect(dock.x - 12 - (left.x + left.width + 12)).toBeGreaterThanOrEqual(519);
   // closing streams never changes the dock's width
-  await page.getByRole("button", { name: "Close View and Simulations" }).click();
+  await page.getByRole("button", { name: "Hide View and Simulations" }).click();
   await expect(page.locator("[data-dock]")).toHaveAttribute("data-cols", "1");
   expect(Math.round((await box(page, "[data-region=console]")).width)).toBe(Math.round(dock.width));
 });

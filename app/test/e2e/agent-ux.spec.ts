@@ -40,8 +40,8 @@ test("dock_header_has_no_button_bar_and_stays_one_line_at_1280x800", async ({ pa
   const label = await head.locator("[data-run-label]").evaluate((el) => ({ h: el.getBoundingClientRect().height, ws: getComputedStyle(el).whiteSpace }));
   expect(label.ws).toBe("nowrap");
   expect(label.h).toBeLessThan(lineH * 1.6);
-  // the column headers stay clear of the pinned collapse button (P10 E6: the rightmost is the Conversation)
-  const top = await con.locator("[data-stream=text] [data-conversation-head]").boundingBox();
+  // the top header stays clear of the pinned collapse button (G1: View · Simulations is on top)
+  const top = await con.locator("[data-stream-area=top] .dock-seg").boundingBox();
   const collapse = await page.getByRole("button", { name: "Collapse the agent console" }).boundingBox();
   expect(top && collapse && top.x + top.width <= collapse.x + 0.5).toBe(true);
 });

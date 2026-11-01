@@ -157,7 +157,7 @@ describe("agent dock: View · Simulations on top, the Conversation under it (G1)
   it("either part closes to a slim bar (the top's keeps its tabs); the last open part stays open", async () => {
     mount([...TEXT, ...STUDY]);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "Close View and Simulations" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide View and Simulations" }));
     await frame();
     expect(document.querySelector("[data-dock] [data-stream=top]")?.hasAttribute("data-collapsed")).toBe(true);
     expect(document.querySelector("[data-split]")).toBeNull();

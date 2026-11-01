@@ -111,8 +111,8 @@ test("the Browsing profile section keeps every default when adding a site, and e
   await expect(dialog.getByText("botshop.io")).toBeVisible();
   const put = (await fake.calls()).find((c) => c.method === "PUT" && c.path === "/profile");
   const sites = (put?.body as { suggested_sites: { domain: string; search_url: string | null }[] }).suggested_sites;
-  expect(sites).toHaveLength(19);
-  expect(sites.filter((s) => s.search_url === null).length).toBe(6);          // the datasheet hosts survive
+  expect(sites).toHaveLength(24);                                               // the 23 real-core defaults + 1
+  expect(sites.filter((s) => s.search_url === null).length).toBe(11);         // the no-search hosts survive
   const fetches = dialog.getByRole("textbox", { name: "Browser fetches per run" });
   await fetches.fill("120");
   await fetches.locator("xpath=ancestor::section[1]").getByRole("button", { name: "Save" }).click();

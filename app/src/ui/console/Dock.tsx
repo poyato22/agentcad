@@ -130,8 +130,8 @@ function TopArea({ runId, streams, flex, ready }: {
   const last = layout.collapsed.text;
   const fold = (
     <button type="button" class="dock-fold" aria-expanded={!collapsed} aria-disabled={!collapsed && last ? "true" : undefined}
-      aria-label={collapsed ? "Show View and Simulations" : "Close View and Simulations"}
-      title={!collapsed && last ? "The last open part stays open" : collapsed ? "Show View and Simulations" : "Close View and Simulations"}
+      aria-label={collapsed ? "Show View and Simulations" : "Hide View and Simulations"}
+      title={!collapsed && last ? "The last open part stays open" : collapsed ? "Show View and Simulations" : "Hide View and Simulations"}
       onClick={() => setDockLayout(togglePart(dockLayout.peek(), "top"))}>
       <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" style={{ transform: collapsed ? "rotate(-90deg)" : undefined }}>
         <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
