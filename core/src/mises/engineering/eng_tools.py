@@ -505,7 +505,8 @@ async def _health(ctx: ToolContext, pid: str, asm) -> dict | None:
     if gate is None or not gate.registry.list(["assembly_health"]) or not ctx.run_id:
         return None
     try:
-        out = await gate.call(ctx.run_id, "assembly_health", {"project_id": pid},
+        out = await gate.call(ctx.run_id, "assembly_health",
+                              {"project_id": pid, "render": False},
                               call_id=f"{ctx.call_id}.health", workdir=Path(ctx.workdir))
     except MisesError as e:
         pipeline.record(_home(ctx), pid, "assembly_health", status="fail",
@@ -513,14 +514,22 @@ async def _health(ctx: ToolContext, pid: str, asm) -> dict | None:
                         sig=_sig(ctx, asm, pid))
         return {"error": e.message}
     d = out.data or {}
-    errors = d.get("errors")
-    if errors is None:
-        errors = [x for k in ("overlaps", "stray", "strays", "floating") for x in (d.get(k) or [])]
-    status = "fail" if (not out.ok or errors) else "pass"
+    status, issues = health_verdict(out.ok, d)
     pipeline.record(_home(ctx), pid, "assembly_health", status=status, summary=out.summary,
-                    margins={"issues": len(errors) if isinstance(errors, list) else errors},
-                    sig=_sig(ctx, asm, pid))
+                    margins={"issues": issues}, sig=_sig(ctx, asm, pid))
     return d
+
+
+def health_verdict(ok: bool, data: dict) -> tuple[str, int]:
+    """(status, issue count) of an assembly_health result. The tool nests its report under
+    `assembly_health` ({ok, overlaps, stray, floating, ...}); a result with no report, or a
+    report not marked ok, fails (never a silent pass)."""
+    rep = data.get("assembly_health") if isinstance(data, dict) else None
+    if not isinstance(rep, dict):
+        return "fail", 1
+    issues = sum(len(rep.get(k) or []) for k in ("overlaps", "stray", "floating"))
+    clean = ok and rep.get("ok") is True and issues == 0
+    return ("pass" if clean else "fail"), issues
 
 
 TOOLS = (actuator_size, electronics_estimate, power_budget, thermal_estimate, cable_route,
