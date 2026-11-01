@@ -714,6 +714,19 @@ def nearby_hole(home: Path, part_id: str, point: list[float]) -> str | None:
     return f"Ø{_num(dia)} hole, {_num(gap)} mm away" if gap > 0 else f"on the Ø{_num(dia)} hole"
 
 
+def _world_of(rt: Runtime, project_id: str, inst, point: list[float]) -> list[float] | None:
+    """A part-frame point in assembly (world) mm through the instance's solved pose; None when
+    the pose cannot be solved."""
+    from ..assembly.geometry import face_resolver
+    from ..assembly.solve import solve, transform_point
+    try:
+        asm = rt.assembly_store.get(project_id)
+        tf = solve(asm, resolve_face=face_resolver(rt.home / "parts")).transforms.get(inst.id)
+        return list(transform_point(tf or inst.transform, [float(c) for c in point]))
+    except Exception:  # noqa: BLE001 - a broken joint: no world point rather than a wrong one
+        return None
+
+
 def feedback_message(location: dict, text: str, nonce: str | None = None) -> str:
     """The lead's message: one line of framing, then the user's note and the clicked location
     as one nonce-delimited JSON block (JSON escapes "<", so nothing inside can close it)."""
@@ -752,8 +765,12 @@ async def submit_feedback(rt: Runtime, project_id: str, *, part_id: str, point: 
         if inst is None or inst.part_id != part_id:
             raise MisesError(ErrorCode.NOT_FOUND,
                              f"no instance {instance_id!r} of {part_id!r} in this build's assembly")
-        location.update(instance_id=instance_id, instance=inst.name,
-                        world_point=[round(float(c), 4) for c in (world_point or point)])
+        location.update(instance_id=instance_id, instance=inst.name)
+        # FWC: never the part-local point under the world label; with no world_point from the
+        # app, the instance's solved pose maps the point (omitted when it cannot be worked out)
+        wp = world_point if world_point is not None else _world_of(rt, project_id, inst, point)
+        if wp is not None:
+            location["world_point"] = [round(float(c), 4) for c in wp]
     msg = feedback_message(location, text)
     pin = {**location, "text": text}
     # the thread shows the note (plus the pin chip from `feedback`), never the wrapped block
