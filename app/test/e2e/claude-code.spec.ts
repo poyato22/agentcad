@@ -65,26 +65,15 @@ test("first_run_sign_in_then_a_claude_code_run_through_the_gate_to_done", async 
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await expect(page.locator("[data-region=topbar]").getByRole("button", { name: "Profile", exact: true })).toHaveText("H");
 
-  // ---- a new run on the user's Claude Code (the profile default is prefilled)
-  await page.keyboard.press("Meta+n");
-  const dialog = page.getByRole("dialog", { name: "New run" });
-  await expect(dialog).toBeVisible();
-  const chip = dialog.getByRole("button", { name: /^Model: Claude Code · sonnet/ });
-  await expect(chip).toBeVisible();
-  await chip.click();
-  const yours = dialog.getByRole("group", { name: "Your Claude Code" });
-  expect(await yours.locator("[data-ref]").evaluateAll((els) => els.map((e) => e.getAttribute("data-ref")))).toEqual(
-    ["claude-code/sonnet", "claude-code/opus", "claude-code/haiku", "claude-code/fable"]);
-  await chip.click();                                                           // close the picker
-  await dialog.getByRole("button", { name: "More options" }).click();   // R8: override the router
-  await dialog.getByRole("menuitem", { name: "Use a specific agent…" }).click();
-  await dialog.getByLabel("Choose an agent").selectOption("designer");
-  await dialog.getByLabel("Task").fill(TASK);
-  await dialog.getByRole("button", { name: "Start" }).click();
-  await expect(dialog).toBeHidden();
+  // ---- the build's first message starts its lead on the user's Claude Code (P10 E24: the core
+  // picks the default model: Claude Code when signed in)
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill(TASK);
+  await cmd.press("Enter");
+  await expect(cmd).toHaveValue("");
 
-  const post = (await fake.calls()).filter((c) => c.method === "POST" && c.path === "/runs");
-  expect(post.map((c) => c.body)).toEqual([{ agent: "designer", prompt: TASK, model_ref: "claude-code/sonnet", edit_scope: ["*"], read_scope: ["*"], project_id: expect.any(String) }]);
+  const post = (await fake.calls()).filter((c) => c.method === "POST" && /^\/projects\/[^/]+\/chat$/.test(c.path));
+  expect(post.map((c) => c.body)).toEqual([{ text: TASK }]);
   const runs = await getJson(fake, "/runs") as { id: string; provider: string; model: string; external: boolean }[];
   expect(runs).toHaveLength(1);
   const run = runs[0];
@@ -128,22 +117,16 @@ test("signed_out_claude_code_cannot_start_and_points_to_profile", async ({ page,
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   await expect(wizard(page)).toHaveCount(0);
 
-  await page.keyboard.press("Meta+n");
-  const dialog = page.getByRole("dialog", { name: "New run" });
-  const chip = dialog.getByRole("button", { name: /^Model: Claude Code · sonnet/ });
-  await chip.click();
-  const opt = dialog.getByRole("group", { name: "Your Claude Code" }).locator("[data-ref='claude-code/sonnet']");
-  await expect(opt).toContainText("signed out — sign in in Profile");
-  await expect(opt).toBeDisabled();
-  await chip.click();
-  await dialog.getByLabel("Task").fill(TASK);
-  await expect(dialog.getByRole("button", { name: "Start" })).toBeDisabled();
-  await dialog.getByRole("button", { name: "Sign in" }).click();
-  await expect(dialog).toBeHidden();
-  const profile = page.getByRole("dialog", { name: "Profile" });
-  await expect(profile).toBeVisible();
-  await expect(profile.getByRole("region", { name: "Your Claude Code" })).toContainText("signed out");
-  expect((await fake.calls()).some((c) => c.method === "POST" && c.path === "/runs")).toBe(false);
+  // P10 E24: the first message asks the core to start the lead on the default model; Claude Code
+  // signed out, the core says so and where to sign in, and the words stay in the composer
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill(TASK);
+  await cmd.press("Enter");
+  await expect(page.locator("[data-command-line] [role=alert]")).toContainText("Claude Code is not signed in");
+  await expect(page.locator("[data-command-line] [role=alert]")).toContainText("Profile");
+  await expect(cmd).toHaveValue(TASK);
+  const runs = await getJson(fake, "/runs") as unknown[];
+  expect(runs).toHaveLength(0);
 });
 
 test("finished_setup_without_a_model_shows_the_connect_a_model_notice", async ({ page, fake }) => {

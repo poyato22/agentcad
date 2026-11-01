@@ -33,3 +33,4 @@
 .cmd-stop-sq { display: block; width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
 .cmd-error { color: var(--red); margin: 4px 2px 0; }
 .cmd-info { margin: 4px 2px 0; }
+.cmd-context { margin: 0 2px 6px; }

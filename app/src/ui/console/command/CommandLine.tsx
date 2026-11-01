@@ -10,7 +10,7 @@ import { CoreError } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
 import { registerShortcut } from "../../../lib/keys";
 import { runLabel } from "../../../lib/names";
-import { agentChips } from "../../../state/agentChips";
+import { agentChips, removeAgentChip } from "../../../state/agentChips";
 import { activeBuildId } from "../../../state/builds";
 import { effectiveRun } from "../../../state/selection";
 import { actions, corePid, filter, follow, runs, sessionRuns, type LogFilter } from "../../../state/store";
@@ -248,8 +248,14 @@ export function CommandLine(): JSX.Element {
         )}
       </div>
       {agentChips.value.length > 0 && (
-        <div class="cmd-chip dim text" data-testid="cmd-agent-chips">
-          {`with ${agentChips.value.length} parts-directory item${agentChips.value.length === 1 ? "" : "s"}: ${agentChips.value.map((c) => c.label).join(", ")} (sent with your next message)`}
+        // parts-directory items ("Use with agent") ride along with your next message; × drops one
+        <div class="cv-context cmd-context" role="list" aria-label="Context for the agent" data-testid="cmd-agent-chips">
+          {agentChips.value.map((c) => (
+            <span key={c.id} class="cv-context-chip" role="listitem" data-chip={c.id} title={`${c.id}: the agent reads it with catalog_get`}>
+              <span class="cv-context-label">{c.label}</span>
+              <button type="button" class="cv-context-x" aria-label={`Remove ${c.label}`} onClick={() => removeAgentChip(c.id)}>×</button>
+            </span>
+          ))}
         </div>
       )}
       <div class="cmd-row">

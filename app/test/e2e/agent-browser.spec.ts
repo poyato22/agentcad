@@ -52,7 +52,7 @@ test("the parts list shows one total per currency, estimates and the unpriced co
   await expect(page.locator('[data-region="viewer"]')).toBeVisible();
 });
 
-test("the part card loads from the core and adds itself to its build's parts list", async ({ page, fake }) => {
+test("the part card loads from the core and is display-only (the core inserts and lists it)", async ({ page, fake }) => {
   const card = page.locator('[data-part-card][data-state="ready"]');
   await expect(card).toBeVisible();
   await expect(card).toContainText("Micro servo - TowerPro SG92R");
@@ -69,12 +69,9 @@ test("the part card loads from the core and adds itself to its build's parts lis
   const imgW = await card.locator(".pcard-img").first().evaluate((el) => el.getBoundingClientRect().width);
   expect(imgW).toBeLessThanOrEqual(64);
   await expect(card.getByRole("link", { name: "Open · www.adafruit.com" })).toBeVisible();
-  await card.getByRole("button", { name: /^Add .* to the parts list$/ }).click();
-  await expect(card.getByRole("button", { name: /is in the parts list/ })).toBeDisabled();
-  const post = (await fake.calls()).find((c) => c.method === "POST" && /\/bom$/.test(c.path));
-  expect(Object.keys(post?.body as object).sort()).toEqual(["catalog_id", "currency", "kind", "name", "qty", "specs", "unit_cost", "url", "vendor"]);
-  await page.getByTestId("bom-summary").getByRole("button", { name: "Open" }).click();   // Plan 9 D9: the left surface's BOM section
-  await expect(page.locator("[data-bom-page]").getByText("Micro servo - TowerPro SG92R")).toBeVisible();
+  // P10 E15: no "Add to parts list" / "Insert" on the card; the app never adds it itself
+  await expect(card.getByRole("button")).toHaveCount(0);
+  expect((await fake.calls()).some((c) => c.method === "POST" && (/\/bom$/.test(c.path) || /\/insert$/.test(c.path)))).toBe(false);
 });
 
 test("the agent Browser tab shows the search, the page as escaped text, and the blocked page", async ({ page }) => {

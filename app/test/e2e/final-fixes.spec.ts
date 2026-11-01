@@ -53,14 +53,13 @@ test("I-2: a run started right after a build switch is filed under the new build
   await fake.reset("builds");
   await openBuilds(page);
   await switchViaHome(page, "Bench rig");
-  await page.keyboard.press("Meta+n");
-  const dialog = page.getByRole("dialog", { name: "New run" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Task").fill("a bracket for the bench");
-  await dialog.getByRole("button", { name: "Start" }).click();
-  await expect(dialog).toBeHidden();
-  const post = (await callsTo(fake, "POST", "/runs")).at(-1);
-  expect((post?.body as { project_id?: string }).project_id).toBe(BENCH);
+  // P10 E24: the build's chat — the message goes to the build on screen
+  const cmd = page.getByLabel("Command line");
+  await cmd.fill("a bracket for the bench");
+  await cmd.press("Enter");
+  await expect(cmd).toHaveValue("");
+  const post = await callsTo(fake, "POST", `/projects/${BENCH}/chat`);
+  expect(post.map((c) => c.body)).toEqual([{ text: "a bracket for the bench" }]);
 });
 
 test("I-3: Replay intro closes Profile and plays above every panel", async ({ page }) => {

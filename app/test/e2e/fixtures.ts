@@ -55,9 +55,9 @@ export async function useDetailsView(page: import("@playwright/test").Page): Pro
   await page.addInitScript(() => { try { localStorage.setItem("mises.console.view", "details"); } catch { /* none */ } });
 }
 
-/** Pick an item of the Conversation header's ⋯ menu ("New run…", "Agent browser", "Full log"):
+/** Pick an item of the Conversation header's ⋯ menu ("Agent browser", "Full log"):
  *  the agent dock has no button bar (Plan 9 D2). */
-export async function consoleMenu(page: import("@playwright/test").Page, item: "New run…" | "Agent browser" | "Full log"): Promise<void> {
+export async function consoleMenu(page: import("@playwright/test").Page, item: "Agent browser" | "Full log"): Promise<void> {
   await page.getByRole("button", { name: "Conversation options" }).click();
   await page.getByRole("menu", { name: "Conversation options" }).getByRole("menuitem", { name: item }).click();
 }
@@ -99,10 +99,26 @@ export async function openHome(page: import("@playwright/test").Page): Promise<v
   await page.addInitScript(() => { try { localStorage.setItem("mises.home.open", "1"); } catch { /* none */ } });
 }
 
+/** P10 E6: the dock opens the Conversation alone by default; the specs (written for three
+ *  streams at once) see all three columns unless they stored a layout of their own. A spec about
+ *  the default calls `useDefaultDock` (before page.goto). */
+export async function openAllDockColumns(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      if (!localStorage.getItem("mises.dock.columns")) localStorage.setItem("mises.dock.columns", JSON.stringify({ collapsed: { view: false, sim: false, text: false } }));
+    } catch { /* none */ }
+  });
+}
+export async function useDefaultDock(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => {
+    try { if (!sessionStorage.getItem("dock-default")) { sessionStorage.setItem("dock-default", "1"); localStorage.removeItem("mises.dock.columns"); } } catch { /* none */ }
+  });
+}
+
 export const test = base.extend<{ fake: FakeControl }>({
   // Existing specs drive the build shell; land there by default so launch-on-Home (R1) doesn't
   // hide the panes they assert. A Home spec opts back in with openHome().
-  page: async ({ page }, use) => { await openBuildShell(page); await use(page); },
+  page: async ({ page }, use) => { await openBuildShell(page); await openAllDockColumns(page); await use(page); },
   // eslint-disable-next-line no-empty-pattern
   fake: async ({}, use) => { await use(control()); },
 });

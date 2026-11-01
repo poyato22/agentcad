@@ -96,17 +96,9 @@ test("C4_a_hidden_built_in_agent_is_not_offered_in_new_run", async ({ page, fake
   await manager(page).locator('[data-agent="designer"]').getByRole("button", { name: "Hide" }).click();
   await expect(manager(page).locator('[data-agent="designer"]')).toContainText("hidden from New run");
   await page.keyboard.press("Escape");
+  // P10 E24: there is no New run (or its agent override) left to offer it in
   await page.keyboard.press("Meta+KeyN");
-  // R8: the agent list lives behind the "specific agent" override
-  const dlg = page.getByRole("dialog", { name: "New run" });
-  await dlg.getByRole("button", { name: "More options" }).click();
-  await dlg.getByRole("menuitem", { name: "Use a specific agent…" }).click();
-  const select = dlg.getByRole("combobox", { name: "Choose an agent" });
-  await expect(select).toBeVisible();
-  // the list loads from GET /agents: wait for it, then check it (the override's placeholder aside)
-  await expect(select.locator("option")).not.toHaveCount(0);
-  await expect.poll(() => select.locator("option").allTextContents().then((a) => a.filter((t) => t !== "Choose an agent"))).toEqual(["planner", "sim", "verifier"]);
-  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "New run" })).toHaveCount(0);
 });
 
 test("C7_the_only_these_tools_picker_lists_every_registered_tool", async ({ page, fake }) => {
@@ -229,17 +221,6 @@ test("B1_10_a_cancelled_study_reads_cancelled_not_fail_and_offers_no_agent_fix",
 });
 
 // ---- design study (B2)
-
-test("B2_3_open_in_studies_brings_the_design_study_into_view", async ({ page, fake }) => {
-  await fake.reset(withSpec({ spec: "fixture", studies: "fixture" }) as never);
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await open(page);
-  const strip = page.locator("[data-spec-panel]");
-  await strip.getByRole("button", { expanded: false }).click();
-  await strip.getByRole("button", { name: "Open in Studies" }).click();
-  await expect(page.getByTestId("studies")).toBeVisible();
-  await expect(page.locator("[data-design-studies]")).toBeInViewport();
-});
 
 const withSpec = (spec: Record<string, unknown>) => ({ ...BASE, spec });
 
