@@ -21,7 +21,9 @@ log = logging.getLogger(__name__)
 # once: "sim" (studies), "view" (renders, immersive views, critiques) and "text" (the rest).
 STREAMS = ("text", "sim", "view")
 SIM_TOOLS = frozenset({"design_review", "design_review_get", "study_run", "study_get",
-                       "job_wait"})
+                       "job_wait",
+                       # Plan 11 F6: the rocket cards (rocket_motor is a library lookup: text)
+                       "rocket_analyze", "rocket_flight"})
 VIEW_TOOLS = frozenset({"render_views", "present_view", "critique_model", "part_show",
                         "section_check", "assembly_animate",
                         # Plan 9 G-A: the concept stage's cards live in the View stream
@@ -37,7 +39,7 @@ VIEW_ANNOUNCE = frozenset({"view_presented", "critique_round", "part_shown",
 
 def tool_stream(name: str | None) -> str:
     bare = (name or "").split("mcp__mises__", 1)[-1]
-    if bare.startswith(("sim_", "topopt_", "dyn_", "rocket_")) or bare in SIM_TOOLS:
+    if bare.startswith(("sim_", "topopt_", "dyn_")) or bare in SIM_TOOLS:
         return "sim"
     return "view" if bare in VIEW_TOOLS else "text"
 

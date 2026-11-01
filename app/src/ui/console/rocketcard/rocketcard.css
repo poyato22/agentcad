@@ -1,0 +1,11 @@
+/* Plan 11 F6: rocket cards reuse the study card (studycard.css); only the tables are new. */
+.rcard-st { display: inline-flex; align-items: center; gap: 4px; }
+.rcard-metrics dd { display: inline-flex; align-items: center; gap: 4px; }
+.rcard-tables { display: grid; gap: 8px; }
+.rcard-table { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+.rcard-table th, .rcard-table td { padding: 2px 6px 2px 0; text-align: left; white-space: nowrap; }
+.rcard-table thead th { color: var(--dim); font-weight: 500; border-bottom: 1px solid var(--line); }
+.rcard-table tbody th { font-weight: 500; }
+.rcard-table tfoot td { white-space: normal; padding-top: 4px; }
+.rcard { overflow-x: auto; }
+.rcard-notes { margin: 4px 0 0; padding-left: 16px; font-size: 11px; }

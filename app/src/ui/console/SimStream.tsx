@@ -21,6 +21,8 @@ import { topoptIdOf, TopoptRunCard } from "../topopt/TopoptCard";
 import { loadStudyRecord, shownBuildStudies, studyRecords, type BuildStudy } from "./buildStudies";
 import { Item } from "./Conversation";
 import { effectiveRunId, labelOf, treeFrame } from "./derived";
+import { isRocketCallName } from "./rocketcard/model";
+import { RocketCardSlot } from "./rocketcard/RocketCard";
 import { simRunning } from "./streams";
 import { StudyCardSlot } from "./studycard";
 import { studyCallView, type StudyCallView } from "./studycard/cardModel";
@@ -98,7 +100,9 @@ function SimStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Elem
           </div>
           {it.kind === "activity" && it.call && studyCallView(it.call)
             ? <StudyCardSlot call={it.call} runId={runId} />
-            : <Item item={it} agent={agent} runId={runId} />}
+            : it.kind === "activity" && it.call && isRocketCallName(it.call.name)
+              ? <RocketCardSlot call={it.call} />
+              : <Item item={it} agent={agent} runId={runId} />}
         </div>
       ),
     })),

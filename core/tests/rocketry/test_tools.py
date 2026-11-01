@@ -196,6 +196,7 @@ def test_rocket_tools_ride_the_sim_stream_and_register():
         assert reg.get(name).safety == SafetyClass.READ
     assert tool_stream("mcp__mises__rocket_flight") == "sim"
     assert tool_stream("rocket_analyze") == "sim"
+    assert tool_stream("rocket_motor") == "text"
 
 
 # ---- rocket_motor
