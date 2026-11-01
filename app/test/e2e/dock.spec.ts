@@ -79,7 +79,8 @@ for (const theme of ["dark", "light"] as const) {
     await expect(sim.locator("[data-running]")).toHaveAttribute("data-running", "1");
     // D13: the view uses the dock's full width
     const card = await view.getByTestId("view-card").boundingBox();
-    expect(card!.width).toBeGreaterThanOrEqual(400);
+    // (P10 E6: the full width of its column)
+    expect(card!.width).toBeGreaterThanOrEqual((await view.boundingBox())!.width - 30);
     // the composer: Stop while the lead works
     await expect(con(page).getByRole("button", { name: "Stop" })).toBeVisible();
     await page.screenshot({ path: `test-results/ub-dock-${theme}.png` });
@@ -102,15 +103,15 @@ test("composer_send_becomes_stop_while_the_lead_works_and_stops_it", async ({ pa
   await activity(fake, "thinking");
   const stop = con(page).getByRole("button", { name: "Stop" });
   await expect(stop).toBeVisible();
-  await expect(con(page).getByRole("button", { name: "Send" })).toHaveCount(0);
+  await expect(con(page).getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
   await stop.click();
   await expect.poll(async () => (await fake.calls()).some((c) => c.method === "POST" && c.path === `/runs/${LEAD}/cancel`)).toBe(true);
   // the run ends: the button is Send again
-  await expect(con(page).getByRole("button", { name: "Send" })).toBeVisible();
+  await expect(con(page).getByRole("button", { name: "Send", exact: true })).toBeVisible();
   await expect(con(page).getByRole("button", { name: "Stop" })).toHaveCount(0);
   await box.fill("make the lid thinner");
-  await con(page).getByRole("button", { name: "Send" }).click();
-  await expect.poll(async () => (await fake.calls()).some((c) => c.method === "POST" && c.path === "/runs" && (c.body as { prompt?: string }).prompt === "make the lid thinner")).toBe(true);
+  await con(page).getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(async () => (await fake.calls()).some((c) => c.method === "POST" && c.path === `/projects/${BUILD}/chat` && (c.body as { text?: string }).text === "make the lid thinner")).toBe(true);
 });
 
 test("esc_in_the_composer_stops_a_busy_lead", async ({ page, fake }) => {
@@ -193,7 +194,7 @@ test("design_focus_chip_shows_the_class_and_sets_the_users_own", async ({ page, 
   await open(page, "dark");
   const chip = con(page).locator("[data-conversation-head] [data-design-focus]");
   await expect(chip).toHaveAttribute("data-design-focus", "design");
-  await expect(chip).toContainText("Design focus");
+  await expect(chip).toHaveAttribute("aria-label", "Design focus");   // P10 E23: compact, "Focus · Eng | Mixed | Design"
   await expect(chip.locator("[data-focus=design]")).toHaveAttribute("aria-pressed", "true");
   await chip.locator("[data-focus=engineering]").click();
   await expect(chip).toHaveAttribute("data-design-focus", "engineering");

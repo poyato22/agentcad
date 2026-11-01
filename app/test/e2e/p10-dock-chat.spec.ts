@@ -62,6 +62,7 @@ for (const theme of ["dark", "light"] as const) {
     expect(Math.abs(v.y - t.y)).toBeLessThan(1);
     expect(Math.abs(v.height - t.height)).toBeLessThan(1);                     // full height each
     await expect(col(page, "view").locator("[data-testid=view-card]")).toBeVisible();
+    const insetTwo = await page.locator("[data-region=viewer]").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--inset-r")));
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/dock-2col-${theme}.png` });
 
     await col(page, "sim").click();
@@ -73,7 +74,9 @@ for (const theme of ["dark", "light"] as const) {
     expect([...xs].sort((a, b) => a - b)).toEqual(xs);
     // the 3D view centres in what is left (shell/insets follows the dock)
     const inset = await page.locator("[data-region=viewer]").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--inset-r")));
-    expect(Math.round(inset)).toBe(Math.round(three.width + 24));
+    // (shared with the Parts surface when both cannot fit: shell/insets caps the pair)
+    expect(inset).toBeGreaterThan(insetTwo);
+    expect(inset).toBeGreaterThan(three.width * 0.9);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/dock-3col-${theme}.png` });
 
     // remembered
@@ -92,8 +95,8 @@ test("dragging_the_dock_edge_or_a_divider_never_selects_text", async ({ page, fa
   await page.mouse.move(x, y);
   await page.mouse.down();
   // sweep across the conversation's text and back: a plain drag here would select it
-  await page.mouse.move(x - 120, y + 40, { steps: 6 });
-  await page.mouse.move(x + 300, y + 80, { steps: 8 });
+  await page.mouse.move(x + 120, y + 40, { steps: 6 });
+  await page.mouse.move(x - 200, y + 80, { steps: 8 });
   expect(await page.evaluate(() => document.body.classList.contains("dock-resizing"))).toBe(true);
   await page.mouse.up();
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");

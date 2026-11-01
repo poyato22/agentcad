@@ -42,6 +42,8 @@ async function startRun(page: Page, fake: FakeControl, task = TASK): Promise<str
   const runs = await (await fetch(`${CORE_URL}/runs`, { headers: { Authorization: `Bearer ${fake.token}` } })).json() as { id: string; task: string }[];
   const run = runs.find((r) => r.task === task);
   if (!run) throw new Error("run not created");
+  // an agent-started run: show it from the roster (the chat shows the lead's own)
+  if (before.some((r) => r.role === "lead")) await page.locator(`[data-roster] [data-run="${run.id}"]`).click();
   return run.id;
 }
 

@@ -378,15 +378,15 @@ test("connects_to_fake_core_without_errors", async ({ page, fake }) => {
   await page.goto("/");
   await expect(page.locator("[data-region=app]")).toHaveAttribute("data-conn", "open");
   // A6: /onshape/budget twice (the session figure, then the selected run's top-bar meter); A3: the
-  // builds (GET /projects + the profile's tabs); A7: the console spec strip loads the active
-  // build's spec and studies. (Plan 7 U2b: no Variables panel, so no GET /parts/{id}/source on boot.)
+  // builds (GET /projects + the profile's tabs). (P10 E12: no spec strip in the dock, so no
+  // spec / studies on boot; Plan 7 U2b: no Variables panel, so no GET /parts/{id}/source either.)
   await expect.poll(async () => (await fake.calls()).map((c) => c.path.replace(/^\/projects\/[^/]+\//, "/projects/{id}/")).filter((p) => p !== "/context").sort()).toEqual(
     // Plan 9: the build view loads the build's assembly (and its parts), the left pane the BOM
     // Plan 9 B3: the build's running background jobs (GET /jobs)
     ["/approvals", "/jobs", "/onshape/budget", "/onshape/budget", "/parts", "/parts", "/printers", "/profile", "/profile",
       // C-2/C-3: the running run's live activity and open questions are seeded on connect (GET
       // /runs/{id} carries `pending`, as the real core's does, so no GET /runs/{id}/pending)
-      "/projects", "/projects/{id}/assembly", "/projects/{id}/bom", "/projects/{id}/bom", "/projects/{id}/spec", "/projects/{id}/studies", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup",
+      "/projects", "/projects/{id}/assembly", "/projects/{id}/bom", "/projects/{id}/bom", "/runs", "/runs/b7c79a57cbb4", "/runs/b7c79a57cbb4/steps", "/setup",
       // FW-app I3: the dock's Simulations stream reads the build's study records (all, and its
       // assembly's) and its generative runs
       "/sims", "/sims", "/status", "/topopt"]);

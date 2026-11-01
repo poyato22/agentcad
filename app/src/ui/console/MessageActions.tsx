@@ -100,7 +100,7 @@ export function ErrorCard({ item, retryText, run }: {
       <div class="cv-err-head">
         <span class="cv-fail cv-err-glyph" aria-hidden="true">✕</span>
         <span class="cv-err-title">{v.title}</span>
-        <span class="cv-err-code num faint" title="error code">{v.code}</span>
+        <span class="cv-err-code faint" title="error code">{v.code}</span>
       </div>
       {v.message && <p class="cv-err-msg text" data-error-message>{v.message}</p>}
       {v.cause && <p class="cv-err-line text"><span class="cv-err-l">Likely cause</span>{v.cause}</p>}
