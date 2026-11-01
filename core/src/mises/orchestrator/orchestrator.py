@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 import secrets
 from typing import TYPE_CHECKING
@@ -280,7 +281,11 @@ class Orchestrator:
             return TaskResult(task_id=task.id, status=_result_status(res.stop_reason),  # type: ignore[arg-type]
                               output=res.final_text or res.error or "", run_id=rid)
 
-        # never more tasks at once than the parallel-agents limit for the tasks' model
+        # never more tasks at once than the parallel-agents limit for the tasks' model (the
+        # sign-in cache warmed first, so an implicit default resolves as E34 says: FWC M8)
+        if model_ref is None:
+            with contextlib.suppress(Exception):
+                await rt.claude_status_cached()
         ref = rt.model_ref_for(None, model_ref)
         results = await run_plan(plan, spawn, max_parallel=rt.parallel_limit(ref))
         return {"plan": plan.model_dump(),
