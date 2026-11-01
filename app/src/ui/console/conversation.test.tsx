@@ -8,6 +8,7 @@ import type { AgentRun, CoreStatusInfo, Step } from "../../api/types";
 import { addCatalogChip, agentChips, clearAgentChips } from "../../state/agentChips";
 import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, resetStore, runs, selectedPartId, selectedRunId, steps } from "../../state/store";
 import { resetCatalog } from "../dialogs/catalog";
+import { showDockView } from "../profile/sections/DeveloperSection";
 import { ConsolePane } from "./ConsolePane";
 import { expandedFolds, resetOffListRuns } from "./derived";
 import { approval, message, resetIds, run, step, toolCall, toolFailure } from "./testSteps";
@@ -162,7 +163,8 @@ describe("conversation view (default)", () => {
 
   it("there_is_no_button_bar_only_one_menu_in_the_conversation_header", async () => {
     // Plan 9 D2: no agent dropdown, no Stop / New / Manage / Browser / Full log buttons, no
-    // "provider · model → agent" line; the agent browser and full log are in the ⋯ menu
+    // "provider · model → agent" line; Plan 10 E22: the agent browser and full log are not in the
+    // ⋯ menu either (Profile & settings → Developer)
     client();
     setRuns([run("r1", { created_at: 2, task: "stiffen the upright", routed: { agent: "engineer", reason: "system build", confidence: 0.9 } })]);
     const { container } = render(<ConsolePane />);
@@ -173,26 +175,27 @@ describe("conversation view (default)", () => {
     expect(container.textContent).not.toContain("fake · m");
     fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
     const menu = screen.getByRole("menu", { name: "Conversation options" });
-    expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["New run…", "Agent browser", "Full log"]);
+    expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["New run…"]);
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("details_toggle_shows_the_dense_log_and_is_remembered", async () => {
+  it("E22: Developer's Show full agent log opens the dense log (not remembered); Conversation returns", async () => {
     client();
     setRuns([run(RID)]);
     setSteps(REAL);
     const { container } = render(<ConsolePane />);
     await frame();
-    openMenuItem("Full log");
+    const closed = vi.fn();
+    act(() => showDockView("details", closed));
     await frame();
+    expect(closed).toHaveBeenCalled();
     expect(container.querySelector("[data-filters]")).toBeTruthy();
     expect(container.querySelector("[data-roster]")).toBeTruthy();
-    expect(localStorage.getItem(VIEW_KEY)).toBe("details");
+    expect(localStorage.getItem(VIEW_KEY)).toBeNull();      // the dock starts on the Conversation next launch
     fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
     await frame();
     expect(container.querySelector("[data-filters]")).toBeNull();
-    expect(localStorage.getItem(VIEW_KEY)).toBe("chat");
   });
 
   it("an_evidence_link_opens_details_at_that_step_without_remembering_it", async () => {

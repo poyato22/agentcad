@@ -4,6 +4,10 @@ import type { CoreClient } from "../../api/client";
 import type { AgentInfo, ClaudeCodeStatus, CoreStatusInfo, KeyStatus, ModelsInfo, Profile } from "../../api/types";
 import { bindClient, resetStore } from "../../state/store";
 import { closeSetupWizard, setupWizardOpen } from "../setup/gate";
+import { activeBuildId, resetBuilds } from "../../state/builds";
+import { atHome, resetHome } from "../../state/home";
+import { consoleView, resetConsoleView } from "../console/view";
+import { consoleCollapsed } from "../pages/router";
 import { ProfilePane } from "./ProfilePane";
 
 const SECRET = "sk-ant-api03-SECRET-0123456789";
@@ -73,6 +77,33 @@ async function openSection(name: string, onClose = vi.fn()) {
 const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 const type = (label: string, value: string) => fireEvent.input(field(label), { target: { value } });
 
+describe("Developer section (Plan 10 E22)", () => {
+  afterEach(() => { resetBuilds(); resetHome(); resetConsoleView(); });
+
+  it("says why the full log exists and opens it in the open build's dock", async () => {
+    activeBuildId.value = "b1";
+    consoleCollapsed.value = true;
+    const onClose = await openSection("Developer");
+    const region = screen.getByRole("region", { name: "Developer" });
+    expect(region.textContent).toContain("audit or debug");
+    fireEvent.click(within(region).getByRole("button", { name: "Show full agent log" }));
+    expect(onClose).toHaveBeenCalled();
+    expect(consoleView.value).toBe("details");
+    expect(consoleCollapsed.value).toBe(false);
+    expect(atHome.value).toBe(false);                      // from Home it opens the build
+    expect(localStorage.getItem("mises.console.view")).toBeNull();
+  });
+
+  it("needs an open build; the agent browser needs an agent", async () => {
+    activeBuildId.value = null;
+    await openSection("Developer");
+    const region = screen.getByRole("region", { name: "Developer" });
+    expect((within(region).getByRole("button", { name: "Show full agent log" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(region).getByRole("button", { name: "Show agent browser" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(region.textContent).toContain("Open a build first");
+  });
+});
+
 describe("ProfilePane shell", () => {
   it("renders_nothing_while_closed", () => {
     render(<ProfilePane open={false} onClose={() => undefined} />);
@@ -85,7 +116,7 @@ describe("ProfilePane shell", () => {
     await pane();
     const nav = await screen.findByRole("navigation", { name: "Profile sections" });
     const names = within(nav).getAllByRole("button").map((b) => b.textContent);
-    expect(names).toEqual(["Profile", "Models", "Onshape", "Printers", "Agents & budgets", "Browsing", "Data", "System", "Setup", "About"]);
+    expect(names).toEqual(["Profile", "Models", "Onshape", "Printers", "Agents & budgets", "Browsing", "Data", "System", "Setup", "Developer", "About"]);
     expect(within(nav).getByRole("button", { name: "Profile" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(within(nav).getByRole("button", { name: "Onshape" }));
     expect(within(nav).getByRole("button", { name: "Onshape" }).getAttribute("aria-current")).toBe("page");

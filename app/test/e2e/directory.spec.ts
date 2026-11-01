@@ -1,6 +1,6 @@
 // Plan 5 A6: the Onshape page, the live budget meter and the parts directory, against the fake
 // core (test/fake-core/directory.ts, real-core fixtures).
-import { expect, test } from "./fixtures";
+import { expect, homeMenu, test } from "./fixtures";
 
 test.beforeEach(async ({ fake, page }) => {
   await fake.reset("directory");
@@ -15,7 +15,7 @@ const chip = (page: import("@playwright/test").Page) => page.locator(".topbar-ri
 /** D22: Onshape and the parts library are Home sub-views (not build tabs): ⌂, then its button. */
 async function homeView(page: import("@playwright/test").Page, name: "Onshape" | "Parts library"): Promise<void> {
   if (await page.locator("[data-region=topbar]").count()) await page.getByRole("button", { name: "Home" }).click();
-  await page.locator('[data-testid="home"]').getByRole("button", { name, exact: true }).click();
+  await homeMenu(page, name);
 }
 /** Back from a Home sub-view into the open build (its top bar holds the Onshape count). */
 async function backToBuild(page: import("@playwright/test").Page): Promise<void> {
@@ -52,7 +52,7 @@ test("budget_meter_updates_live_as_onshape_is_used_and_turns_amber_at_warn", asy
   const loaded = await page.locator('[data-thumb="loaded"]').count();
   // coming back to the view lists nothing again
   await page.locator('[data-testid="home"]').getByRole("button", { name: /Builds/ }).click();
-  await page.locator('[data-testid="home"]').getByRole("button", { name: "Onshape", exact: true }).click();
+  await homeMenu(page, "Onshape");
   await expect(page.getByRole("list", { name: "20 documents" })).toBeVisible();
   expect((await fake.calls()).filter((c) => c.path === "/onshape/documents")).toHaveLength(1);
   // back in the build, the meter followed each event

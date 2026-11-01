@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { fitOrtho, offsetOrtho, visibleWidth } from "../viewer/scene";
-import { insetsOf } from "./insets";
+import { insetsOf, NO_INSETS, viewInsets, watchInsets } from "./insets";
 
 const rect = (left: number, top: number, width: number, height: number) =>
   ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
@@ -22,6 +22,45 @@ describe("floating surface insets (FW-layout, D20)", () => {
     const i = insetsOf(narrow, rect(12, 56, 240, 300), rect(148, 56, 440, 500));
     expect(i.left + i.right).toBeLessThanOrEqual(480);
     expect(i.left).toBeLessThan(i.right);
+  });
+});
+
+describe("watchInsets (Plan 10 E37)", () => {
+  const el = (attrs: Record<string, string>, r: DOMRect): HTMLElement => {
+    const e = document.createElement("div");
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    e.getBoundingClientRect = () => r;
+    return e;
+  };
+  const RO = globalThis.ResizeObserver;
+  afterEach(() => { globalThis.ResizeObserver = RO; viewInsets.value = NO_INSETS; });
+
+  it("re-measures when the dock mounts after the viewer, or is replaced by a wider one", async () => {
+    const observed = new Set<Element>();
+    globalThis.ResizeObserver = class {
+      cb: () => void;
+      constructor(cb: () => void) { this.cb = cb; }
+      observe(e: Element) { observed.add(e); this.cb(); }
+      unobserve(e: Element) { observed.delete(e); }
+      disconnect() { observed.clear(); }
+    } as unknown as typeof ResizeObserver;
+    const app = document.createElement("div");
+    app.append(el({ "data-region": "viewer" }, rect(0, 44, 1440, 856)), el({ "data-region": "left", "data-surface": "" }, rect(12, 56, 240, 300)));
+    document.body.append(app);
+    const stop = watchInsets(app);
+    expect(viewInsets.value).toEqual({ left: 264, right: 0 });
+    const dock = el({ "data-region": "console", "data-surface": "" }, rect(988, 56, 440, 832));
+    app.append(dock);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(viewInsets.value).toEqual({ left: 264, right: 464 });
+    expect(observed.has(dock)).toBe(true);
+    const wide = el({ "data-region": "console", "data-surface": "" }, rect(660, 56, 768, 832));
+    dock.replaceWith(wide);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(viewInsets.value.right).toBe(792);
+    expect(observed.has(dock)).toBe(false);
+    stop();
+    app.remove();
   });
 });
 

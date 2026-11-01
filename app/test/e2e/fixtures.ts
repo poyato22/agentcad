@@ -55,11 +55,30 @@ export async function useDetailsView(page: import("@playwright/test").Page): Pro
   await page.addInitScript(() => { try { localStorage.setItem("mises.console.view", "details"); } catch { /* none */ } });
 }
 
-/** Pick an item of the Conversation header's ⋯ menu ("New run…", "Agent browser", "Full log"):
- *  the agent dock has no button bar (Plan 9 D2). */
+/** Pick an item of the Conversation header's ⋯ menu ("New run…"): the agent dock has no button
+ *  bar (Plan 9 D2). "Agent browser" and "Full log" moved to Profile & settings → Developer (Plan 10
+ *  E22): those go through developerView. */
 export async function consoleMenu(page: import("@playwright/test").Page, item: "New run…" | "Agent browser" | "Full log"): Promise<void> {
+  if (item !== "New run…") { await developerView(page, item); return; }
   await page.getByRole("button", { name: "Conversation options" }).click();
   await page.getByRole("menu", { name: "Conversation options" }).getByRole("menuitem", { name: item }).click();
+}
+
+/** Plan 10 E22: open the dock's full log or agent browser from Profile & settings → Developer. */
+export async function developerView(page: import("@playwright/test").Page, item: "Agent browser" | "Full log"): Promise<void> {
+  await page.locator("[data-region=topbar]").getByRole("button", { name: "Profile", exact: true }).click();
+  const profile = page.getByRole("dialog", { name: "Profile" });
+  await profile.getByRole("navigation", { name: "Profile sections" }).getByRole("button", { name: "Developer" }).click();
+  await profile.getByRole("button", { name: item === "Full log" ? "Show full agent log" : "Show agent browser" }).click();
+}
+
+/** Plan 10 E2: pick an item of Home's Settings menu (Parts library, Onshape and Trash toggle their
+ *  view; Profile & settings opens the Profile panel). */
+export async function homeMenu(page: import("@playwright/test").Page, item: "Parts library" | "Onshape" | "Trash" | "Profile & settings"): Promise<void> {
+  await page.locator('[data-testid="home"] .home-bar').getByRole("button", { name: "Settings", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "Settings" });
+  if (item === "Profile & settings") await menu.getByRole("menuitem", { name: item }).click();
+  else await menu.getByRole("menuitemcheckbox", { name: item === "Trash" ? /^Trash/ : item }).click();
 }
 
 /** Show a run's thread in the dock, from the agent manager's run tree (the console has no run

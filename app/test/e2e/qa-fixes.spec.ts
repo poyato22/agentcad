@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import type { AgentRun } from "../../src/api/types";
-import { expect, openManualStudySetup, test } from "./fixtures";
+import { expect, homeMenu, openManualStudySetup, test } from "./fixtures";
 
 const BASE = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fake-core/scenarios/base.json"), "utf8")) as Record<string, unknown> & { runs: AgentRun[] };
 const RUN = BASE.runs[0].id;   // a running designer run
@@ -300,7 +300,7 @@ test("empty_trash_refused_names_the_runs_that_block_it", async ({ page, fake }) 
   // D30: the Trash lives on Home (no builds menu any more)
   await page.getByRole("button", { name: "Home" }).click();
   const home = page.locator('[data-testid="home"]');
-  await home.getByRole("button", { name: /^Trash/ }).click();
+  await homeMenu(page, "Trash");
   await home.getByRole("button", { name: "Empty trash…" }).click();
   await home.getByRole("button", { name: "Empty trash", exact: true }).click();
   await expect(home.getByRole("alert")).toContainText("The Trash wasn't emptied: 1 run in a trashed build is still working (designer · still sanding)");

@@ -262,6 +262,17 @@ describe("Status button", () => {
     expect(chip.nextElementSibling?.classList.contains("status")).toBe(true);
     resetOnshapeBudget();
   });
+
+  it("E11: ← / → sit right after ⌂, disabled with nowhere to go", () => {
+    render(<TopBar />);
+    const home = screen.getByRole("button", { name: "Home" });
+    const group = home.nextElementSibling as HTMLElement;
+    expect(group.getAttribute("aria-label")).toBe("History");
+    const back = screen.getByRole("button", { name: "Back" }) as HTMLButtonElement;
+    expect(back.title).toBe("Back (⌘←)");
+    expect(back.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Forward" }) as HTMLButtonElement).disabled).toBe(true);
+  });
 });
 
 describe("stop all", () => {
@@ -379,6 +390,17 @@ describe("ProfileButton", () => {
     fireEvent.click(btn);
     expect(profileOpen.value).toBe(true);
     expect(profileSection.value).toBe("profile");
+  });
+
+  it("E7: clicking the Profile button again closes the panel", () => {
+    bindClient({ getProfile: vi.fn().mockResolvedValue({ display_name: "" }) } as unknown as CoreClient);
+    render(<ProfileButton />);
+    const btn = screen.getByRole("button", { name: "Profile" });
+    fireEvent.click(btn);
+    expect(profileOpen.value).toBe(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(btn);
+    expect(profileOpen.value).toBe(false);
   });
 
   it("re_reads_the_name_when_profile_closes_and_after_a_reconnect", async () => {

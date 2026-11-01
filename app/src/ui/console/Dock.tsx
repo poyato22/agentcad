@@ -4,7 +4,8 @@
 // collapses to its header (with an unread count while collapsed); the dividers between them drag
 // to resize, and the dock's left edge drags its width (dockLayout, remembered). An empty stream
 // shrinks to one quiet line. The composer sits at the foot. There is no button bar: the
-// Conversation header holds the "needs you" count and one ⋯ menu (new run, agent browser, full log).
+// Conversation header holds the "needs you" count, "← Back to lead" on a sub-agent's thread
+// (Plan 10 E13) and one ⋯ menu (the full log and agent browser are in Profile → Developer, E22).
 import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import type { StreamKind } from "../../api/types";
@@ -16,6 +17,7 @@ import { actions, selectedRunId } from "../../state/store";
 import { SpecPanel } from "../spec";
 import { OverflowMenu } from "../common/OverflowMenu";
 import { ModelWarning } from "./cards/critique/ModelWarning";
+import { BackToLead } from "./BackToLead";
 import { CommandLine } from "./command/CommandLine";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
@@ -27,7 +29,7 @@ import { retainBuildStudies } from "./buildStudies";
 import { SimStream, simExtras, simExtrasRunning } from "./SimStream";
 import { simRunning, splitStreams } from "./streams";
 import { markSeen, unreadOf } from "./unread";
-import { composerOpen, setConsoleView } from "./view";
+import { composerOpen } from "./view";
 import { ViewStream } from "./ViewStream";
 import "./dock.css";
 
@@ -188,6 +190,7 @@ function ConversationHead(): JSX.Element {
   return (
     <div class="dock-hx" data-conversation-head>
       <DesignFocus run={current} buildId={current?.project_id ?? activeBuildId.value} />
+      {notLead && <BackToLead buildId={current?.project_id ?? activeBuildId.value} />}
       {notLead && label && <span class="dock-who dim text" data-run-label title={label}>{label}</span>}
       {current && <ModelWarning run={current} />}
       {others.length > 0 && (
@@ -196,18 +199,17 @@ function ConversationHead(): JSX.Element {
           <span class="num">{others.length}</span>
         </button>
       )}
-      <MoreMenu hasRun={current !== null} />
+      <MoreMenu />
     </div>
   );
 }
 
 /** The Conversation's one menu (Plan 9 D2: no button bar). */
-function MoreMenu({ hasRun }: { hasRun: boolean }): JSX.Element {
+function MoreMenu(): JSX.Element {
   return (
     <OverflowMenu label="Conversation options" class="dock-more" items={[
       { label: "New run…", onSelect: () => { composerOpen.value = true; } },
-      { label: "Agent browser", onSelect: () => setConsoleView("browser", false), disabled: !hasRun },
-      { label: "Full log", onSelect: () => setConsoleView("details") },
+      // Plan 10 E22: the agent browser and the full log are in Profile & settings → Developer
     ]} />
   );
 }
