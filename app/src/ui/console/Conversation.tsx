@@ -18,7 +18,7 @@ import { CallDetails } from "./ToolCallRow";
 import type { ThreadItem } from "./threadModel";
 import { editedKeys } from "./chat";
 import { isApiErrorText } from "./errorText";
-import { CancelQueuedButton, cancelledQueued, EditButton, ErrorCard, StallNote } from "./MessageActions";
+import { CancelQueuedButton, cancelledQueued, EditButton, ErrorCard } from "./MessageActions";
 import { Markup } from "../markup/render";
 import { CopyButton } from "./CopyButton";
 import { RunStatus } from "./RunStatus";
@@ -129,7 +129,6 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
         )}
         {run && run.status === "queued" && <Queued />}
         {run && run.status !== "queued" && <RunStatus runId={run.id} status={run.status} />}
-        {run && <StallNote run={run} lastText={promptBefore(items, null) ?? run.task ?? null} />}
       </div>
       {newCount > 0 && <button type="button" class="cv-chip-new" onClick={toBottom}>{`${newCount} new ↓`}</button>}
       <AssemblyAnimationChip />

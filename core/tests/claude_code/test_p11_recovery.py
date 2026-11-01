@@ -145,3 +145,62 @@ async def test_a_recovery_cancels_the_dead_sessions_approval(rt, claude_bin, sig
         assert "approval it was waiting for was cancelled" in res.final_text
         await asyncio.sleep(0.5)
     assert ran == []
+
+
+# ---- G7: stuck detection inside the core (no banner in the app), from real signals
+
+@pytest.fixture
+def quick_watch(monkeypatch):
+    from mises.claude_code import session as session_mod
+    monkeypatch.setattr(session_mod, "STALL_S", 1.0)
+    monkeypatch.setattr(session_mod, "TOOL_LIMIT_S", 0.5)
+    monkeypatch.setattr(session_mod, "WATCH_TICK_S", 0.1)
+    # every tool (a Mises one too) is past its limit after 0.5 s: only progress keeps it alive
+    monkeypatch.setattr(session_mod.ClaudeCodeSession, "_tool_limit", lambda self, name: 0.5)
+    return session_mod
+
+
+async def test_a_hung_stream_is_detected_and_recovered_silently(rt, claude_bin, signed_in,
+                                                               quick_watch):
+    async with served(rt):
+        rid, res = await _run(rt, "flaky:hang:1")
+    assert res.stop_reason == "end_turn", res.error
+    assert res.final_text.startswith("recovered after 1")
+    notes = _notes(rt, rid)
+    assert len(notes) == 1 and "went quiet" in notes[0]["cause"]      # the small "Recovered" note
+    assert rt.store.get_run(rid).status == "done"
+    failed = [s.payload for s in rt.store.steps(rid, [StepKind.ERROR])]
+    assert failed and all(p.get("recoverable") for p in failed)        # no card
+
+
+async def test_a_long_tool_with_progress_is_never_flagged(rt, claude_bin, signed_in, quick_watch):
+    """slowtool: a tool call silent on the stream for 3 s, far past STALL_S (1 s) and its limit
+    (0.5 s), while the run reports progress (a sim's activity updates): never stuck."""
+    async with served(rt):
+        rid = await rt.start_run("designer", "slowtool:3", model_ref="claude-code/sonnet")
+
+        async def progress():
+            for k in range(40):
+                rt.activity_tracker(rid).set("tool", f"wind study · {k}/40")
+                await asyncio.sleep(0.1)
+        ticker = asyncio.ensure_future(progress())
+        res = await asyncio.wait_for(rt.wait(rid), 30)
+        ticker.cancel()
+    assert res.stop_reason == "end_turn" and res.final_text == "slow done"
+    assert _notes(rt, rid) == [] and len(_argvs(rt, rid)) == 1           # one session, no restart
+
+
+async def test_a_tool_past_its_limit_without_progress_is_stuck(rt, claude_bin, signed_in,
+                                                              quick_watch):
+    s = quick_watch.ClaudeCodeSession.__new__(quick_watch.ClaudeCodeSession)
+    s.runtime, s.run_id = rt, "r"
+    s._proc = type("P", (), {"returncode": None})()
+    s._turn = asyncio.get_running_loop().create_future()
+    s._open_tools = {"t": ("Bash", 0.0)}
+    s.last_event = 0.0
+    assert "hung" in s.stuck(10.0)                                     # no progress at all
+    rt.activity_tracker("r").set("tool", "rendering 3/9")
+    assert s.stuck(10.0) is None                                       # progress: alive
+    s._open_tools = {}
+    s.last_event = 9.5
+    assert s.stuck(10.0) is None                                       # the stream just moved

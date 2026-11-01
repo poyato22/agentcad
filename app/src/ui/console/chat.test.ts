@@ -7,7 +7,7 @@ import type { ModelsInfo } from "../../api/types";
 import { activeBuildId } from "../../state/builds";
 import { bindClient, resetStore, runs, selectedRunId } from "../../state/store";
 import { catalog, resetCatalog } from "../dialogs/catalog";
-import { defaultChatModel, editedKeys, isStalled, leadOf, markEdited, resetChat, seenRunningAt, sendChat, STALL_S } from "./chat";
+import { defaultChatModel, editedKeys, leadOf, markEdited, resetChat, sendChat } from "./chat";
 import { run } from "./testSteps";
 
 const MODELS: ModelsInfo = {
@@ -95,30 +95,5 @@ describe("one chat per build", () => {
     markEdited("r1/msg/7");
     expect(editedKeys.value.has("r1/msg/7")).toBe(true);
     expect(JSON.parse(localStorage.getItem("mises.chat.edited") ?? "[]")).toEqual(["r1/msg/7"]);
-  });
-});
-
-describe("stall", () => {
-  const now = 1_800_000_000_000;
-  const t = now / 1000;
-  const r = run("r1", { status: "running", updated_at: t - STALL_S - 5 });
-  it("a running run with no new step or activity for 90 s", () => {
-    expect(isStalled(r, null, t - 200, now)).toBe(true);
-    expect(isStalled(r, null, t - 30, now)).toBe(false);
-    expect(isStalled({ ...r, status: "done" }, null, null, now)).toBe(false);
-    expect(isStalled(r, { run_id: "r1", state: "thinking", detail: "", since: t - 10 }, null, now)).toBe(false);
-  });
-  it("never while an approval or a question waits on you, and never from a stale run's old timestamps", () => {
-    expect(isStalled(r, null, t - 200, now, { waiting: true })).toBe(false);
-    // a fixture run "running" since days ago: the clock starts when this window first sees it
-    const stale = run("r2", { status: "running", updated_at: t - 600_000 });
-    const seen = seenRunningAt("r2", true, now);
-    expect(isStalled(stale, null, t - 600_000, now, { seenRunningS: seen })).toBe(false);
-    expect(isStalled(stale, null, t - 600_000, now + (STALL_S + 1) * 1000, { seenRunningS: seenRunningAt("r2", true, now + 5000) })).toBe(true);
-    expect(seenRunningAt("r2", false)).toBeNull();
-  });
-  it("not while a tool runs or the run waits for you", () => {
-    expect(isStalled(r, { run_id: "r1", state: "tool", detail: "sim", since: t - 300 }, null, now)).toBe(false);
-    expect(isStalled(r, { run_id: "r1", state: "waiting_approval", detail: "", since: t - 300 }, null, now)).toBe(false);
   });
 });

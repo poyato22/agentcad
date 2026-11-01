@@ -5,13 +5,11 @@
 // do, all as plain wrapped text (the message is untrusted and never markup).
 import { signal } from "@preact/signals";
 import type { JSX } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import type { AgentRun } from "../../api/types";
-import { activityByRun } from "../../state/activity";
-import { actions, steps } from "../../state/store";
+import { actions } from "../../state/store";
 import { Button } from "../common/Button";
-import { editMessage, isStalled, quietSince, seenRunningAt, sendChat, STALL_S } from "./chat";
-import { needsYou } from "../../state/selection";
+import { editMessage, sendChat } from "./chat";
 import { explainError } from "./errorText";
 import { openProfile } from "../profile/open";
 import { startErrorText } from "./startError";
@@ -136,32 +134,6 @@ export function ErrorCard({ item, retryText, run }: {
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/** Under a working run's thread: after STALL_S with no sign of life, say so and offer Retry. */
-export function StallNote({ run, lastText }: { run: AgentRun; lastText: string | null }): JSX.Element | null {
-  const [now, setNow] = useState(() => Date.now());
-  const running = run.status === "running";
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(t);
-  }, [running]);
-  const list = steps.value.get(run.id);
-  const lastTs = list && list.length ? list[list.length - 1].ts : null;
-  // waiting on you (an approval or a question) is never "stuck"; quiet time counts from when this
-  // window saw it running at the earliest
-  const waiting = needsYou.value.runIds.has(run.id);
-  const seen = seenRunningAt(run.id, running);
-  const activity = activityByRun.value.get(run.id) ?? null;
-  if (!isStalled(run, activity, lastTs, now, { waiting, seenRunningS: seen })) return null;
-  const quiet = Math.floor(now / 1000 - quietSince(run, activity, lastTs, seen));
-  return (
-    <div class="cv-stall" data-stalled role="status">
-      <span class="text">{`No sign of the agent for ${quiet >= 120 ? `${Math.floor(quiet / 60)} min` : `${Math.max(quiet, STALL_S)} s`}. It may be stuck.`}</span>
-      {lastText && <RetryButton text={lastText} run={run} stalled label="Stop and retry" />}
     </div>
   );
 }

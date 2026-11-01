@@ -26,9 +26,11 @@ Run through a `claude` shim on PATH. Never touches the network or any real Claud
                   one): answered with its own "No such tool available" error, then text
     sneaky:<name> the same, but the tool_result comes back without an error
     recap?        answers with the text it was sent (a recap block shows in it)
+    slowtool:<s>  a tool_use, <s> seconds of silence (a long job), its tool_result, an answer
     flaky:<mode>:<n>  fails the first <n> times (counted in <cwd>/fake_flaky_count across
                   processes), then answers "recovered after <n>" with the text it was sent.
-                  <mode>: exit (exits 3 mid-turn), during (an error_during_execution result),
+                  <mode>: exit (exits 3 mid-turn), hang (alive and silent: G7), during (an
+                  error_during_execution result),
                   net (an is_error result "API Error: Connection error (ECONNRESET)"), mcp (the
                   init reports the mises server failed), approve=<tool> (calls the Mises
                   tool <tool>, which waits on an approval card, then exits 3 while it waits)
@@ -198,6 +200,10 @@ class Session:
             if mode == "exit":
                 self.partial("working ")
                 os._exit(3)
+            if mode == "hang":                      # G7: alive, silent, no tool in flight
+                self.partial("working ")
+                await asyncio.sleep(3600)           # the watchdog ends it
+                return
             if mode == "during":
                 emit({"type": "result", "subtype": "error_during_execution", "is_error": True,
                       "session_id": self.session_id, "total_cost_usd": 0.0, "usage": {}})
@@ -261,6 +267,18 @@ class Session:
             self.partial("ing")
             self.assistant([{"type": "text", "text": "done"}])
             self.result("done")
+        elif text.startswith("slowtool:"):
+            # G7: a long tool call (a sim, a render): silent on the stream for <s> seconds
+            secs = float(text.split(":", 1)[1])
+            self.assistant([{"type": "tool_use", "id": "toolu_slow",
+                             "name": "mcp__mises__mirror_part_list", "input": {}}])
+            await asyncio.sleep(secs)
+            emit({"type": "user", "session_id": self.session_id, "parent_tool_use_id": None,
+                  "message": {"role": "user", "content": [
+                      {"type": "tool_result", "tool_use_id": "toolu_slow", "is_error": False,
+                       "content": "done"}]}})
+            self.assistant([{"type": "text", "text": "slow done"}])
+            self.result("slow done")
         elif text.startswith("error"):
             self.result("Not logged in · Please run /login", is_error=True)
         elif text.startswith("crash"):

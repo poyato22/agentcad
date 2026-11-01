@@ -67,8 +67,6 @@ button.cv-x { border: 1px solid var(--line2); }
 .cv-retry { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--fs-small); }
 .cv-retry-btn { font-size: var(--fs-small); padding: 2px 10px; }
 /* a working run with no sign of life for 90 s */
-.cv-stall { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 10px 8px; padding: 6px 8px; border: 1px dashed var(--amber); border-radius: 6px; font-size: var(--fs-small); color: var(--ink); }
-.cv-stall > .text { flex: 1 1 160px; min-width: 0; }
 .cv-note { padding: 1px 10px 1px 40px; font-size: 10.5px; }
 .cv-fold {
   margin: 1px 10px 1px 40px; text-align: left; color: var(--faint); font: inherit; font-size: 10.5px;

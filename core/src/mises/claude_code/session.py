@@ -84,7 +84,15 @@ CLAUDE_CODE_TOOLS = frozenset({
 # connecting, and transient network / API trouble. A config problem (sign-in, TLS, proxy) or a
 # confinement abort is not retried.
 RECOVERABLE = frozenset({"exit", "error_during_execution", "mcp", "network", "rate_limit",
-                         "overloaded"})
+                         "overloaded", "stalled"})
+# G7: the turn watchdog. A turn is stuck when the process is alive but nothing arrives on its
+# stream for STALL_S with no tool in flight, or a tool has run past its own limit (a Mises
+# tool: its registry timeout + TOOL_GRACE_S; any other: TOOL_LIMIT_S) while the run reports no
+# progress either. A stuck turn is ended and goes the F9 recovery path (restart, carry on).
+STALL_S = 300.0
+TOOL_GRACE_S = 60.0
+TOOL_LIMIT_S = 900.0
+WATCH_TICK_S = 2.0
 # stderr of a `--resume` whose conversation Claude Code no longer has (P11 F3)
 RESUME_LOST = re.compile(r"No conversation found with session ID", re.I)
 UNVERIFIED = "Claude Code output not recognised — confinement unverified"
@@ -206,6 +214,11 @@ class ClaudeCodeSession:
         self.start_effort = effort
         self.effort: str | None = effort
         self._controls: dict[str, asyncio.Future[dict]] = {}
+        # G7: the watchdog's signals: when the stream last said anything, the tool calls in
+        # flight (tool_use id -> (name, started)), and why it ended a stuck turn
+        self.last_event: float | None = None
+        self._open_tools: dict[str, tuple[str, float]] = {}
+        self._stall: str | None = None
         runtime.register_cancel_hook(run_id, self.cancel)
 
     @property
@@ -404,6 +417,9 @@ class ClaudeCodeSession:
             self.runtime.store.append_step(self.run_id, StepKind.MESSAGE, body)
             self.prompt_recorded = True
         self._turn = asyncio.get_running_loop().create_future()
+        self.last_event = asyncio.get_running_loop().time()        # G7: the turn starts now
+        self._open_tools.clear()
+        self._stall = None
         self._turn_text = []
         line = json.dumps({"type": "user", "message": {"role": "user", "content": message_content},
                            "parent_tool_use_id": None}) + "\n"
@@ -412,12 +428,66 @@ class ClaudeCodeSession:
             await proc.stdin.drain()
         except (BrokenPipeError, ConnectionResetError):
             pass        # it died; the stdout reader reports the exit and fails the turn
+        watch = asyncio.get_running_loop().create_task(self._watchdog(self._turn))
         try:
             return await asyncio.shield(self._turn)
         except asyncio.CancelledError:
             if not self._turn.done():       # our caller was cancelled: stop Claude too
                 await asyncio.shield(self.cancel())
             raise
+        finally:
+            watch.cancel()
+
+    # ---- G7: is this turn stuck? Real signals only, never a wall clock on the whole turn
+
+    def _tool_limit(self, name: str) -> float:
+        bare = name.split("mcp__mises__", 1)[-1]
+        t = getattr(getattr(self.runtime, "registry", None), "_tools", {}).get(bare)
+        timeout = getattr(t, "timeout_s", None) if name.startswith("mcp__mises__") else None
+        return (float(timeout) + TOOL_GRACE_S) if timeout else TOOL_LIMIT_S
+
+    def stuck(self, now: float) -> str | None:
+        """Why the open turn is stuck at `now` (loop time), or None. Not stuck while the stream
+        moves, while a tool runs within its limit, or while the run reports progress (a long
+        sim or render updating its activity)."""
+        proc = self._proc
+        if proc is None or proc.returncode is not None or self._turn is None or self._turn.done():
+            return None
+        quiet = now - (self.last_event if self.last_event is not None else now)
+        if self._open_tools:
+            over = [(n, now - t0) for n, t0 in self._open_tools.values()
+                    if now - t0 > self._tool_limit(n)]
+            if not over or quiet < STALL_S or self._progress_age(now) < STALL_S:
+                return None
+            name, age = over[0]
+            return f"the tool {name.split('mcp__mises__', 1)[-1]} hung ({age:.0f} s, no progress)"
+        if quiet < STALL_S:
+            return None
+        return f"Claude Code went quiet for {quiet:.0f} s with no tool running"
+
+    def _progress_age(self, now: float) -> float:
+        """Seconds since the run last reported activity (its tracker), on the loop clock."""
+        try:
+            t = self.runtime.activity_tracker(self.run_id)
+            last = getattr(t, "last_touch", None)
+        except Exception:  # noqa: BLE001
+            return float("inf")
+        if last is None:
+            return float("inf")
+        import time as _time
+        return max(0.0, _time.time() - last)
+
+    async def _watchdog(self, turn: asyncio.Future) -> None:
+        loop = asyncio.get_running_loop()
+        while not turn.done():
+            await asyncio.sleep(WATCH_TICK_S)
+            why = self.stuck(loop.time())
+            if why is None:
+                continue
+            log.warning("claude-code %s: stuck: %s", self.run_id, why)
+            self._stall = why
+            self._kill_group(signal.SIGKILL)       # the exit fails the turn: F9 recovers it
+            return
 
     async def lost_resume(self) -> bool:
         """Whether this `--resume` session died because Claude Code has no such conversation
@@ -598,6 +668,7 @@ class ClaudeCodeSession:
                     continue
                 if not line:
                     break
+                self.last_event = asyncio.get_running_loop().time()    # G7: the stream moves
                 if self._aborted:
                     continue
                 try:
@@ -648,6 +719,8 @@ class ClaudeCodeSession:
                else f"Claude Code exited (code {rc})")
         tail = self.stderr_tail
         cls = classify_claude_error(tail)
+        if self._stall is not None:          # G7: the watchdog ended a stuck turn
+            msg, cls = self._stall, {"kind": "stalled"}
         self._error(msg, failure=(cls or {}).get("kind") or "exit", stderr_tail=tail,
                     **(cls or {}))
         self._fail_turn(MisesError(ErrorCode.TOOL_FAILED, msg,
@@ -655,8 +728,22 @@ class ClaudeCodeSession:
                                    or "see the run's error step for Claude Code's stderr"))
         self._finish("failed")
 
+    def _track_tools(self, kind: str | None, msg: dict) -> None:
+        """G7: the tool calls in flight (a tool_use opens one, its tool_result closes it)."""
+        content = (msg.get("message") or {}).get("content")
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict):
+                continue
+            if kind == "assistant" and block.get("type") == "tool_use":
+                self._open_tools[str(block.get("id"))] = (str(block.get("name") or ""),
+                                                          asyncio.get_running_loop().time())
+            elif kind == "user" and block.get("type") == "tool_result":
+                self._open_tools.pop(str(block.get("tool_use_id")), None)
+
     def _on_message(self, msg: dict) -> None:
         kind = msg.get("type")
+        if kind in ("assistant", "user"):
+            self._track_tools(kind, msg)
         if not self._init_ok and kind in ("assistant", "stream_event", "user"):
             self._abort(f"{UNVERIFIED}: a {kind!r} message arrived before system/init")
             return

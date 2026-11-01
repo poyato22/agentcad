@@ -208,6 +208,8 @@ class ActivityTracker:
         self._think_pending: list[str] = []  # not yet published (coalesced)
         self._last_think = float("-inf")     # the first thinking delta always publishes
         self._last_db = float("-inf")        # last runs.last_activity_at write (throttled)
+        # G7: when the run last reported anything (a tool's progress too): the turn watchdog
+        self.last_touch: float | None = None
 
     def snapshot(self) -> dict | None:
         """The current state, for GET /runs/{id}'s `activity` field (None before the first)."""
@@ -239,6 +241,7 @@ class ActivityTracker:
 
     def set(self, state: str, detail: str = "", *, tokens_out: int | None = None) -> None:
         now = self._clock()
+        self.last_touch = now
         if tokens_out is not None:
             self._tokens_out = tokens_out
         if state != self.state or detail != self.detail:
