@@ -102,8 +102,9 @@ def _script(mech_id: str, key: str, recipe: str, kwargs: dict) -> str:
     for k, v in kwargs.items():
         if not re.fullmatch(r"[a-z_][a-z0-9_]*", k) or not ok(v):
             raise MisesError(ErrorCode.INVALID_INPUT, f"bad recipe argument {k!r}")
-    if not re.fullmatch(r"[a-z_][a-z0-9_]*", recipe):
-        raise MisesError(ErrorCode.INVALID_INPUT, f"bad recipe {recipe!r}")
+    from ..cad.recipes import recipe_names
+    if recipe not in recipe_names():
+        raise MisesError(ErrorCode.INVALID_INPUT, f"unknown recipe {recipe!r}")
     kw = json.dumps(kwargs, sort_keys=True)
     return (f"# Mises mechanism part: {mech_id} / {key}\n"
             f"# Built by ms.{recipe} (recipe_doc {recipe}); edit the arguments to resize.\n"
@@ -223,8 +224,7 @@ async def mech_insert(ctx: ToolContext, args: InsertArgs) -> ToolOutput:
     label = args.name or m.title
     group_id = _register(ctx, pid, plan, built, label, gid)
     jmap = joint_ids(plan, inst_ids)
-    lmap = {lp.key: f"{inst_ids[plan.root][:6]}_{lp.key}"[:52] for lp in plan.loops}
-    lmap = {lp.key: l.id for lp, l in zip(plan.loops, lps)}
+    lmap = {lp.key: lo.id for lp, lo in zip(plan.loops, lps)}
     record = {"mech_id": m.id, "title": label, "params": params, "at": args.at.model_dump(),
               "attach_to": args.attach_to, "instances": inst_ids, "joints": jmap,
               "loops": lmap, "parts": part_ids, "group_part": group_id,
@@ -486,8 +486,8 @@ def plan_options(a: PlanArgs) -> list[dict]:
         dia = max(float((it.get("dims") or {}).get(k) or 0) for k in
                   ("diameter_mm", "length_mm", "face_mm", "width_mm"))
         for mech, ratio, eff, extra_g, kind in _REDUCERS:
-            if a.self_locking and mech != "worm_drive" and perf.get("type") not in ("servo",):
-                continue
+            if a.self_locking and mech != "worm_drive":
+                continue                 # only a worm holds its load unpowered
             t_out = stall * ratio * eff
             if t_out < need:
                 continue

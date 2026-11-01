@@ -1116,6 +1116,18 @@ def _assembly_glb(path: Path, items) -> None:
     path.write_bytes(out)
 
 
+def _flat_step(b3, path: str):
+    """A part's STEP as one plain compound of its solids. A library assembly (a bd_warehouse
+    bearing: races + balls) comes back from STEP as nested located compounds that moving and
+    the booleans place wrongly (Plan 10 C2: a 608 off the origin reported 107 mm3 of phantom
+    overlap); its solids carry their placement, so a flat compound of them is the same part."""
+    shape = b3.import_step(path)
+    solids = shape.solids() if hasattr(shape, "solids") else []
+    if len(solids) > 1:
+        return b3.Compound(list(solids))
+    return shape
+
+
 def _assembly(job_path: Path, nonce: str) -> None:
     import build123d as b3
     from build123d import Location
@@ -1126,7 +1138,8 @@ def _assembly(job_path: Path, nonce: str) -> None:
     threshold = float(job.get("threshold", 0.01))
     tol = float(job.get("tolerance", 0.2))
 
-    loaded = [(it["name"], b3.import_step(it["step"]), it["transform"]) for it in job["instances"]]
+    loaded = [(it["name"], _flat_step(b3, it["step"]), it["transform"])
+              for it in job["instances"]]
     result: dict = {"nonce": nonce}
 
     if want == "sweep":
