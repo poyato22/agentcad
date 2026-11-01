@@ -4,8 +4,8 @@ four wheels on axles, a lidar on a fixed mount and a battery sitting loose in th
 
     cd core && uv run python ../app/test/fake-core/scenarios/glb/make_robot.py
 
-Writes robot_*.glb here and ../robot_parts.json (the parts with metrics) plus
-../robot_assembly.json (stored instances and joints in the core's shapes). Unlike the Pi case,
+Writes robot_*.glb here and ../robot/parts.json (the parts with metrics) plus
+../robot/assembly.json (stored instances and joints in the core's shapes). Unlike the Pi case,
 every part is modelled about its OWN origin: the assembly's transforms and joints place them.
 """
 import json
@@ -146,8 +146,8 @@ def main() -> None:
                 "mass_g": round(s.volume * 1.24e-3, 3),
             },
         })
-    (OUT.parent / "robot_parts.json").write_text(json.dumps(parts, indent=1) + "\n")
-    (OUT.parent / "robot_assembly.json").write_text(json.dumps(assembly(), indent=1) + "\n")
+    (OUT.parent / "robot" / "parts.json").write_text(json.dumps(parts, indent=1) + "\n")
+    (OUT.parent / "robot" / "assembly.json").write_text(json.dumps(assembly(), indent=1) + "\n")
 
 
 if __name__ == "__main__":

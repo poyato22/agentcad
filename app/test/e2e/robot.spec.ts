@@ -13,9 +13,9 @@ const PROJECT = (JSON.parse(readFileSync("test/fixtures/core-ui/projects.json", 
 
 export function robot(): Record<string, unknown> {
   const base = JSON.parse(readFileSync("test/fake-core/scenarios/base.json", "utf8")) as Record<string, unknown>;
-  const parts = (JSON.parse(readFileSync("test/fake-core/scenarios/robot_parts.json", "utf8")) as Record<string, unknown>[])
+  const parts = (JSON.parse(readFileSync("test/fake-core/scenarios/robot/parts.json", "utf8")) as Record<string, unknown>[])
     .map((p): Record<string, unknown> => ({ ...p, project_id: PROJECT }));
-  const stored = JSON.parse(readFileSync("test/fake-core/scenarios/robot_assembly.json", "utf8")) as Record<string, unknown>;
+  const stored = JSON.parse(readFileSync("test/fake-core/scenarios/robot/assembly.json", "utf8")) as Record<string, unknown>;
   const glb = Object.fromEntries(parts.map((p) => [p["part_id"] as string, `glb/${p["part_id"] as string}.glb`]));
   const tree = Object.fromEntries(parts.map((p) => [p["part_id"] as string, { label: p["label"], color: p["color"], order: p["order"] }]));
   return { ...base, script: [], parts, glb, builds: { tree }, assembly: { by_project: { [PROJECT]: stored }, interference: "none" } };
