@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import secrets
 import time
@@ -53,6 +54,8 @@ from . import sites as sites_mod
 from .search import RESULTS_MAX, results_from
 from .snapshot import (BLOCKED_STATUSES, SnapshotStore, blocked_reason, build, new_id, parse,
                        public)
+
+log = logging.getLogger(__name__)
 
 USER_AGENT = "Mises-agent-browser/0.1 (+parts lookup; GET only)"
 PAGE_TYPES = ("text/html", "application/xhtml+xml", "application/json", "application/ld+json",
@@ -544,12 +547,36 @@ def _catalog_source(ctx: ToolContext, args: ShowArgs) -> dict:
             "domain": _host(url) if url else None}
 
 
+async def _show_into_build(ctx: ToolContext, card: dict) -> None:
+    """E15: put a shown part into the build and the parts list. Best-effort — a failure never
+    fails the card. Sets card["part_id"] (catalog-backed) or card["item_id"] (shop page)."""
+    project = card.get("project_id")
+    if not project:
+        return
+    if card.get("catalog_id"):
+        try:
+            from ..catalog.tools import _catalog, insert_catalog_item
+            item = _catalog(ctx).get(card["catalog_id"])
+            out = await insert_catalog_item(ctx, item, project)
+            card["part_id"] = out["part_id"]
+        except Exception:  # noqa: BLE001
+            log.warning("could not insert shown catalog part", exc_info=True)
+        return
+    try:
+        from ..bom.tools import add_bought_from_card
+        if (ctx.services or {}).get("bom") is not None:
+            card["item_id"] = add_bought_from_card(ctx, card, project)["id"]
+    except Exception:  # noqa: BLE001
+        log.warning("could not add shown part to the parts list", exc_info=True)
+
+
 @tool("part_show", safety=SafetyClass.LOCAL_MUTATE,
       description="Put a part card in front of the user in the thread: name, price, vendor,"
                   " key specs and image, from a page you opened (snapshot_id) or a"
                   " parts-directory item (catalog_id). Fields you pass override what the page"
-                  " gave. Cards from a page are also saved to the parts directory, so the user"
-                  " can insert them. Use it for each component you choose.")
+                  " gave. The part is added to the build and the parts list automatically (a"
+                  " catalog part is inserted; a shop page becomes a bought row). Use it for each"
+                  " component you choose.")
 async def part_show(ctx: ToolContext, args: ShowArgs) -> ToolOutput:
     src = _snapshot_source(ctx, args) if args.snapshot_id else _catalog_source(ctx, args)
     over = {k: getattr(args, k) for k in ("name", "price", "currency", "vendor")
@@ -563,6 +590,10 @@ async def part_show(ctx: ToolContext, args: ShowArgs) -> ToolOutput:
                 project_id=run_project(ctx), catalog_backed=card.get("catalog_id") is not None,
                 created_at=time.time(), name=(card.get("name") or "part")[:200])
     _cards(ctx).add(card)
+    # E15: a shown part always ends up in the build and the parts list — no user buttons. A
+    # catalog-backed card is inserted into the build (its auto BOM row lists it); a plain shop
+    # page becomes a bought parts-list row referencing the card.
+    await _show_into_build(ctx, card)
     # the `part_shown` announcement comes from the Gate's announce mapper (U3c), which reads
     # data["card"]; that carries ids only: the card's text is page data
     ctx.events.publish(Event(type="part_shown", run_id=ctx.run_id, data=card))
@@ -575,7 +606,8 @@ async def part_show(ctx: ToolContext, args: ShowArgs) -> ToolOutput:
         summary=f"Showed the user part card {card['id']}"
                 + (f" (parts directory item {card['catalog_id']})" if card["catalog_backed"]
                    else "") + f"{price}. {UNTRUSTED}",
-        data={**ids, "card": ids,
+        data={**ids, "card": ids, "part_id": card.get("part_id"),
+              "item_id": card.get("item_id"),
               "untrusted_page_data": wrap_untrusted(json.dumps(shown, ensure_ascii=False),
                                                     card.get("domain") or "")})
 

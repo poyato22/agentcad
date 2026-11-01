@@ -290,6 +290,17 @@ async def opened(env, web):
     return (await env.call("web_open", {"url": PRODUCT})).data["snapshot_id"]
 
 
+async def test_part_show_inserts_into_build_and_lists_it(env, web):
+    # E15: a shown catalog-backed part is inserted into the build and listed in the BOM, with no
+    # user "insert" / "add to list" buttons
+    from mises.bom import view
+    sid = await opened(env, web)
+    out = await env.call("part_show", {"snapshot_id": sid})
+    assert out.data["part_id"]                                   # inserted into the build
+    items = view(env.store, env.bom, env.tmp, env.project, catalog=env.catalog)["items"]
+    assert any((i.get("catalog_id") or "").startswith("url_") for i in items)
+
+
 async def test_part_show_from_a_snapshot(env, web):
     sid = await opened(env, web)
     env.drained()
