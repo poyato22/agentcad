@@ -45,7 +45,7 @@ def _rows(store, home, pid):
 def test_density_comes_from_the_materials_table():
     assert mass.density_g_cm3("PLA") == 1.24
     assert mass.density_g_cm3("petg") == 1.27
-    assert mass.density_g_cm3("TPU") == 1.21          # only in the slicer's table
+    assert mass.density_g_cm3("TPU") == 1.22          # FWC I4: TPU is the table's TPU 95A
     assert mass.density_g_cm3("PA-CF") == 1.06         # only in the sim table
     assert mass.density_g_cm3("unobtainium") is None
 
@@ -307,21 +307,42 @@ def test_part_view_reads_only_the_part_and_its_subtree(store, tmp_path, build, m
 
 # ---- fix round 2
 
-def test_a_study_of_a_part_material_without_sim_data_is_refused(store, tmp_path, build):
+def _filament_without_sim_data(monkeypatch, name="PVA"):
+    """A slicer filament the sim table does not have (FWC I4 made TPU an alias of TPU 95A, so
+    no built-in filament lacks sim data any more)."""
+    import dataclasses
+
+    from mises.print import slicer
+    fil = dataclasses.replace(slicer.MATERIALS["TPU"])
+    monkeypatch.setitem(slicer.MATERIALS, name, fil)
+    return name
+
+
+def test_a_tpu_part_is_studied_as_tpu_95a(store, tmp_path, build):
+    from mises.sim import studies
+    _built(store, tmp_path, build, "boot", 10000.0, material="TPU")
+    ctx = SimpleNamespace(workdir=tmp_path, store=store, services={})
+    assert studies.resolve_material(None, studies.default_material(ctx, "boot"),
+                                    tmp_path).name == "TPU 95A"
+
+
+def test_a_study_of_a_part_material_without_sim_data_is_refused(store, tmp_path, build,
+                                                               monkeypatch):
     from mises.sim import studies
     from mises.sim.settings import MaterialSettings
     from mises.sim.types import SimError
-    _built(store, tmp_path, build, "boot", 10000.0, material="TPU")
+    pva = _filament_without_sim_data(monkeypatch)
+    _built(store, tmp_path, build, "boot", 10000.0, material=pva)
     ctx = SimpleNamespace(workdir=tmp_path, store=store, services={})
-    assert studies.default_material(ctx, "boot") == "TPU"           # never swapped for PLA
+    assert studies.default_material(ctx, "boot") == pva             # never swapped for PLA
     for ms in (None, MaterialSettings()):
         with pytest.raises(SimError) as e:
             studies.resolve_material(ms, studies.default_material(ctx, "boot"), tmp_path)
-        assert e.value.message == ("TPU has no simulation data; set a sim material for this "
+        assert e.value.message == (f"{pva} has no simulation data; set a sim material for this "
                                    "study or calibrate one")
         assert "PETG" in (e.value.hint or "")
     # an explicit material in the call is studied as asked
-    m = studies.resolve_material(MaterialSettings(name="PETG"), "TPU", tmp_path)
+    m = studies.resolve_material(MaterialSettings(name="PETG"), pva, tmp_path)
     assert m.name == "PETG"
     # a name nobody knows keeps the plain unknown-material error
     with pytest.raises(SimError) as e:
@@ -338,7 +359,7 @@ def test_design_review_weighs_max_mass_with_the_spec_check_mass(store, tmp_path,
     metrics = json.loads((tmp_path / "parts" / "boot" / "metrics.json").read_text())
     row = _metric_rows(spec, metrics, mass.part_mass(store, tmp_path, "boot", metrics))[0]
     checked = spec_report(tmp_path, Spec.model_validate(spec), "boot", store)["requirements"][0]
-    assert row["measured"] == checked["measured"] == pytest.approx(12.1)    # TPU 1.21
+    assert row["measured"] == checked["measured"] == pytest.approx(12.2)    # TPU 95A 1.22
     # the verdict bands stay each tool's own (design_review warns on a near-miss below target,
     # like its stress rows); the mass they judge is the one number
     assert row["note"].startswith("the part's mass: ") and "TPU" in row["note"]

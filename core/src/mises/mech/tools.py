@@ -449,6 +449,7 @@ async def mech_check(ctx: ToolContext, args: CheckArgs) -> ToolOutput:
     store = atools._store(ctx)
     asm = store.get(pid)
     results: list[dict] = []
+    notes: list[str] = []
     rec = None
     if args.group:
         try:
@@ -482,15 +483,18 @@ async def mech_check(ctx: ToolContext, args: CheckArgs) -> ToolOutput:
             "registry")
         if registry is not None and getattr(registry, "get", None) and _has(registry,
                                                                             "dyn_rom_sweep"):
-            results.append(_check("rom_sweep", "warn", "dyn_rom_sweep (dynamics) is available: "
-                                  "run it for a fast multi-joint sweep; the kinematic sweep "
-                                  "below covers each input alone"))
+            # FWC M6: a pointer, not a finding: a fully passing check stays 0 warn
+            notes.append("dyn_rom_sweep (dynamics) is available: run it for a fast "
+                         "multi-joint sweep; the kinematic sweep here covers each input alone")
         results += await _rom_sweep(ctx, pid, asm, rec, args.steps)
     n = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "warn", "fail")}
     return ToolOutput(summary=f"mech_check: {n['fail']} fail, {n['warn']} warn, "
                               f"{n['pass']} pass" + (f" (group {args.group})" if args.group
-                                                     else " (all joints)"),
-                      data={"results": results, "counts": n}, step_kind=StepKind.MEASURE)
+                                                     else " (all joints)")
+                              + (f". Note: {' '.join(notes)}" if notes else ""),
+                      data={"results": results, "counts": n,
+                            **({"notes": notes} if notes else {})},
+                      step_kind=StepKind.MEASURE)
 
 
 async def _health_check(ctx: ToolContext, pid: str, rec: dict) -> dict:

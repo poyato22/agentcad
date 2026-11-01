@@ -74,18 +74,7 @@ user approves the sketch or skips it. `mixed`: your first deliverable is one `co
 `concept_sketch` (parent_sketch_id = the marked version) that addresses every numbered mark.
 - Later, pitch again only for a genuinely open look decision (e.g. the head), at most 2 options.
 
-## Engineering checks (anything with moving parts)
-- At the skeleton stage, before skins: `actuator_size`, `electronics_estimate` (reserve: true, \
-into the enclosure) and `power_budget`.
-- Before you report done: `dyn_torque` on a representative motion, `dyn_stability`, \
-`dyn_rom_sweep`, `dyn_to_fem` on the most loaded links, and `assembly_health` when it exists; \
-revise until they pass. Give every moving joint an actuator (an unjudged joint does not pass). \
-`dyn_to_fem` runs in the background: `job_wait` its job and read the safety factors before you \
-claim done. `engineering_checks` shows what is missing, failing or stale. State the \
-margins (torque % of stall, stability margin, link safety factors, runtime) in your final \
-message: a turn that ends with checks missing gets a warning.
-
-## Tell the user
+{engineering}## Tell the user
 - Mises shows a card whenever a part is created, an agent is spawned, or something is added to \
 the assembly or the parts list. Still say it in one short line ("Spawned designer: Design motor \
 mount.").
@@ -98,11 +87,30 @@ enclosure, clearances), present `present_view` kind `section_sweep` on the build
 {{axis}}): a cut sweeps through the assembly once, then the user drags it.
 """
 
+#: the engineering pipeline, for a routed agent whose own body does not already give it (the
+#: engineer's "Engineering checks: practical engineering first" section does: FWC M4)
+LEAD_ENGINEERING = """## Engineering checks (anything with moving parts)
+- At the skeleton stage, before skins: `actuator_size`, `electronics_estimate` (reserve: true, \
+into the enclosure) and `power_budget`.
+- Before you report done: `dyn_torque` on a representative motion, `dyn_stability`, \
+`dyn_rom_sweep`, `dyn_to_fem` on the most loaded links, and `assembly_health` when it exists; \
+revise until they pass. Give every moving joint an actuator (an unjudged joint does not pass). \
+`dyn_to_fem` runs in the background: `job_wait` its job and read the safety factors before you \
+claim done. `engineering_checks` shows what is missing, failing or stale. State the \
+margins (torque % of stall, stability margin, link safety factors, runtime) in your final \
+message: a turn that ends with checks missing gets a warning.
+
+"""
+#: the tools a body must name for its own engineering section to stand in for LEAD_ENGINEERING
+ENGINEERING_MARKERS = ("actuator_size", "electronics_estimate", "power_budget", "dyn_torque",
+                       "dyn_stability", "dyn_rom_sweep", "dyn_to_fem", "engineering_checks")
+
 #: the assembly steps, for a routed agent whose own body does not already give them (the
 #: engineer's "Assemble" section does): the ordering guidance appears once in a lead's prompt
 LEAD_ASSEMBLY = """
 ## The assembly
-- A new part lands in the assembly by itself (beside the others, or at its skeleton slot); \
+- A new part lands in the assembly by itself (at its skeleton slot, else next to its related \
+parts or near the others); \
 `assembly_add_part` on it then joins that same instance where it really goes. A throwaway test \
 piece: create it with `place: false`. Delete a part you no longer need with `part_delete`.
 - When you build a system, bring every part into the assembly with `assembly_add_part`: the \
@@ -121,7 +129,9 @@ def lead_definition(defn: AgentDefinition) -> AgentDefinition:
     (every prompt path carries it); delegation on Claude Code is in its tool-only section."""
     tools = None if defn.tools is None else list(dict.fromkeys([*defn.tools, *LEAD_TOOLS]))
     has_assembly = "assembly_animate" in defn.body and "assembly_check" in defn.body
-    lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY)
+    has_engineering = all(m in defn.body for m in ENGINEERING_MARKERS)
+    lead = LEAD_PROMPT.format(assembly="" if has_assembly else LEAD_ASSEMBLY,
+                              engineering="" if has_engineering else LEAD_ENGINEERING)
     return defn.model_copy(update={"tools": tools,
                                    "body": defn.body.rstrip() + "\n\n" + lead})
 
@@ -183,13 +193,52 @@ def _spent(rt: Runtime, lead: AgentRun) -> bool:
     """A lead so broken that a new message could only fail again, so submit replaces it (E20).
     A busy lead keeps its queue. A Claude Code lead is never spent: its session resumes and its
     dollar window resets on the next message. The dollar cap alone never retires a lead either
-    (new_user_turn -> budget.start_turn opens a fresh window on the next message); only a native
-    run left `failed`, with no turn to resume, is replaced."""
+    (new_user_turn -> budget.start_turn opens a fresh window on the next message), nor does any
+    limit stop (budget / max_turns / circuit_open, see `stopped`); only a native run that
+    crashed (`failed` on an error) is replaced."""
     if rt.lead_queues.get(lead.id) or rt.run_busy(lead.id):
         return False
     if rt._is_claude_run(lead.id):
         return False
-    return lead.status == "failed"
+    return lead.status == "failed" and not stopped(rt, lead.id)
+
+
+#: loop stop reasons that end a turn on a limit, leaving the thread whole: the run's status is
+#: `failed` (the app's status set), but the next user message resumes it (E20) - a new user turn
+#: opens fresh dollar / turn / circuit windows. Anything else (`error`, a crash, interrupted) is
+#: a crash.
+STOP_REASONS = ("budget", "max_turns", "circuit_open")
+
+
+def stopped(rt_or_store, run_id: str) -> bool:
+    """Did this `failed` run stop on a limit (resumable) rather than crash? The live run's last
+    result says so exactly (native leads live in this process); else its last ERROR step after
+    its last user message (the loop's `_stop` writes {stop_reason, ...})."""
+    st = (getattr(rt_or_store, "_runs", None) or {}).get(run_id)
+    if st is not None and getattr(st, "result", None) is not None:
+        return st.result.stop_reason in STOP_REASONS
+    store = getattr(rt_or_store, "store", rt_or_store)
+    last_user = 0
+    for step in store.steps(run_id, [StepKind.MESSAGE]):
+        if (step.payload or {}).get("role") == "user":
+            last_user = step.id
+    errors = store.steps(run_id, [StepKind.ERROR], after_id=last_user)
+    return bool(errors) and (errors[-1].payload or {}).get("stop_reason") in STOP_REASONS
+
+
+def _inherited_ref(rt: Runtime, lead: AgentRun) -> str | None:
+    """The retired lead's model for its replacement, when it still resolves. A ref that no
+    longer resolves (its API key is gone) is dropped, so the replacement takes the implicit
+    default path and its E34 Claude Code fallback instead of failing on the same missing key."""
+    ref = f"{lead.provider}/{lead.model}"
+    from ..claude_code.session import model_alias
+    if model_alias(ref) is not None:
+        return ref
+    try:
+        rt._resolve_provider(ref, rt.profile())
+    except MisesError:
+        return None
+    return ref
 
 
 def _covers(wide, narrow) -> bool:
@@ -566,7 +615,7 @@ async def submit(rt: Runtime, prompt: str, *, project_id: str, model_ref: str | 
             # thread (E20), so the user does not lose the agent they were talking to
             rt.store.update_run(lead.id, archived=True)
             if model_ref is None:
-                model_ref = f"{lead.provider}/{lead.model}"
+                model_ref = _inherited_ref(rt, lead)
             first_context = _retire_context(rt, lead)
         rid = await rt.start_run(routed.agent, prompt, model_ref=model_ref,
                                  edit_scope=edit_scope, read_scope=read_scope,
@@ -665,6 +714,19 @@ def nearby_hole(home: Path, part_id: str, point: list[float]) -> str | None:
     return f"Ø{_num(dia)} hole, {_num(gap)} mm away" if gap > 0 else f"on the Ø{_num(dia)} hole"
 
 
+def _world_of(rt: Runtime, project_id: str, inst, point: list[float]) -> list[float] | None:
+    """A part-frame point in assembly (world) mm through the instance's solved pose; None when
+    the pose cannot be solved."""
+    from ..assembly.geometry import face_resolver
+    from ..assembly.solve import solve, transform_point
+    try:
+        asm = rt.assembly_store.get(project_id)
+        tf = solve(asm, resolve_face=face_resolver(rt.home / "parts")).transforms.get(inst.id)
+        return list(transform_point(tf or inst.transform, [float(c) for c in point]))
+    except Exception:  # noqa: BLE001 - a broken joint: no world point rather than a wrong one
+        return None
+
+
 def feedback_message(location: dict, text: str, nonce: str | None = None) -> str:
     """The lead's message: one line of framing, then the user's note and the clicked location
     as one nonce-delimited JSON block (JSON escapes "<", so nothing inside can close it)."""
@@ -703,8 +765,12 @@ async def submit_feedback(rt: Runtime, project_id: str, *, part_id: str, point: 
         if inst is None or inst.part_id != part_id:
             raise MisesError(ErrorCode.NOT_FOUND,
                              f"no instance {instance_id!r} of {part_id!r} in this build's assembly")
-        location.update(instance_id=instance_id, instance=inst.name,
-                        world_point=[round(float(c), 4) for c in (world_point or point)])
+        location.update(instance_id=instance_id, instance=inst.name)
+        # FWC: never the part-local point under the world label; with no world_point from the
+        # app, the instance's solved pose maps the point (omitted when it cannot be worked out)
+        wp = world_point if world_point is not None else _world_of(rt, project_id, inst, point)
+        if wp is not None:
+            location["world_point"] = [round(float(c), 4) for c in wp]
     msg = feedback_message(location, text)
     pin = {**location, "text": text}
     # the thread shows the note (plus the pin chip from `feedback`), never the wrapped block

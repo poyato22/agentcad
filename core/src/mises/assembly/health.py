@@ -7,7 +7,9 @@ and replaces them with the real interference volumes.
 A health report is {ok, overlaps, stray, floating, extents, summary}:
 - overlaps: pairs whose world AABBs intersect by more than a tolerance (likely collisions);
 - stray:   instances whose centre is far outside the cluster (a part left beside the model);
-- floating: instances with no joint connecting them to the rest (nothing holds them in place);
+- floating: instances with no joint or contact connecting them to the rest (nothing holds
+  them in place); two parts whose boxes touch (within CONTACT_GAP_MM) count as in contact, so a
+  static assembly of parts that only rest on each other is not floating (FWC M9);
 - extents: the whole assembly's world AABB.
 """
 from __future__ import annotations
@@ -18,6 +20,8 @@ import statistics
 STRAY_K = 3.0
 # AABB overlaps smaller than this (mm^3) are ignore-worthy numerical touching, not a clash
 OVERLAP_TOL_MM3 = 1.0
+# two world boxes this close (mm, on every axis) touch: a contact that holds a part in place
+CONTACT_GAP_MM = 0.5
 
 
 def _corners(bbox: dict) -> list[list[float]]:
@@ -50,14 +54,21 @@ def _overlap_volume(a: tuple[list[float], list[float]],
     return vol
 
 
-def _grounded_component(instance_ids: list[str], joints: list) -> set[str]:
-    """The ids reachable through joints from the base (the first instance): everything the
-    assembly's joint graph holds together."""
+def _touch(a: tuple[list[float], list[float]], b: tuple[list[float], list[float]],
+           gap: float) -> bool:
+    return all(a[0][ax] <= b[1][ax] + gap and b[0][ax] <= a[1][ax] + gap for ax in range(3))
+
+
+def _grounded_component(instance_ids: list[str], joints: list,
+                        contacts: list[tuple[str, str]] = ()) -> set[str]:
+    """The ids reachable through joints or contacts from the base (the first instance):
+    everything the assembly's joints and touching parts hold together."""
     if not instance_ids:
         return set()
     adj: dict[str, set[str]] = {i: set() for i in instance_ids}
-    for j in joints:
-        a, b = getattr(j.a, "instance_id", None), getattr(j.b, "instance_id", None)
+    pairs = [(getattr(j.a, "instance_id", None), getattr(j.b, "instance_id", None))
+             for j in joints] + list(contacts)
+    for a, b in pairs:
         if a in adj and b in adj:
             adj[a].add(b)
             adj[b].add(a)
@@ -73,7 +84,8 @@ def _grounded_component(instance_ids: list[str], joints: list) -> set[str]:
 
 def health(instances: list, transforms: dict[str, list[list[float]]],
            bboxes: dict[str, dict], *, stray_k: float = STRAY_K,
-           overlap_tol_mm3: float = OVERLAP_TOL_MM3, joints: list | None = None) -> dict:
+           overlap_tol_mm3: float = OVERLAP_TOL_MM3, joints: list | None = None,
+           contact_gap_mm: float = CONTACT_GAP_MM) -> dict:
     """A bbox-only health report for the placed instances. `bboxes` maps part_id -> its
     metrics bbox ({min,max,size}); instances with no bbox or no solved transform are skipped
     (not yet built), but still counted as floating when no joint holds them."""
@@ -109,7 +121,9 @@ def health(instances: list, transforms: dict[str, list[list[float]]],
                     stray.append({"instance": names.get(i, i), "instance_id": i,
                                   "distance_mm": round(d, 2)})
 
-    grounded = _grounded_component([i.id for i in instances], joints or [])
+    contacts = [(a, b) for i, a in enumerate(ids) for b in ids[i + 1:]
+                if _touch(boxes[a], boxes[b], contact_gap_mm)]
+    grounded = _grounded_component([i.id for i in instances], joints or [], contacts)
     floating = [{"instance": names.get(i.id, i.id), "instance_id": i.id}
                 for i in instances[1:] if i.id not in grounded]
 
@@ -154,5 +168,5 @@ def warnings_from(report: dict) -> list[str]:
         out.append(f"{s['instance']} sits {s['distance_mm']} mm from the rest; mate it where it "
                    "belongs")
     for f in report["floating"]:
-        out.append(f"{f['instance']} has no joint holding it; add a joint")
+        out.append(f"{f['instance']} has no joint or contact holding it; add a joint")
     return out

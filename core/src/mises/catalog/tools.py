@@ -292,13 +292,14 @@ async def _auto_place(ctx: ToolContext, part_id: str, project: str | None) -> No
     if asm is None or store is None or not project or ui_call_meta(ctx) is not None:
         return
     try:
-        from ..assembly.autoplace import auto_place
+        from ..assembly.autoplace import auto_place, related_parts
         from ..projects import display_name
         row = store.get_part(part_id)
         if row is None:
             return
         inst = await asyncio.to_thread(auto_place, asm, Path(ctx.workdir) / "parts", project,
-                                       part_id, display_name(row))
+                                       part_id, display_name(row),
+                                       related=related_parts(store, part_id))
         if inst is not None and getattr(ctx, "events", None) is not None:
             ctx.events.publish(Event(type="assembly_changed", data={"project_id": project}))
         if inst is not None:

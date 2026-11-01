@@ -185,7 +185,7 @@ async def test_turn_end_schedules_review_only_for_a_changed_root(rt, monkeypatch
     sub = rt.store.create_run("designer", "fake", "m", "t", parent_id=root.id, project_id=pid)
     ran = []
 
-    async def after(run_id, text):
+    async def after(run_id, text, pid=None):
         ran.append(run_id)
     monkeypatch.setattr(rt, "_after_turn", after)
     ok = RunResult(final_text="Done", messages=[], stop_reason="end_turn")

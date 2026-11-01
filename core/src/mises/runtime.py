@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import json
 import logging
 import os
 import re
@@ -113,6 +114,12 @@ def _public_log(user_log: dict | None) -> dict | None:
         return user_log
     rest = {k: v for k, v in user_log.items() if k != CLASSIFY}
     return rest or None
+
+
+def _warning_key(payload: dict) -> str:
+    """What a turn-end engineering warning says (its check lists), to tell a repeat (FWC M5)."""
+    keep = ("missing", "failing", "stale", "running", "unchecked", "project_id", "warning")
+    return json.dumps({k: payload.get(k) for k in keep}, sort_keys=True, default=str)
 
 
 def tools_withheld_for(model_ref: str) -> frozenset[str]:
@@ -302,9 +309,13 @@ class Runtime:
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
         self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
+        # FWC M5: the last turn-end engineering warning each run got, so an unchanged pipeline
+        # (a Q&A turn that changed nothing) does not repeat it every turn
+        self._warned: dict[str, str] = {}
         # E33: root run id -> the build whose assembly its turn changed; the render waiting for
         # its next tool result; the turn-end review tasks (awaited by tests)
         self.assembly_touched: dict[str, str] = {}
+        # FWC M7: run id -> [stored at (monotonic s), images, turn starts seen since]
         self.pending_assembly_images: dict[str, list] = {}
         self._after_turn_tasks: set[asyncio.Task] = set()
         self._external_slots: dict[str, tuple[asyncio.Future[bool] | None, dict]] = {}
@@ -1459,7 +1470,9 @@ class Runtime:
             return
         from .engineering.pipeline import finish_report
         got = finish_report(self, run_id)
-        if got is not None:
+        if got is None:
+            self._warned.pop(run_id, None)       # clear now: a later regression warns again
+        elif self._warned.get(run_id) != _warning_key(got[1]):
             self._turn_warning(run_id, *got)
 
     def _turn_warning(self, run_id: str, text: str, payload: dict,
@@ -1467,6 +1480,7 @@ class Runtime:
         """The single finish-check step of a turn (VERIFY, kind engineering_checks) and its
         engineering_warning event; `health` adds the E33 assembly findings to both."""
         body = {**payload, "warning": text, **({"assembly_health": health} if health else {})}
+        self._warned[run_id] = _warning_key(payload)
         with contextlib.suppress(Exception):
             self.store.append_step(run_id, StepKind.VERIFY, body)
         self.events.publish(Event(type="engineering_warning", run_id=run_id, data={
@@ -1832,6 +1846,7 @@ class Runtime:
         A message that joins a turn still running is not a new turn: nothing resets."""
         from .cad.views import reset_loop
         reset_loop(run_id)
+        self._age_pending_images(run_id)
         self.note_turns.pop(run_id, None)        # the user is back: notes may start turns again
         self.note_hold.discard(run_id)
         try:
@@ -1960,9 +1975,28 @@ class Runtime:
             return
         self.assembly_touched[root] = project_id
 
+    #: a whole-assembly render waiting for the lead's next tool result is dropped after this
+    #: long (FWC M7: never attached to an unrelated result much later)
+    PENDING_IMAGES_TTL_S = 300.0
+
     def take_assembly_images(self, run_id: str) -> list:
-        """The whole-assembly render waiting for this run's next tool result (Gate)."""
-        return self.pending_assembly_images.pop(run_id, [])
+        """The whole-assembly render waiting for this run's next tool result (Gate): [] once it
+        is older than PENDING_IMAGES_TTL_S or a turn after the one it was meant for began."""
+        got = self.pending_assembly_images.pop(run_id, None)
+        if not got:
+            return []
+        at, images, _turns = got
+        return images if time.monotonic() - at <= self.PENDING_IMAGES_TTL_S else []
+
+    def _age_pending_images(self, run_id: str) -> None:
+        """A new turn starts: the render waits for this turn's tool calls only (its first use is
+        the turn right after the review); a second turn start drops it (FWC M7)."""
+        got = self.pending_assembly_images.get(run_id)
+        if got is None:
+            return
+        got[2] += 1
+        if got[2] > 1:
+            self.pending_assembly_images.pop(run_id, None)
 
     def _schedule_after_turn(self, run_id: str, result: RunResult) -> bool:
         """Start the E33 review of a root turn that changed the assembly; True when started
@@ -1975,18 +2009,23 @@ class Runtime:
             loop = asyncio.get_running_loop()
         except (KeyError, RuntimeError):
             return False
-        task = loop.create_task(self._after_turn(run_id, result.final_text))
+        # taken now, not when the task runs: a new turn's own change is never consumed by this
+        # review (FWC M7 race)
+        pid = self.assembly_touched.pop(run_id)
+        task = loop.create_task(self._after_turn(run_id, result.final_text, pid))
         self._after_turn_tasks.add(task)
         task.add_done_callback(self._after_turn_tasks.discard)
         return True
 
-    async def _after_turn(self, run_id: str, final_text: str | None) -> None:
+    async def _after_turn(self, run_id: str, final_text: str | None,
+                          pid: str | None = None) -> None:
         """E33 turn-end review of a turn that changed the assembly: the health report with real
         interference volumes and a whole-assembly render (problem parts tinted). When the agent
         reported the work done while the health has errors, a visible warning step and a system
         note (with the render) tell it to fix them — the user is never blocked. Otherwise the
         render rides along with the agent's next tool result. Never raises."""
-        pid = self.assembly_touched.pop(run_id, None)
+        if pid is None:
+            pid = self.assembly_touched.pop(run_id, None)
         if pid is None:
             return
         from .assembly import review
@@ -2011,7 +2050,7 @@ class Runtime:
             self._turn_warning(run_id, text, payload, info)
         if not bad:
             if images:
-                self.pending_assembly_images[run_id] = images
+                self.pending_assembly_images[run_id] = [time.monotonic(), images, 0]
             return
         from .orchestrator.lead import deliver_note
         await deliver_note(self, run_id, review.fix_note(report),
@@ -2040,16 +2079,28 @@ class Runtime:
             return str(pl["text"]), (log if set(log) - {"text"} else None)
         return None
 
+    #: how long retry waits for a stalled turn it cancelled to wind down (FWC M3)
+    RETRY_CANCEL_WAIT_S = 10.0
+
     async def retry_last(self, run_id: str) -> dict:
         """E9: re-send the run's last user turn after an error or a stall. A Claude Code run
-        resumes its session; a native run continues in place."""
+        resumes its session; a native run continues in place. A turn reported stalled
+        (`run_stalled`) is cancelled first, so Retry works in exactly the stalled state; a turn
+        that is busy and not stalled is refused (it is still working)."""
         try:
             self.store.get_run(run_id)
         except KeyError:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        if self.run_busy(run_id) and run_id in self._stalled:
+            self.cancel(run_id)
+            deadline = time.monotonic() + self.RETRY_CANCEL_WAIT_S
+            while self.run_busy(run_id) and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+            self._stalled.discard(run_id)
         if self.run_busy(run_id):
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
-                             hint="wait for it to finish or cancel it")
+                             hint="wait for it to finish or cancel it (a stalled turn is "
+                                  "cancelled by retry)")
         turn = self._last_user_turn(run_id)
         if turn is None:
             raise MisesError(ErrorCode.INVALID_INPUT, "this run has no message to retry",

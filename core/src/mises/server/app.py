@@ -20,7 +20,7 @@ import tempfile
 import threading
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import anyio
 import uvicorn
@@ -28,7 +28,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp, StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from starlette.datastructures import Headers
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -191,11 +191,15 @@ class NewExternalRun(BaseModel):
     project_id: str | None = None  # the build; the active build is used when omitted
 
 
+#: E9 `edits`: the edited user step's id (a step id, so short); FWC M2 bounds it
+EditsRef = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_.:-]{1,64}$")]
+
+
 class Text(BaseModel):
     text: str
     # E9: when this message edits an earlier one, the edited user step's id; the new turn
     # references it so the app can mark the old message as edited
-    edits: str | None = None
+    edits: EditsRef | None = None
 
 
 class ImageIn(BaseModel):
@@ -207,7 +211,7 @@ class ChatBody(BaseModel):
     """E24: one message to the build's lead (the only way the app talks to a build)."""
     text: str
     images: list[ImageIn] = Field(default_factory=list, max_length=8)
-    edits: str | None = None
+    edits: EditsRef | None = None
 
 
 class Resume(BaseModel):
@@ -218,6 +222,27 @@ class Decision(BaseModel):
     payload_hash: str
     approve: bool
     edited_payload: dict | None = None
+
+
+def _edited_prompt(runtime, text: str, edits: str | None) -> str:
+    """E9 / FWC M2: what the agent reads for an edited message: the new text, told that it
+    replaces an earlier message (quoted when that step is the user's), so it answers this
+    version rather than treating it as a second request. The stored step keeps the plain text
+    (the log override) and the `edits` reference for the app."""
+    if not edits:
+        return text
+    earlier = ""
+    try:
+        step = runtime.store.get_step(int(edits))
+        p = step.payload or {}
+        if p.get("role") == "user" and isinstance(p.get("text"), str):
+            old = p["text"]
+            earlier = f': "{old[:300]}{"…" if len(old) > 300 else ""}"'
+    except (KeyError, ValueError, TypeError, AttributeError):
+        pass
+    return (f"[The user edited their earlier message (step {edits}){earlier}. This message "
+            "replaces it: answer this version and drop work that only the earlier wording "
+            f"asked for.]\n\n{text}")
 
 
 def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
@@ -442,7 +467,8 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         prof = load_profile(runtime.home)
         images = [(i.media_type, i.data_b64) for i in body.images] or None
         log = {"text": body.text, "edits": body.edits} if body.edits else None
-        out = await _lead.submit(runtime, body.text, project_id=pid,
+        out = await _lead.submit(runtime, _edited_prompt(runtime, body.text, body.edits),
+                                 project_id=pid, route_text=body.text if body.edits else None,
                                  default_agent=prof.default_agent, images=images, log=log)
         return {**out, "routed": out["routed"].model_dump()}
 
@@ -450,7 +476,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     async def message(run_id: str, body: Text):
         _run(run_id)
         log = {"text": body.text, "edits": body.edits} if body.edits else None
-        await runtime.send(run_id, body.text, log=log)
+        await runtime.send(run_id, _edited_prompt(runtime, body.text, body.edits), log=log)
         return {"ok": True}
 
     @app.delete("/runs/{run_id}/queue/{message_id}")

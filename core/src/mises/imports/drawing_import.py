@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -342,8 +343,14 @@ def _checked_image(job: Path, name: str) -> tuple[bytes, str, list[int]] | None:
     return data, ext, [w, h]
 
 
-def _vision_check(runtime: Runtime, model_ref: str | None) -> None:
+async def _vision_check(runtime: Runtime, model_ref: str | None) -> None:
     from ..claude_code.session import model_alias
+    if model_ref is None:
+        # E34 / FWC M8: warm the Claude Code sign-in cache, so the default resolves to the
+        # user's Claude Code (not a key-less Anthropic default) after a cold start or a
+        # forget_claude_status()
+        with contextlib.suppress(Exception):
+            await runtime.claude_status_cached()
     defn = runtime.definitions.get(AGENT)
     ref = runtime.model_ref_for(defn, model_ref)
     if model_alias(ref) is not None:
@@ -364,7 +371,7 @@ async def start_import(runtime: Runtime, raw: bytes, *, file_name: str,
     if thickness_mm is not None and not (0 < thickness_mm <= 1000):
         raise _bad("thickness_mm must be between 0 and 1000")
     if kind in ("pdf", "png", "jpeg"):
-        _vision_check(runtime, model_ref)        # refused before anything is stored
+        await _vision_check(runtime, model_ref)  # refused before anything is stored
     iid = "imp_" + secrets.token_hex(6)
     d = Path(runtime.home) / "imports" / iid
     work = d / "work"

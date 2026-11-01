@@ -453,6 +453,22 @@ async def test_assembly_pin_names_the_instance_and_its_world_point(home):
     await rt.aclose()
 
 
+async def test_assembly_pin_without_world_point_maps_the_point_through_the_pose(home):
+    """FWC (A3 minor): with no world_point from the app, the part-local point is never labelled
+    world_point: the instance's pose maps it."""
+    rt = make(home, RoleProvider(engineer=[text("noted")]))
+    pid = rt.active_project_id()
+    rt.store.register_part("plate", pid, label="Base plate")
+    tf = [[1, 0, 0, 100], [0, 1, 0, 0], [0, 0, 1, 5], [0, 0, 0, 1]]
+    inst = rt.assembly_store.add_instance(pid, Instance(part_id="plate", name="left plate",
+                                                        transform=tf, fixed=True))
+    out = await lead_mod.submit_feedback(rt, pid, part_id="plate", point=[1, 2, 3], text="x",
+                                         instance_id=inst.id)
+    pin = rt.store.get_step(out["step_id"]).payload["feedback"]
+    assert pin["point"] == [1, 2, 3] and pin["world_point"] == [101, 2, 8]
+    await rt.aclose()
+
+
 def test_assembly_pin_route_validates_the_world_point(home):
     rt = make(home, RoleProvider(engineer=[text("noted")]))
     with TestClient(create_app(rt, TOKEN)) as client:

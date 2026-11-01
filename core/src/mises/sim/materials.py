@@ -241,15 +241,15 @@ class Material:
 
 MATERIALS: dict[str, Material] = {m.name: m for m in [
     Material("PLA", 2300.0, 0.35, 51.0, 1.24, 55.0, "Prusament PLA TDS v1.1 (printed, horizontal)",
-             0.13, 6.8e-5),
+             0.13, 6.8e-5, cost_per_kg=22.0),
     Material("PETG", 1500.0, 0.38, 47.0, 1.27, 68.0, "Prusament PETG TDS v1.1 (printed, horizontal)",
-             0.20, 6.0e-5),
+             0.20, 6.0e-5, cost_per_kg=25.0),
     Material("ABS", 1900.0, 0.35, 35.0, 1.04, 80.0, "generic FDM ABS, typical TDS low end (approximate)",
-             0.17, 9.0e-5),
+             0.17, 9.0e-5, cost_per_kg=22.0),
     Material("ASA", 2000.0, 0.35, 40.0, 1.07, 90.0, "generic FDM ASA, typical TDS low end (approximate)",
-             0.17, 9.5e-5),
+             0.17, 9.5e-5, cost_per_kg=28.0),
     Material("PA-CF", 3860.0, 0.35, 64.0, 1.06, 170.0, "Bambu PAHT-CF TDS v2 (X-Y modulus, Z strength)",
-             0.30, 4.0e-5),
+             0.30, 4.0e-5, cost_per_kg=60.0),
 ]}
 
 # Plan 10 E32: knock-down follows the process (FDM 0.7, SLS/MJF 0.85, stock 1.0)
@@ -338,9 +338,15 @@ _KEEP = ("name", "e_mpa", "nu", "yield_mpa", "density_g_cm3", "hdt_c", "source",
 _KEEP_OPTIONAL = ("e_z_mpa", "z_strength_mpa", "sn_a_mpa", "sn_b")  # saved only when set
 
 
+#: common short names for a table material (lower-case -> the table's name): "TPU" is what the
+#: prompts and the slicer call TPU 95A
+ALIASES = {"tpu": "TPU 95A"}
+
+
 def get_material(name: str, home: Path | None = None) -> Material:
     """A built-in material, or (with home) a custom one saved from the material editor."""
     key = (name or "").strip().lower()
+    key = ALIASES.get(key, key).lower()
     for k, m in MATERIALS.items():
         if k.lower() == key:
             return m

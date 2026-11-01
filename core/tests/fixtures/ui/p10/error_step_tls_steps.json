@@ -1,35 +1,35 @@
 [
   {
     "id": 10,
-    "run_id": "6946132d5c72",
-    "ts": 1793525847.651048,
+    "run_id": "695e48b3296b",
+    "ts": 1793534633.824158,
     "kind": "decision",
     "payload": {
       "claude_code": "cost_unknown",
       "note": "the result reported no total_cost_usd; counted as $0 toward the dollar cap",
       "source": "claude-code"
     },
-    "evidence_hash": "0790a528a8d914c073f436f81f12221d6fc52a6561608122e8eee57a9569b42c",
+    "evidence_hash": "b8aed62a074e98de9bef140b879c970385d09aa10045cb3519e0671b7ff4f5a8",
     "prev_hash": null,
     "collapsed": false,
     "stream": "text"
   },
   {
     "id": 11,
-    "run_id": "6946132d5c72",
-    "ts": 1793525847.651254,
+    "run_id": "695e48b3296b",
+    "ts": 1793534633.824339,
     "kind": "error",
     "payload": {
       "cause": "Claude Code could not verify the TLS certificate on the way to Anthropic.",
       "code": "tool_failed",
-      "hint": "A VPN or proxy that filters HTTPS (e.g. a corporate or Windscribe CA) is likely intercepting the connection. Start Mises from a terminal with NODE_EXTRA_CA_CERTS set to your CA bundle, or set it in Profile → Claude Code.",
+      "hint": "A VPN or proxy that filters HTTPS (e.g. a corporate or Windscribe CA) is likely intercepting the connection. Set NODE_EXTRA_CA_CERTS to your CA bundle in Profile & settings → Claude Code → Network (or turn the VPN's HTTPS filtering off), then retry.",
       "kind": "tls",
       "message": "Claude Code: API Error: Connection error. (cause: unable to get local issuer certificate, code UNABLE_TO_GET_ISSUER_CERT_LOCALLY)",
       "source": "claude-code",
       "subtype": null
     },
-    "evidence_hash": "3062345c8aa96d449b7950aa92013cad52e5d77106124ed9712826456c330a21",
-    "prev_hash": "0790a528a8d914c073f436f81f12221d6fc52a6561608122e8eee57a9569b42c",
+    "evidence_hash": "5b64738c7d28f68dbcd8c9b3f28ff4230def44fbd6111637e176de5f1658df92",
+    "prev_hash": "b8aed62a074e98de9bef140b879c970385d09aa10045cb3519e0671b7ff4f5a8",
     "collapsed": false,
     "stream": "text"
   }

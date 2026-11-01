@@ -183,11 +183,20 @@ def new_id() -> str:
 
 # ---- made-part cost estimates
 
-def material_price(material: str) -> tuple[float, float] | None:
-    """(density g/cm3, $/kg) of a filament, from the slicer's table; None when unknown."""
+def material_price(material: str, home: Path | None = None) -> tuple[float, float] | None:
+    """(density g/cm3, $/kg) of a material from the materials table (sim/materials.py, the
+    single source, E32: plastics, metals and the user's custom materials); the slicer's filament
+    table only when the materials table has no price for it. None when unknown."""
+    from ..sim.materials import SimError, get_material
+    try:
+        m = get_material(material, home)
+        if m.cost_per_kg is not None:
+            return float(m.density_g_cm3), float(m.cost_per_kg)
+    except SimError:
+        pass
     from ..print.slicer import MATERIALS
-    m = MATERIALS.get((material or "").upper())
-    return (m.density_g_cm3, m.usd_per_kg) if m else None
+    f = MATERIALS.get((material or "").upper())
+    return (f.density_g_cm3, f.usd_per_kg) if f else None
 
 
 def _metrics(home: Path, part_id: str) -> dict | None:
@@ -216,7 +225,7 @@ def made_estimate(home: Path, part_id: str, material: str,
         ok = isinstance(vol, (int, float)) and not isinstance(vol, bool) and vol > 0
         mass_g = round(vol / 1000.0 * rho, 4) if ok and rho is not None else None
     material = mass_mod.canonical_material(material, home) or material
-    price = material_price(material)
+    price = material_price(material, home)
     if price is None:
         return {"unit_cost": None, "mass_g": mass_g, "material": material,
                 "note": f"no cost estimate: no $/kg for material {material}"}
