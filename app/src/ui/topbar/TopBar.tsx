@@ -1,11 +1,12 @@
 // The build's top bar (only inside a build; Home has none — D23):
-//   ⌂ Home · the build's name (click to rename it in place) | Design · Studies · Print · BOM |
+//   ⌂ Home · ← / → (history, E11) · the build's name (click to rename it in place) | Design · Studies · Print · BOM |
 //   working agents · Onshape count · Status · Profile.
 // There are no build tabs (D1): switching builds goes through Home (⌂ or ⌘0).
 import type { JSX } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { activeBuild, buildActions } from "../../state/builds";
 import { goHome } from "../../state/home";
+import { NavButtons } from "../common/NavButtons";
 import { ActivityPill } from "./ActivityPill";
 import { BudgetChip } from "./BudgetMeter";
 import { ModeTabs } from "./ModeTabs";
@@ -25,6 +26,7 @@ export function TopBar(): JSX.Element {
               fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
           </svg>
         </button>
+        <NavButtons />
         <BuildName />
       </div>
       <ModeTabs />

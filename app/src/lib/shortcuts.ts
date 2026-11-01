@@ -25,6 +25,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { combo: "Meta+N", keys: "⌘N", action: "New agent run", scope: "global" },
   { combo: "Meta+Shift+A", keys: "⇧⌘A", action: "Agent manager", scope: "global" },
   { combo: "Meta+Shift+.", keys: "⇧⌘.", action: "Stop all runs", scope: "global" },
+  // Plan 10 E11: history (state/nav; also the ← → buttons and the mouse's back / forward buttons);
+  // not while typing in a field, where they move the caret
+  { combo: "Meta+ArrowLeft", keys: "⌘← ⌘→", action: "Back / forward (where you were: page, part, agent, Home view)", scope: "global" },
   // FW-layout (D20): the floating surfaces fold to slim tabs (not under a modal: the immersive
   // views step with ⌘[ / ⌘])
   { combo: "Meta+]", keys: "⌘]", action: "Show / hide the agent dock", scope: "global" },
