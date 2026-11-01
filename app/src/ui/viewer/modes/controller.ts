@@ -18,6 +18,8 @@ export class ModesController {
   private applying = false;
   /** The camera zoom from before the parts moved apart (null: assembled). */
   private baseZoom: number | null = null;
+  /** The orbit target from before the parts moved apart (null: assembled). */
+  private baseTarget: THREE.Vector3 | null = null;
 
   readonly host: ModeHost;
 
@@ -64,17 +66,25 @@ export class ModesController {
     this.host.requestRender();
   }
 
-  /** While exploded, zoom out just enough to keep every part in view (with the glide); back at the
-   *  user's own zoom once assembled again. The camera's direction and target never change. */
+  /** While exploded, re-frame (with the glide): the target follows the middle of the exploded
+   *  whole and the zoom backs out just enough to keep every part in view; back at the user's own
+   *  target and zoom once assembled again. The camera's direction never changes. */
   private followZoom(): void {
-    const { camera } = this.host;
+    const { camera, controls } = this.host;
     if (this.exploder.value <= 0) {
       if (this.baseZoom !== null) { camera.zoom = this.baseZoom; camera.updateProjectionMatrix(); this.baseZoom = null; }
+      if (this.baseTarget !== null) { this.slideTarget(this.baseTarget); this.baseTarget = null; }
       return;
     }
     if (this.baseZoom === null) this.baseZoom = camera.zoom;
+    if (this.baseTarget === null) this.baseTarget = controls.target.clone();
     const box = liveBox(this.host.parts());
     if (!box) return;
+    // the middle moves as far as the explode has gone (assembled: the user's own target)
+    const rest = restBox(this.host.parts());
+    const mid = box.getCenter(new THREE.Vector3());
+    const shift = rest ? mid.sub(rest.getCenter(new THREE.Vector3())) : new THREE.Vector3();
+    this.slideTarget(this.baseTarget.clone().add(shift));
     camera.updateMatrixWorld(true);
     let mx = 1e-6; let my = 1e-6;
     const v = new THREE.Vector3();
@@ -85,6 +95,16 @@ export class ModesController {
     const fits = Math.min((camera.right - camera.left) / 2 / mx, (camera.top - camera.bottom) / 2 / my) / 1.06;
     camera.zoom = Math.min(this.baseZoom, fits);
     camera.updateProjectionMatrix();
+  }
+
+  /** Moves the orbit target (and the camera with it, so the view direction stays). */
+  private slideTarget(to: THREE.Vector3): void {
+    const { camera, controls } = this.host;
+    const d = to.clone().sub(controls.target);
+    if (d.lengthSq() < 1e-12) return;
+    controls.target.add(d);
+    camera.position.add(d);
+    camera.updateMatrixWorld(true);
   }
 
   dispose(): void {

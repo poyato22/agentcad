@@ -12,7 +12,7 @@ import type { Mat4 } from "../../api/assembly";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MaterialParams } from "../../lib/appearance";
 import { meshColors, type PartScene } from "../viewer/loadPart";
-import { fitOrtho, offsetOrtho, visibleWidth, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type ModeHost, type RendererLike, type ShownPart } from "../viewer/scene";
+import { fitOrtho, offsetOrtho, visibleWidth, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type ExplodeLink, type ModeHost, type RendererLike, type ShownPart } from "../viewer/scene";
 import type { Vec3 } from "./kinematics";
 
 export interface SceneInstance {
@@ -50,6 +50,8 @@ export interface AssemblyScene {
   setFraming(f: Framing | null, margin?: number): void;
   /** What the view modes drive (ui/viewer/modes): the instances as shown parts, by instance id. */
   modeHost(): ModeHost;
+  /** Plan 10 E4: who places whom (instance id → parent, joint axis/origin, world) for the explode. */
+  setStructure(links: ReadonlyMap<string, ExplodeLink>): void;
   /** A world point (mm) → client pixels. Test probe. */
   probe(): { project(p: Vec3): { x: number; y: number } };
   resize(w: number, h: number): void;
@@ -126,6 +128,8 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
   const FIT_MARGIN = 1.15;
   /** The view modes re-apply after every restyle (fresh materials, opacity reset). */
   const restyled = new Set<() => void>();
+  /** Who places whom, for the explode (setStructure). */
+  let structure: ReadonlyMap<string, ExplodeLink> = new Map();
 
   const draw = () => {
     frame = 0;
@@ -421,6 +425,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     requestRender,
     onRestyle(f) { restyled.add(f); return () => { restyled.delete(f); }; },
     enableLocalClipping() { renderer.localClippingEnabled = true; },
+    structure: () => structure,
   };
 
   return {
@@ -473,6 +478,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     fit,
     setFraming(f, margin = FIT_MARGIN) { framing = f; framingMargin = margin; fit(); },
     modeHost: () => host,
+    setStructure(links) { structure = links; },
     probe() {
       return {
         project(p) {

@@ -90,7 +90,13 @@ export interface ModeHost {
   onRestyle(cb: () => void): () => void;
   /** Section planes clip per material (needs the renderer's local clipping). */
   enableLocalClipping(): void;
+  /** Plan 10 E4: who places whom (by shown part id), so the explode follows the assembly's
+   *  structure. Absent: the explode infers it (a part inside another is its child). */
+  structure?(): ReadonlyMap<string, ExplodeLink>;
 }
+
+/** One shown part's place in the assembly: its parent and the placing joint's world axis/origin. */
+export interface ExplodeLink { parent: string | null; axis: [number, number, number] | null; origin: [number, number, number] | null }
 
 /** The slice of WebGLRenderer the viewer uses (lets tests stub it). */
 export interface RendererLike {

@@ -161,7 +161,8 @@ export function AssemblyView(): JSX.Element {
     measure();
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     ro?.observe(host);
-    const offPose = ctl.onPose((pose) => scene?.setPose(pose));
+    // the explode follows the joint tree at the pose shown (E4)
+    const offPose = ctl.onPose((pose) => { scene?.setStructure(ctl.explodeLinks(pose)); scene?.setPose(pose); });
     return () => {
       ro?.disconnect();
       offPose();
@@ -219,6 +220,7 @@ export function AssemblyView(): JSX.Element {
       id: i.id, template: templates.current.get(i.part_id)?.scene ?? null, color: ctl.part(i.part_id)?.color ?? null,
       material: materialOf(ctl.part(i.part_id) ?? {}), hidden: hidden.has(i.part_id),
     })));
+    scene.setStructure(ctl.explodeLinks());
     scene.setPose(ctl.currentPose());
   }, [data, templateTick, ctl.parts.value, hidden]);
 
