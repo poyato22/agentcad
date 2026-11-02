@@ -108,17 +108,14 @@ async def test_agent_import_without_a_card(env, web):
     assert "exfiltrate" not in hits.summary
 
 
-async def test_exfil_shaped_import_asks_a_card(env, web):
-    # E31 fix round 1: a link that could carry data out asks the approval card (not refused)
-    bad = "https://shop.example.com/" + "k" * 63 + "/x"
+async def test_exfil_shaped_import_is_refused_without_a_card(env, web):
+    # browsing never asks the user: a link that looks like it carries data is refused, unfetched
+    bad = "https://shop.example.com/" + "8f14e45fceea167a5a36" + "/x"
     web.fixture(bad, "table_motor.html")
-    task = asyncio.create_task(env.call("catalog_import_url", {"url": bad}))
-    card = await env.next_card()
-    assert web.requests == [] and "long path segment" in card.deltas["approval_reason"]
-    env.decide(card, approve=False)
     with pytest.raises(MisesError) as e:
-        await task
-    assert e.value.code == ErrorCode.DENIED and web.requests == []
+        await env.call("catalog_import_url", {"url": bad})
+    assert e.value.code == ErrorCode.INVALID_INPUT and web.requests == []
+    assert env.store.pending_approvals(env.run.id) == []
 
 
 async def test_agent_import_redirect_stays_on_site(env, web):

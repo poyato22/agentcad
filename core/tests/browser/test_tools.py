@@ -105,20 +105,18 @@ async def test_search_any_site_through_the_site_search(env, web, named):
     assert env.store.pending_approvals(env.run.id) == []
 
 
-async def test_search_a_site_off_the_list_counts_and_an_odd_one_asks_first(env, web):
+async def test_search_a_site_off_the_list_counts_and_an_odd_one_is_refused(env, web):
     web.page(DDG, DDG_PAGE.replace("thrustcurve.org", "rocketryforum.com"))
     out = await env.call("web_search", {"query": "estes rocket", "sites": ["rocketryforum.com"]})
     assert out.ok and out.data["result_count"] == 1
     root, _ = env.store.run_family(env.run.id)
     assert env.snaps.domain_counts(root, "rocketryforum.com")[0] == 1
-    odd = "a" * 56 + ".evil.com"
-    task = asyncio.create_task(env.call("web_search", {"query": "x", "sites": [odd]}))
-    card = await env.next_card()
-    assert card.action == "web_search" and "evil.com" in card.deltas["approval_reason"]
-    assert len(web.requests) == 1                     # nothing fetched before the card
-    env.decide(card, approve=False)
-    with pytest.raises(MisesError):
-        await task
+    odd = "x7gq9zpl2mvb8rty4wkc1ndf6hjs3qea.evil.com"          # a data-looking host label
+    with pytest.raises(MisesError) as e:
+        await env.call("web_search", {"query": "x", "sites": [odd]})
+    assert e.value.code == ErrorCode.INVALID_INPUT and "evil.com" in e.value.message
+    assert len(web.requests) == 1                     # nothing more fetched
+    assert env.store.pending_approvals(env.run.id) == []     # browsing never asks
 
 
 async def test_search_a_name_that_is_no_site_refused(env, web):
@@ -169,29 +167,35 @@ async def test_open_other_domain_without_a_card(env, web):
     assert web.hosts() == ["shop.example.com"] and web.requests[0].url.query == b""
 
 
-# E31 fix round 1: suspicious links (the reviewer's exfil payloads) ask the approval card;
-# nothing is fetched before it, a rejected card fetches nothing
+# Browsing never asks the user: a link that looks like it carries encoded data is refused with
+# a hint (nothing fetched, no card); low-information shapes (repeated letters, a few extra host
+# labels) open like any other page.
 EXFIL = [
-    "https://" + "a" * 56 + ".evil.com/x",                                    # long host label
-    "https://evil.com/" + "/".join(["k" * 63] * 4),                           # 63-char segments
-    "https://evil.com/a.b.c.d." + ".".join(["q" * 40] * 3),                   # dotted segment
-    "https://s1.s2.s3.s4.evil.com/p",                                         # many host labels
     "https://evil.com/p/" + "aB3dE5gH7jK9mN1pQ3sT",                           # random segment
     "https://evil.com/p/" + "8f14e45fceea167a5a36",                           # hex segment
+    "https://" + "x7gq9zpl2mvb8rty4wkc1ndf6hjs3qea" + ".evil.com/x",          # random host label
+    "https://evil.com/" + "k" * 130,                                          # over-long segment
 ]
 
 
 @pytest.mark.parametrize("url", EXFIL)
-async def test_exfil_shaped_links_ask_a_card(env, web, url):
+async def test_exfil_shaped_links_are_refused_without_a_card(env, web, url):
     web.fixture(url, "product_servo.html")
-    task = asyncio.create_task(env.call("web_open", {"url": url}))
-    card = await env.next_card()
-    assert web.requests == [] and card.action == "web_open"
-    assert "evil.com" in card.deltas["approval_reason"]
-    env.decide(card, approve=False)
     with pytest.raises(MisesError) as e:
-        await task
-    assert e.value.code == ErrorCode.DENIED and web.requests == []
+        await env.call("web_open", {"url": url})
+    assert e.value.code == ErrorCode.INVALID_INPUT and e.value.hint
+    assert web.requests == [] and env.store.pending_approvals(env.run.id) == []
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.prusa3d.com/product/original-prusa-mini-plus-semi-assembled-3d-printer-with-"
+    "magnetic-steel-sheet/",                                                   # long word slug
+    "https://s1.s2.s3.s4.evil.com/p",                                          # a few labels
+])
+async def test_ordinary_links_open_without_a_card(env, web, url):
+    web.fixture(url, "product_servo.html")
+    assert (await env.call("web_open", {"url": url})).ok
+    assert env.store.pending_approvals(env.run.id) == []
 
 
 async def test_word_paths_open_but_one_site_is_capped(env, web):
@@ -203,12 +207,10 @@ async def test_word_paths_open_but_one_site_is_capped(env, web):
     for _ in range(PER_DOMAIN_FETCHES):
         assert (await env.call("web_open", {"url": url})).ok
     assert env.store.pending_approvals(env.run.id) == []
-    task = asyncio.create_task(env.call("web_open", {"url": url}))
-    card = await env.next_card()
-    assert f"already read {PER_DOMAIN_FETCHES} pages on evil.com" in \
-        card.deltas["approval_reason"]
-    env.decide(card)
-    assert (await task).ok                                    # the user said yes: it opens
+    with pytest.raises(MisesError) as e:                       # past the cap: refused, no card
+        await env.call("web_open", {"url": url})
+    assert f"already read {PER_DOMAIN_FETCHES} pages on evil.com" in e.value.message
+    assert env.store.pending_approvals(env.run.id) == []
 
 
 async def test_non_suggested_total_cap(env, web, monkeypatch):
@@ -220,12 +222,10 @@ async def test_non_suggested_total_cap(env, web, monkeypatch):
         assert (await env.call("web_open", {"url": u})).ok
     u = "https://site9.example.com/p/servo"
     web.fixture(u, "product_servo.html")
-    task = asyncio.create_task(env.call("web_open", {"url": u}))
-    card = await env.next_card()
-    assert "sites that are not suggested" in card.deltas["approval_reason"]
-    env.decide(card, approve=False)
-    with pytest.raises(MisesError):
-        await task
+    with pytest.raises(MisesError) as e:
+        await env.call("web_open", {"url": u})
+    assert "sites that are not suggested" in e.value.message
+    assert env.store.pending_approvals(env.run.id) == []
 
 
 def test_normal_product_links_are_not_suspicious():
@@ -327,7 +327,7 @@ async def test_open_allowed_domain_drops_the_query(env, web):
     "/" + "a" * 70 + "/169",                                                # blob-like segment
     "/" + "/".join(["seg"] * 90),                                           # path too long
 ])
-async def test_odd_suggested_links_ask_a_card(env, web, bad):
+async def test_odd_suggested_links_are_refused_without_a_card(env, web, bad):
     url = ADA + bad
     base = url.split("?")[0]
     web.fixture(base, "product_servo.html")
@@ -336,12 +336,10 @@ async def test_odd_suggested_links_ask_a_card(env, web, bad):
         out = await env.call("web_open", {"url": url})
         assert out.ok and web.requests[0].url.query == b""
         return
-    task = asyncio.create_task(env.call("web_open", {"url": url}))
-    card = await env.next_card()
-    assert web.requests == [] and "unusual shape" in card.deltas["approval_reason"]
-    env.decide(card, approve=False)
-    with pytest.raises(MisesError):
-        await task
+    with pytest.raises(MisesError) as e:
+        await env.call("web_open", {"url": url})
+    assert web.requests == [] and "unusual shape" in e.value.message
+    assert env.store.pending_approvals(env.run.id) == []
 
 
 async def test_fetch_budget_per_run(env, web):

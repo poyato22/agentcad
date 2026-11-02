@@ -195,10 +195,13 @@ def _charge(ctx: ToolContext, n: int) -> None:
 
 # E31 (fix round 1): reading a normal public page needs no card; a link that could carry data
 # out (long or random host labels / path segments) or a fetch past the per-turn caps asks one.
-HOST_LABEL_MAX, HOST_LABELS_MAX = 30, 4
-SEGMENT_MAX, OPEN_PATH_MAX = 40, 120
-PER_DOMAIN_FETCHES = 5          # pages from one non-suggested host per user turn
-NON_SUGGESTED_FETCHES = 20      # pages from all non-suggested hosts per user turn
+# Browsing never asks the user (the user's ruling): an ordinary link (long word slugs included)
+# opens; a link that looks like it carries encoded data, or a fetch past the per-turn caps, is
+# refused with a hint instead of an approval card.
+HOST_LABEL_MAX, HOST_LABELS_MAX = 63, 6
+SEGMENT_MAX, OPEN_PATH_MAX = 120, 300
+PER_DOMAIN_FETCHES = 30         # pages from one non-suggested host per user turn
+NON_SUGGESTED_FETCHES = 100     # pages from all non-suggested hosts per user turn
 
 
 def _entropy(t: str) -> float:
@@ -273,7 +276,8 @@ def _strip_trackers(url: str) -> str:
 def _shape_ok(url: str) -> bool:
     """A card-free link must look like a product link, not a carrier for data."""
     u = urlsplit(url)
-    if len(u.path) > PATH_MAX or any(_SEGMENT_BLOB.search(seg) for seg in u.path.split("/")):
+    if len(u.path) > PATH_MAX or any(_SEGMENT_BLOB.search(seg) and looks_random(seg)
+                                     for seg in u.path.split("/")):
         return False
     if len(u.query) > QUERY_MAX:
         return False
@@ -386,7 +390,8 @@ def _search_needs_approval(ctx: ToolContext, args: SearchArgs) -> str | None:
             continue
         why = suspicious_shape(f"https://{s['domain']}/") or _cap_reason(ctx, s["domain"])
         if why:
-            return f"search {s['domain']} ({why})"
+            raise MisesError(ErrorCode.INVALID_INPUT, f"Mises won't search {s['domain']}: {why}",
+                             hint="search a suggested site or a plain domain instead")
     return None
 
 
@@ -445,13 +450,13 @@ class OpenArgs(BaseModel):
 
 
 def _open_needs_approval(ctx: ToolContext, args: OpenArgs) -> str | None:
-    url, why = open_plan(ctx, args.url)
-    if why and url != args.url:
-        # the card must show exactly what is fetched, and a card domain gets no query
-        raise MisesError(ErrorCode.INVALID_INPUT,
-                         "this link needs the user's approval, and such links cannot carry a"
-                         " query string", hint=f"call web_open again with {url}")
-    return why
+    """Never asks the user: a link that could carry data out, or one past the per-turn caps,
+    is refused with a hint (the agent opens a plainer page or searches instead)."""
+    _url, why = open_plan(ctx, args.url)
+    if why:
+        raise MisesError(ErrorCode.INVALID_INPUT, f"Mises won't {why}",
+                         hint="open the site's plain product or search page, or use web_search")
+    return None
 
 
 async def _open_preview(ctx: ToolContext, args: OpenArgs) -> dict:

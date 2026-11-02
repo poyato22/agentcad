@@ -176,7 +176,10 @@ def _import_needs_approval(ctx: ToolContext, args: ImportArgs) -> str | None:
     from ..browser.tools import _shape_ok, suspicious_shape
     why = ("the link has an unusual shape" if not _shape_ok(args.url)
            else suspicious_shape(args.url) or _cap_reason(ctx, dom))
-    return f"fetch a web page from {dom} ({why})" if why else None
+    if why:      # never an approval card: refused with a hint (the user's ruling)
+        raise MisesError(ErrorCode.INVALID_INPUT, f"Mises won't fetch a web page from {dom} ({why})",
+                         hint="import the plain product page link instead")
+    return None
 
 
 def _cap_reason(ctx: ToolContext, dom: str) -> str | None:
