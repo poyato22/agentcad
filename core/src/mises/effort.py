@@ -41,10 +41,10 @@ DEFAULT_META = "effort_default:{}"
 
 #: G8: what a top-level turn at Max is asked to do on top of the top effort: a deliberate loop
 MAX_LOOP = (
-    "[Think: Max, chosen by the user] Work this request as a deliberate loop, and show each "
-    "stage briefly:\n"
-    "1. Plan first: write the approach, at least two alternatives you rejected and why, and the "
-    "risks (what could fail, what you must verify).\n"
+    "[Max effort, chosen by the user] Take extra care with this request and work in four "
+    "steps:\n"
+    "1. Plan first: post a short plan for the user (the approach, two alternatives you "
+    "considered and why you did not pick them, and the main risks to verify).\n"
     "2. Build it.\n"
     "3. Review independently: get a separate critique of the result — spawn a reviewer "
     "sub-agent with effort max (or run critique_model / the engineering checks) on the "
