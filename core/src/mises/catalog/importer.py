@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib.util
 import ipaddress
 import json
 import re
@@ -152,17 +153,21 @@ class Page:
         return urlsplit(self.final_url).hostname or ""
 
 
+_H2 = importlib.util.find_spec("h2") is not None
+
+
 async def fetch(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
                 resolve: Resolver = _system_resolve, strip_query: bool = False,
                 types: tuple[str, ...] = _TYPES, max_bytes: int = MAX_BYTES,
                 user_agent: str = USER_AGENT, accept: str | None = None,
-                redirect_ok: RedirectCheck | None = None) -> Page:
+                redirect_ok: RedirectCheck | None = None,
+                extra_headers: dict[str, str] | None = None) -> Page:
     """GET one page with every check in the module docstring. `types`, `max_bytes`,
     `user_agent` and `accept` tune it for other callers (the agent browser, its image proxy);
     `redirect_ok(host)` may refuse a redirect to another site (it is asked after the target
     passed check_url, before anything is sent there)."""
     start = check_url(url, strip_query=strip_query)
-    opts = _Opts(types, max_bytes, user_agent, accept, redirect_ok)
+    opts = _Opts(types, max_bytes, user_agent, accept, redirect_ok, extra_headers)
     try:
         async with asyncio.timeout(TIMEOUT_S):
             return await _fetch(start, transport, resolve, opts)
@@ -175,7 +180,8 @@ async def fetch(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
 
 class _Opts:
     def __init__(self, types=_TYPES, max_bytes=MAX_BYTES, user_agent=USER_AGENT, accept=None,
-                 redirect_ok=None):
+                 redirect_ok=None, extra_headers=None):
+        self.extra_headers = dict(extra_headers or {})
         self.types, self.max_bytes, self.user_agent = types, max_bytes, user_agent
         self.accept = accept or "text/html,application/json;q=0.9,*/*;q=0.1"
         self.redirect_ok = redirect_ok
@@ -203,8 +209,9 @@ def _peer_ok(resp: httpx.Response, ip: str) -> bool:
 
 async def _fetch(start: str, transport, resolve: Resolver, opts: _Opts | None = None) -> Page:
     opts = opts or _Opts()
-    headers = {"User-Agent": opts.user_agent, "Accept": opts.accept}
-    async with httpx.AsyncClient(transport=transport, follow_redirects=False,
+    headers = {**opts.extra_headers, "User-Agent": opts.user_agent, "Accept": opts.accept}
+    # HTTP/2 (a browser's protocol) only when the optional h2 package is installed
+    async with httpx.AsyncClient(transport=transport, follow_redirects=False, http2=_H2,
                                  timeout=TIMEOUT_S, trust_env=False) as http:
         url = start
         for hop in range(MAX_REDIRECTS + 1):

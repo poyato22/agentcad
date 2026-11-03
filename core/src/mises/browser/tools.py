@@ -54,6 +54,7 @@ from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, ToolOutput
 from . import sites as sites_mod
 from .search import RESULTS_MAX, results_from
+from . import fallback as fb
 from .snapshot import (BLOCKED_STATUSES, SnapshotStore, blocked_reason, build, new_id, parse,
                        public)
 
@@ -508,13 +509,28 @@ async def web_open(ctx: ToolContext, args: OpenArgs) -> ToolOutput:
     stay = lambda h: sites_mod.on_domain(h, start) or _is_allowed(ctx, h)  # noqa: E731
     _charge(ctx, 1)
     _count_domain(ctx, start)          # after the budget took it (a refused fetch is not counted)
-    page, why = await _get(ctx, url, stay, strip_query=False)
+    async def get(u: str, realistic: bool = False, allow_other_site: bool = False):
+        opts = dict(user_agent=fb.BROWSER_UA, accept=fb.BROWSER_ACCEPT,
+                    extra_headers=fb.BROWSER_HEADERS) if realistic else {"user_agent": USER_AGENT}
+        ok = (lambda h: sites_mod.on_domain(h, _host(u))) if allow_other_site else stay
+        return await fetch(u, strip_query=False, types=PAGE_TYPES, redirect_ok=ok, **opts,
+                           **_http(ctx))
+
+    # H3: a bot wall or an empty (JavaScript-only) page falls back: realistic headers, then a
+    # cached copy, then search-engine snippets. Each extra request spends the fetch budget.
+    opened = await fb.open_chain(get, url, charge=lambda: _charge(ctx, 1))
+    page, why = opened.page, opened.why
     if page is None:
         snap = _blocked_snapshot(ctx, url, "page", why)
-        return ToolOutput(ok=False, summary=f"{start}: {why}. Try another suggested site.",
-                          data={"blocked": True, "snapshot_id": snap["id"], "domain": start})
+        return ToolOutput(ok=False, summary=f"{start}: {why}. Tried: {', '.join(opened.tried)}."
+                                            " Try another suggested site.",
+                          data={"blocked": True, "snapshot_id": snap["id"], "domain": start,
+                                "tried": opened.tried})
     rec = build(page, run_id=ctx.run_id, project_id=run_project(ctx))
-    why = blocked_reason(200, rec["title"], rec["text"])
+    rec["fetch_path"] = opened.path
+    if opened.path == "snippet":
+        rec["partial"] = True
+    why = None if opened.path == "snippet" else blocked_reason(200, rec["title"], rec["text"])
     if why:
         rec.update(blocked=why, part=None, _item=None)
     _snapshots(ctx).add(rec)
@@ -524,11 +540,14 @@ async def web_open(ctx: ToolContext, args: OpenArgs) -> ToolOutput:
                           data={"blocked": True, "snapshot_id": rec["id"],
                                 "domain": rec["domain"]})
     data = {"snapshot_id": rec["id"], "url": rec["url"], "domain": rec["domain"],
-            "has_part": rec["part"] is not None, "image_count": len(rec["images"]),
+            "fetch_path": opened.path, "has_part": rec["part"] is not None, "image_count": len(rec["images"]),
             "table_count": len(rec["tables"]),
             "untrusted_page_data": wrap_untrusted(page_for_agent(rec), rec["domain"])}
     found = " Part data found (show it with part_show)." if rec["part"] else ""
-    return ToolOutput(summary=f"Opened a page on {rec['domain']} as snapshot {rec['id']}."
+    via = {"headers": " (needed browser-like headers)", "cache": " (from a cached copy)",
+           "snippet": " (the page would not open: only search-engine snippets)"}.get(
+        opened.path, "")
+    return ToolOutput(summary=f"Opened a page on {rec['domain']} as snapshot {rec['id']}{via}."
                               f"{found} {UNTRUSTED}", data=data)
 
 
