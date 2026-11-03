@@ -2510,7 +2510,7 @@ class Runtime:
 
     # ---- questions (ui_ask_user)
     async def ask(self, run_id: str, question: str, options: list[str], *,
-                  questions: list[dict] | None = None) -> str:
+                  questions: list[dict] | None = None, image_id: str | None = None) -> str:
         """`questions` (optional) is a batch of up to 3 structured questions; a UI that knows
         them answers with a JSON object {id: value}, an older one with plain text."""
         qid = uuid.uuid4().hex[:12]
@@ -2519,6 +2519,8 @@ class Runtime:
         data = {"question_id": qid, "question": question, "options": list(options)}
         if questions:
             data["questions"] = list(questions)
+        if image_id:
+            data["image_id"] = image_id         # H5: a render id the card shows
         self._question_data[qid] = {**data, "run_id": run_id, "asked_at": time.time()}
         self.events.publish(Event(type="question_asked", run_id=run_id, data=data))
         tracker = self.activity_tracker(run_id)

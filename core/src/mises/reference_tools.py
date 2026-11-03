@@ -136,7 +136,11 @@ REFERENCE_TOOLS = [reference_import]
 
 
 def register_reference_tools(registry: ToolRegistry) -> None:
+    from .photo_check import reference_photo_check
     from .reference_sheet import register_sheet_tools
     for t in REFERENCE_TOOLS:
         registry.register(t)
     register_sheet_tools(registry)
+    registry.register(reference_photo_check)
+    from .ask_measure import reference_ask_measurement
+    registry.register(reference_ask_measurement)

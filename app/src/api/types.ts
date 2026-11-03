@@ -138,7 +138,7 @@ export interface AskItem { id: string; prompt: string; options: string[]; multi:
 /** Built from a `question_asked` event (there is no GET /questions). `items` is the batched shape
  *  (up to 3 structured questions); when present the thread shows a single interview card and the
  *  answer is a JSON object `{id: value}`. A single question has no `items`. */
-export interface Question { question_id: string; run_id: string; question: string; options: string[]; items?: AskItem[] }
+export interface Question { question_id: string; run_id: string; question: string; options: string[]; items?: AskItem[]; /** H5: a render id marking where to measure */ image_id?: string }
 
 /** `sketch_id` (POST /sketches): the run gets that sketch as data (and its images for vision models).
  *  `project_id` (C1): the build the run belongs to. The app always sends the active build, so a

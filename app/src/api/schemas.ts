@@ -230,6 +230,7 @@ export const questionAskedSchema = z.object({
   question_id: z.string(), question: z.string(), options: z.array(z.string()).default([]),
   // a malformed batch falls back to the plain question (whose text lists every prompt)
   questions: z.array(askItemSchema).max(6).catch([]),
+  image_id: z.string().regex(/^[A-Za-z0-9_-]{1,96}$/).optional().catch(undefined),
 });
 
 // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test
