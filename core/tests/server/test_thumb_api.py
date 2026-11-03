@@ -53,7 +53,9 @@ def cache_part(rt: Runtime, part_id: str, version: int, size: int) -> bytes:
     png = _png(size)
     cdir = rt.home / "parts" / thumbs.THUMBS_DIR / part_id
     cdir.mkdir(parents=True, exist_ok=True)
-    (cdir / f"{thumbs.part_key(rt.home, part_id, version, size)}.png").write_bytes(png)
+    from mises.appearance import render_params           # the look the route keys on (G4)
+    look = render_params(rt.store.get_part(part_id), rt.store)
+    (cdir / f"{thumbs.part_key(rt.home, part_id, version, size, look)}.png").write_bytes(png)
     return png
 
 

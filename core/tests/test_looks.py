@@ -27,8 +27,12 @@ def test_concept_cmf_by_role():
     assert default_look("battery_lipo", "battery", None, DRAGONFLY)["color"] == "#2c3e5c"
 
 
-def test_no_concept_and_a_plastic_keeps_the_drafting_look():
-    assert default_look("bracket", "bracket", "PLA", []) is None
+def test_no_concept_and_a_plastic_gets_a_stable_part_colour():
+    # the user saw an all-grey assembly next to a coloured agent render: every unstyled part
+    # now shows a stable muted colour of its own, the same in the app and in renders
+    from mises.looks import PART_PALETTE
+    look = default_look("bracket", "bracket", "PLA", [])
+    assert look["color"] in PART_PALETTE and look == default_look("bracket", None, None, [])
 
 
 def test_renders_use_the_default_look_and_a_real_appearance_wins():
@@ -42,4 +46,5 @@ def test_renders_use_the_default_look_and_a_real_appearance_wins():
     red = NS(**{**vars(motor), "appearance": {"preset": "anodized", "color": "#d23c2a"}})
     assert render_params(red)["color"] == "#d23c2a"
     plain = NS(**{**vars(motor), "material": "PLA"})
-    assert render_params(plain)["preset"] is None
+    from mises.looks import PART_PALETTE
+    assert render_params(plain)["color"] in PART_PALETTE

@@ -17,6 +17,7 @@ stays what the user or an agent set, and setting one replaces the default everyw
 from __future__ import annotations
 
 import re
+import zlib
 
 from . import appearance as _appearance
 
@@ -111,6 +112,11 @@ def concept_cmf(store, project_id: str | None) -> list[dict]:
         return []
 
 
+#: muted part colours (the render palette's hues), picked per part id when nothing else applies
+PART_PALETTE = ["#9ea8b8", "#cc8c6b", "#78a38a", "#8c91bd", "#c7b873", "#99809e", "#73a8b3",
+                "#bd949e"]
+
+
 def default_look(part_id: str, label: str | None, material: str | None,
                  cmf: list[dict]) -> dict | None:
     """The normalised appearance a part shows by default (see the module doc), or None."""
@@ -131,7 +137,10 @@ def default_look(part_id: str, label: str | None, material: str | None,
         elif "body" in roles:
             look = _cmf_look(roles["body"])
     if look is None:
-        return None
+        # no material look and no concept colour: a stable muted colour per part, so the app,
+        # covers and the agent's renders all show the same distinct colours (never default grey)
+        look = {"preset": "matte_plastic",
+                "color": PART_PALETTE[zlib.crc32(part_id.encode()) % len(PART_PALETTE)]}
     try:
         return _appearance.normalize(look)
     except Exception:  # noqa: BLE001
