@@ -27,3 +27,10 @@
 - **Design + edit in Claude Design** (it now lives in Claude, made from the Design artifact type): build the animated title cards, chips, benchmark chart and the overall edit there; drive it via Claude in Chrome if needed. Real Mises screen captures are imported as media. HyperFrames is the fallback renderer if a final MP4 export from Claude Design isn't possible.
 - **Voice-over: the user's own voice.** Mises team writes the final VO script and a timing sheet; the user records; cuts are timed to the recording.
 - Open: name/links for the end card.
+
+## Three videos (user choice, 2026-11-03) — start after the 2026-11-04 09:00 UTC reset
+Each is a 2-minute cut on the same structure (prompt → concept → build → simulation catches a real problem → fix → verified outputs → benchmarks → close), from one real Mises build each:
+1. **Robot dog** (as scripted above): MuJoCo walk study catches the weak knee → 2:1 belt reduction; FEM + topology-optimized hip bracket.
+2. **Thrust-vector-controlled model rocket** (Mises' pick for "very technical, very niche"): a 2-axis gimballed motor mount (servo-driven, ±5°) inside an ARC-class rocket. Shows mechanisms (gimbal + linkages), rocketry stability/flight sims (static margin with the gimbal mass, apogee on an F-motor, fin flutter), dynamics (gimbal slew torque vs servo), FEM on the thrust ring under peak motor thrust, clash-free ROM sweep of the gimbal, BOM + STEP.
+3. **Tiny topology-optimized drone**: a sub-100 g 3-inch FPV/cinewhoop frame — generative design of the frame/arms (load cases: motor thrust, crash impact, prop-strike), CalculiX-verified variants ranked on mass vs stiffness, electronics packing (FC/ESC/VTX/battery), modal check vs prop frequency, CFD drag/downwash teaser, final mass budget.
+Benchmarks section shared by all three. Order of work after reset: benchmark harness + baseline/Mises runs (long, background) in parallel with build 1 → 2 → 3, then captures, then three Claude Design edits; the user records VO for the chosen one (scratch VO for review cuts).
