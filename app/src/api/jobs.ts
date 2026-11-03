@@ -28,7 +28,7 @@ export function jobIdOf(data: Record<string, unknown> | null | undefined): strin
   if (!data) return null;
   for (const k of ["sim_id", "review_id", "study_id", "topopt_id"] as const) {
     const v = data[k];
-    if (typeof v === "string" && /^(sim_|review_|study_|to_)[0-9a-f]{12}$/.test(v)) return v;
+    if (typeof v === "string" && /^(sim_|review_|study_|to_|as_)[0-9a-f]{12}(_fem)?$/.test(v)) return v;
   }
   return null;
 }

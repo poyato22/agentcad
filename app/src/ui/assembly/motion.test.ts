@@ -1,7 +1,7 @@
 // Plan 9 G-D: a presented animation, full window — the controller's scrubbable playback (play /
 // pause, scrub, loop, speed) on the real hinge fixture, with a hand-cranked clock.
 import { beforeEach, describe, expect, it } from "vitest";
-import { AssemblyController } from "./controller";
+import { AssemblyController, ROOT_JOINT } from "./controller";
 import { hingeFixture, ManualClock, MemoryAssemblyClient } from "./testClient";
 
 let core: MemoryAssemblyClient;
@@ -101,5 +101,19 @@ describe("motion playback (a presented animation)", () => {
     ctl.play([{ joint_id: JOINT, from: 10, to: 20, duration_s: 1 }]);
     expect(ctl.motion.value).toBeNull();
     expect(ctl.animating.value).toBe(JOINT);
+  });
+});
+
+describe("H4: a whole-assembly motion (the @root pseudo joint)", () => {
+  it("lifts_every_instance_and_puts_it_back_on_close", () => {
+    let pose: Readonly<Record<string, number[][]>> = {};
+    ctl.onPose((p) => { pose = p; });
+    const z0 = pose[LID][2][3];
+    expect(ctl.openMotion([{ joint_id: ROOT_JOINT, from: [0, 0, 0], to: [0, 0, 300], duration_s: 2 }], { loop: false })).toBe(true);
+    clock.tick(2100);
+    expect(pose[LID][2][3]).toBeCloseTo(z0 + 300, 3);
+    expect(ctl.motionPoses(2).at(-1)![LID][2][3]).toBeCloseTo(z0 + 300, 3);
+    ctl.closeMotion();
+    expect(pose[LID][2][3]).toBeCloseTo(z0, 3);
   });
 });
