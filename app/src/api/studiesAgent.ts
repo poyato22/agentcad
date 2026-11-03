@@ -56,6 +56,10 @@ export const studiesContextSchema = z.looseObject({
     const p = studyProposalSchema.safeParse(x);
     return p.success ? [p.data] : [];
   })),
+  /** Plan 13 H4: the whole-assembly study that fits the build, the recommended one first. */
+  assembly_proposals: z.array(z.looseObject({
+    kind: z.enum(["walk", "launch", "drop", "mechanism"]), name: z.string(), applicable: z.boolean(), recommended: z.boolean(), why: z.string().catch(""),
+  })).catch([]).default([]),
   proposals_source: z.enum(["agent", "rules"]).catch("rules"),
   proposals_run_id: z.string().nullish(),
 });

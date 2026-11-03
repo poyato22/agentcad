@@ -14,6 +14,7 @@ import type { JSX } from "preact";
 import { memo } from "preact/compat";
 import { useEffect } from "preact/hooks";
 import { jobIdOf } from "../../api/jobs";
+import { AssemblyStudyCard } from "./AssemblyStudyCard";
 import { finishedSims } from "../../state/activity";
 import { isLiveJob, stopJob, stoppingJobs } from "../../state/jobs";
 import { isTerminal, liveProgress, type LiveProgress } from "../pages/studies/live";
@@ -49,6 +50,7 @@ function idsOf(e: DockEntry): string[] {
 /** Is a record's study or generative run still going? */
 export function recordRunning(r: BuildStudy, finished: ReadonlyMap<string, string>, live: ReadonlyMap<string, LiveProgress>): boolean {
   if (r.status !== "running" || finished.has(r.id)) return false;
+  if (r.kind === "assembly") return true;
   const p = r.kind === "sim" ? live.get(r.id) : undefined;
   return !p || !isTerminal(p);
 }
@@ -115,9 +117,11 @@ function SimStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Elem
           <div key={key} class="ss-item" data-key={key} data-run={r.runId ?? undefined} data-record={r.kind}>
             <div class="ss-head">
               {!tags ? <span /> : r.runId ? <RunTag runId={r.runId} /> : <div class="dock-run faint text">{r.kind === "topopt" ? "Generative design" : "Study"}</div>}
-              <JobStop data={r.kind === "sim" ? { sim_id: r.id } : { topopt_id: r.id }} />
+              <JobStop data={r.kind === "sim" ? { sim_id: r.id } : r.kind === "assembly" ? { study_id: r.id } : { topopt_id: r.id }} />
             </div>
-            {r.kind === "sim" ? <RecordStudyCard rec={r} running={running} /> : <div class="scard-slot" data-topopt-slot><TopoptRunCard id={r.id} partId={r.partId} /></div>}
+            {r.kind === "sim" ? <RecordStudyCard rec={r} running={running} />
+              : r.kind === "assembly" ? <div class="scard-slot" data-assembly-slot><AssemblyStudyCard s={r.asm} running={running} /></div>
+                : <div class="scard-slot" data-topopt-slot><TopoptRunCard id={r.id} partId={r.partId} /></div>}
           </div>
         ),
       };

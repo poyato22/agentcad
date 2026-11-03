@@ -16,7 +16,7 @@ const bare = (name: string): string => name.replace(/^mcp__mises__/, "");
 
 /** Study tools: B3's sim_* (sim_run, sim_static_run, sim_wait, sim_result_get, …), study_*, the
  *  design review and generative design (topopt_*, Plan 9 D14). */
-const SIM_TOOL = /^(sim_|study_|studies_|topopt_|rocket_(analyze|flight)$)|^design_review$/;
+const SIM_TOOL = /^(sim_|study_|studies_|topopt_|rocket_(analyze|flight)$|assembly_study)|^design_review$/;
 /** Tools whose output is a picture of the model. */
 const VIEW_TOOL = /^(present_view|critique_model|part_show|part_render|assembly_animate|section_check|concept_sketch|pitch_options)$|^render(_|$)|^view_/;
 
@@ -39,7 +39,7 @@ const ALWAYS_VIEW_ANNOUNCE: ReadonlySet<string> = new Set(["concept_sketch", "co
 export function eventStream(ev: Pick<MisesEvent, "type"> & { stream?: StreamKind }): StreamKind {
   if (ev.stream) return ev.stream;
   const t = ev.type;
-  if (/^(sim|study|topopt)_/.test(t)) return "sim";
+  if (/^(sim|study|topopt|assembly_study)_/.test(t)) return "sim";
   if (/^(render|view|critique)_/.test(t) || t === "part_shown") return "view";
   return "text";
 }
