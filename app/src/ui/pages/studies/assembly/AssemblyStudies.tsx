@@ -5,7 +5,8 @@
 // targets and the spec, metrics, charts, Watch (the assembly moving in its full window, Section /
 // X-ray on its bar) and "Check part stresses" (its peak loads to per-part FEM). A guide only.
 import type { JSX } from "preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { signal } from "@preact/signals";
+import { useEffect, useMemo } from "preact/hooks";
 import type { AssemblyKind, AssemblyStudyKind, AssemblyStudyRecord } from "../../../../api/assemblyStudies";
 import { Button } from "../../../common/Button";
 import { Led } from "../../../common/Led";
@@ -45,14 +46,22 @@ function defaults(schema: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/** The chosen type and its settings survive page switches (module state, like the part setup). */
+const kindSig = signal<AssemblyStudyKind | null>(null);
+const valuesSig = signal<Partial<Record<AssemblyStudyKind, Record<string, unknown>>>>({});
+/** Tests: a fresh setup. */
+export function resetAssemblySide(): void { kindSig.value = null; valuesSig.value = {}; }
+
 export function AssemblySide({ c, projectId, initialKind }: { c: AssemblyStudiesController; projectId: string | null; initialKind?: AssemblyStudyKind | null }): JSX.Element {
   useEffect(() => { void c.load(projectId); }, [c, projectId]);
   const kinds = c.kinds.value;
   const rec = kinds.find((k) => k.recommended) ?? null;
-  const [kind, setKind] = useState<AssemblyStudyKind | null>(initialKind ?? null);
-  useEffect(() => { if (initialKind) setKind(initialKind); }, [initialKind]);
+  const kind = kindSig.value;
+  const setKind = (k: AssemblyStudyKind) => { kindSig.value = k; };
+  useEffect(() => { if (initialKind) kindSig.value = initialKind; }, [initialKind]);
   const chosen: AssemblyKind | null = kinds.find((k) => k.kind === (kind ?? rec?.kind)) ?? kinds[0] ?? null;
-  const [values, setValues] = useState<Partial<Record<AssemblyStudyKind, Record<string, unknown>>>>({});
+  const values = valuesSig.value;
+  const setValues = (v: typeof values) => { valuesSig.value = v; };
   const fields = useMemo(() => (chosen ? simpleFields(chosen.schema) : []), [chosen?.kind, chosen?.schema]);
   const settings = chosen ? values[chosen.kind] ?? defaults(chosen.schema) : {};
   const set = (k: string, v: unknown) => { if (chosen) setValues({ ...values, [chosen.kind]: { ...settings, [k]: v } }); };

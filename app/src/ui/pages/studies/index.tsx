@@ -44,7 +44,7 @@ import { StudyView, type StudyViewDeps } from "./StudyView";
 import "./studies.css";
 import "./studies-a8.css";
 import type { AssemblyStudyKind } from "../../../api/assemblyStudies";
-import { AssemblyResult, AssemblySide } from "./assembly/AssemblyStudies";
+import { AssemblyResult, AssemblySide, resetAssemblySide } from "./assembly/AssemblyStudies";
 import type { AssemblyStudiesController } from "./assembly/controller";
 import { assemblyStudies, studyTarget } from "./assembly/instance";
 export { assemblyStudies, studyTarget };
@@ -75,7 +75,7 @@ function setManual(open: boolean): void {
 /** Tests: back to a fresh setup (the manual setup collapsed). */
 export function resetStudiesPage(): void {
   typeSig.value = "static"; settingsSig.value = {}; caseSig.value = 0; viewSig.value = "result"; manualSig.value = false;
-  studyTarget.value = "part"; assemblyKindSig.value = null;
+  studyTarget.value = "part"; assemblyKindSig.value = null; resetAssemblySide();
 }
 
 export interface StudiesDeps { view?: StudyViewDeps }
