@@ -297,7 +297,8 @@ def choose_lock(parts_root: Path, base: str) -> asyncio.Lock:
 async def build_part(parts_root: Path, part_id: str, script: str, vars_: dict[str, float],
                      meta: dict, *, mass_g: float | None = None,
                      density_g_cm3: float = DEFAULT_G_CM3, fill_factor: float = 1.0,
-                     mass_note: str | None = None) -> dict:
+                     mass_note: str | None = None,
+                     files: dict[str, bytes] | None = None) -> dict:
     """Write and build a NEW part dir (`parts_root/part_id`); on failure nothing is left, and
     an existing dir is never touched. Returns {"part_id", "metrics", "meta"}.
 
@@ -314,6 +315,8 @@ async def build_part(parts_root: Path, part_id: str, script: str, vars_: dict[st
                              hint="insert again: a free id is chosen")
         safe_io.ensure_dir(d)
         safe_io.write_text(d, "part.py", script)
+        for fname, data in (files or {}).items():   # e.g. a reference part's STEP/STL
+            safe_io.write_bytes(d, fname, data)
         effective = density_g_cm3 * fill_factor
         try:
             res = await run_build(d, vars_, density_g_cm3=effective)

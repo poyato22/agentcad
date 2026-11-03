@@ -28,6 +28,7 @@ from .cad.views import register_view_tools
 from .sim.studies_agent import register_studies_agent_tools
 from .catalog import Catalog
 from .catalog.tools import register_catalog_tools
+from .reference_tools import register_reference_tools
 from .bom import BomStore
 from .bom.tools import register_bom_tools
 from .concept import ConceptStore
@@ -237,6 +238,7 @@ class Runtime:
         register_assembly_tools(self.registry)
         register_layout_tools(self.registry)  # Plan 8 G3: skeleton + internals
         register_catalog_tools(self.registry)
+        register_reference_tools(self.registry)
         register_browser_tools(self.registry)
         register_bom_tools(self.registry)
         register_import_tools(self.registry)

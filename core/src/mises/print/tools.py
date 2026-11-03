@@ -158,6 +158,11 @@ async def print_slice(ctx: ToolContext, args: SliceArgs) -> ToolOutput:
     if not stl.is_file():
         raise MisesError(ErrorCode.NOT_FOUND, f"no built part {args.part_id!r}",
                          hint="create it with mirror_part_create")
+    from ..catalog.geometry import read_meta
+    if (read_meta(Path(ctx.workdir) / "parts" / args.part_id) or {}).get("kind") == "reference":
+        raise MisesError(ErrorCode.INVALID_INPUT, f"{args.part_id!r} is a reference object",
+                         hint="reference parts are the real thing the build fits; print only"
+                              " the parts you design")
     printer = find_printer(home, args.printer_id)
     from .. import mass as _mass       # Plan 9 B2: the part's own material, else the default
     material = (args.material or _mass.part_material(getattr(ctx, "store", None), home,
