@@ -243,6 +243,7 @@ export function AssemblyView(): JSX.Element {
     scene.setInstances((data?.instances ?? []).map((i) => ({
       id: i.id, template: templates.current.get(i.part_id)?.scene ?? null, color: ctl.part(i.part_id)?.color ?? null,
       material: materialOf(ctl.part(i.part_id) ?? {}), hidden: hidden.has(i.part_id), name: i.name,
+      ...(ctl.part(i.part_id)?.kind === "reference" ? { reference: true } : {}),
     })));
     scene.setStructure(ctl.explodeLinks());
     scene.setPose(ctl.currentPose());

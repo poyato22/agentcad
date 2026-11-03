@@ -23,12 +23,12 @@ export interface BuildsScenario {
   active?: string | null;
   open?: string[];
   /** Tree fields per part id. */
-  tree?: Record<string, { project_id?: string; label?: string; parent_id?: string | null; order?: number; color?: string | null; kind?: "part" | "group" | "catalog" | "skeleton"; version?: number; appearance?: Appearance | null; material?: string | null }>;
+  tree?: Record<string, { project_id?: string; label?: string; parent_id?: string | null; order?: number; color?: string | null; kind?: "part" | "group" | "catalog" | "skeleton" | "reference"; version?: number; appearance?: Appearance | null; material?: string | null }>;
   /** Scripts per part id (default: generated from its vars). */
   sources?: Record<string, string>;
 }
 
-interface Row { project_id: string; label: string; parent_id: string | null; order: number; color: string | null; kind: "part" | "group" | "catalog" | "skeleton"; version: number; appearance?: Appearance | null; material?: string | null }
+interface Row { project_id: string; label: string; parent_id: string | null; order: number; color: string | null; kind: "part" | "group" | "catalog" | "skeleton" | "reference"; version: number; appearance?: Appearance | null; material?: string | null }
 interface FakeBuild { id: string; name: string; created_at: number; updated_at: number; trashed_at: number | null }
 
 export interface FakeBuilds {
@@ -141,7 +141,7 @@ export function fakeTreeMass(parts: readonly PartSummary[], rows: ReadonlyMap<st
   const r = rows.get(id);
   const p = parts.find((x) => x.part_id === id);
   const own = (): FakeMass => {
-    if (!r || r.kind === "skeleton") return { mass_g: null, mass_source: "unknown", mass_note: "layout skeleton: it has no mass" };
+    if (!r || r.kind === "skeleton" || r.kind === "reference") return { mass_g: null, mass_source: "unknown", mass_note: "layout skeleton: it has no mass" };
     if (r.kind === "group") return { mass_g: null, mass_source: "unknown", mass_note: null };
     const m = p?.metrics ?? null;
     if (r.kind === "catalog") return typeof m?.mass_g === "number" ? { mass_g: m.mass_g, mass_source: "catalog", mass_note: "stated catalog mass" } : { mass_g: null, mass_source: "unknown", mass_note: "the catalog item states no mass" };

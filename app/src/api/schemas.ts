@@ -188,7 +188,7 @@ export const partSummarySchema = z.object({
   part_id: z.string(), vars: z.record(z.string(), z.number()), metrics: partMetricsLenientSchema.nullable().catch(null),
   mtime: z.number().nullable().transform((v) => v ?? 0),
   id: z.string().optional(), label: z.string().optional(), project_id: z.string().nullish(), parent_id: z.string().nullish(),
-  order: z.number().optional(), color: z.string().nullish(), kind: z.enum(["part", "group", "catalog", "skeleton"]).optional(),
+  order: z.number().optional(), color: z.string().nullish(), kind: z.enum(["part", "group", "catalog", "skeleton", "reference"]).optional(),
   version: z.number().int().optional(),
   // a malformed appearance falls back to the drafting look (the row is never dropped)
   appearance: appearanceSchema.nullish().catch(null),
