@@ -289,8 +289,10 @@ def _mass_g(ctx, pid: str, asm) -> float | None:
     store = getattr(ctx, "store", None)
     if store is not None:
         try:
-            return _mass.assembly_total(store, Path(ctx.workdir), pid,
-                                        asm.instances)["total_mass_g"]
+            tot = _mass.assembly_total(store, Path(ctx.workdir), pid,
+                                       asm.instances)["total_mass_g"]
+            if tot:
+                return tot
         except Exception:  # noqa: BLE001 - fall back to the parts' metrics
             pass
     total = 0.0
