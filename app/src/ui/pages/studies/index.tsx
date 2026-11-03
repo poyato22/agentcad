@@ -43,6 +43,11 @@ import { setAt, withDefaults, type Path } from "./formSchema";
 import { StudyView, type StudyViewDeps } from "./StudyView";
 import "./studies.css";
 import "./studies-a8.css";
+import type { AssemblyStudyKind } from "../../../api/assemblyStudies";
+import { AssemblyResult, AssemblySide, resetAssemblySide } from "./assembly/AssemblyStudies";
+import type { AssemblyStudiesController } from "./assembly/controller";
+import { assemblyStudies, studyTarget } from "./assembly/instance";
+export { assemblyStudies, studyTarget };
 
 /** One per app: leaving and re-opening the page keeps following a running study. */
 export const studies = new StudiesController(() => actions.client());
@@ -50,6 +55,8 @@ onCoreEvent((ev) => studies.onEvent(ev));
 /** The studies agent's context and conversation (one per app, like the study controller). */
 export const studiesAgent = new StudiesAgentController(() => actions.client());
 onCoreEvent((ev) => studiesAgent.onEvent(ev, runs.peek()));
+/** Plan 13 H4: the whole-assembly study type the studies agent's "Set up" picked. */
+const assemblyKindSig = signal<AssemblyStudyKind | null>(null);
 
 // the setup survives page switches (module state, like the controller)
 const typeSig = signal<StudyType>("static");
@@ -68,14 +75,17 @@ function setManual(open: boolean): void {
 /** Tests: back to a fresh setup (the manual setup collapsed). */
 export function resetStudiesPage(): void {
   typeSig.value = "static"; settingsSig.value = {}; caseSig.value = 0; viewSig.value = "result"; manualSig.value = false;
+  studyTarget.value = "part"; assemblyKindSig.value = null; resetAssemblySide();
 }
 
 export interface StudiesDeps { view?: StudyViewDeps }
 
 const builtParts = computed(() => parts.value.filter((p) => p.metrics !== null));
 
-export function StudiesPage({ controller = studies, agent = studiesAgent, deps = {} }: { controller?: StudiesController; agent?: StudiesAgentController; deps?: StudiesDeps }): JSX.Element {
+export function StudiesPage({ controller = studies, agent = studiesAgent, asm = assemblyStudies, deps = {} }: { controller?: StudiesController; agent?: StudiesAgentController; asm?: AssemblyStudiesController; deps?: StudiesDeps }): JSX.Element {
   const c = controller;
+  const target = studyTarget.value;
+  const asmPick = (agent.context.value?.assembly_proposals ?? []).find((x) => x.recommended && x.applicable) ?? null;
   const buildId = activeBuildId.value;
   useEffect(() => { void agent.load(buildId); }, [agent, buildId]);
   const agentRun = studiesAgentRun(runs.value.values(), buildId);
@@ -189,6 +199,18 @@ export function StudiesPage({ controller = studies, agent = studiesAgent, deps =
             onWatch={() => { if (active) openImmersive({ simId: active.simId, ids: doneIds, pending: active.simId ? null : { runId: active.runId, type: active.type, partId: active.partId, sinceTs: active.startedAt } }); }}
             onOpenResult={(id) => { setPicking(null); viewSig.value = "result"; void c.select(id); }}
             onOpenRun={openRun} />
+          <div class="st-target st-types" role="tablist" aria-label="What to study">
+            <button type="button" role="tab" class="st-type" aria-selected={target === "part"} data-testid="target-part" onClick={() => { studyTarget.value = "part"; }}>A part</button>
+            <button type="button" role="tab" class="st-type" aria-selected={target === "assembly"} data-testid="target-assembly" onClick={() => { studyTarget.value = "assembly"; }}>Whole assembly</button>
+          </div>
+          {target === "part" && asmPick && (
+            <p class="st-agent-asm text" data-testid="agent-assembly-proposal">
+              <span><b>Studies agent:</b> {asmPick.name.toLowerCase()} the whole assembly. {asmPick.why}</span>
+              <Button onClick={() => { assemblyKindSig.value = asmPick.kind; studyTarget.value = "assembly"; }} data-testid="agent-assembly-open">Set up</Button>
+            </p>
+          )}
+          {target === "assembly" && <AssemblySide c={asm} projectId={buildId} initialKind={assemblyKindSig.value} />}
+          {target === "part" && <>
           {c.runError.value && !manual && (
             <div class="st-band st-band-red" data-testid="run-error" role="alert">
               <div>
@@ -299,8 +321,11 @@ export function StudiesPage({ controller = studies, agent = studiesAgent, deps =
           )}
           </div>
           )}
+          </>}
         </aside>
         <section class="st-main" aria-label="Study">
+          {target === "assembly" && <AssemblyResult c={asm} />}
+          {target === "part" && <>
           {builtParts.value.length === 0 && <p class="faint">No built parts. Build one on the Design page.</p>}
           {partId && built && (
             <>
@@ -348,6 +373,7 @@ export function StudiesPage({ controller = studies, agent = studiesAgent, deps =
           {partId && built && !recShown && !c.recordError.value && c.history.value.length === 0 && (
             <p class="faint">Pick a study type, set it up on the left and run it. Results are a guide only.</p>
           )}
+          </>}
         </section>
       </div>
       <DesignStudies />

@@ -1,0 +1,34 @@
+[
+  {
+    "study_id": "as_146f2722dccb",
+    "project_id": "8b5dd32e4f16",
+    "kind": "drop",
+    "name": "Drop",
+    "status": "done",
+    "verdict": "fail",
+    "summary": "Drop fail: drop 1 m: 4.4 m/s at impact, ~10.0 g, 253 N equivalent (2585 g)",
+    "created_at": 1793673736.513582,
+    "finished_at": 1793673736.5157042,
+    "run_id": "df487aaf0e16",
+    "phase": "done",
+    "pct": 100,
+    "error": null,
+    "hint": null
+  },
+  {
+    "study_id": "as_e57b0c812ffe",
+    "project_id": "8b5dd32e4f16",
+    "kind": "walk",
+    "name": "Walk",
+    "status": "done",
+    "verdict": "fail",
+    "summary": "Walk fail: walk: no actuator assigned to moving joint(s) fl_hip, fr_hip, hl_hip, hr_hip, fl_knee, fr_knee, hl_knee, hr_knee: assign actuators (the actuators argument or the joint's actuator) and rerun dyn_torque; walk: not_checked; peaks fl_hip 19.74 N m, hl_hip 14.50 N m, hl_knee 6.47 N m",
+    "created_at": 1793673735.304479,
+    "finished_at": 1793673736.488368,
+    "run_id": "a3713c3cd1a1",
+    "phase": "done",
+    "pct": 100,
+    "error": null,
+    "hint": null
+  }
+]

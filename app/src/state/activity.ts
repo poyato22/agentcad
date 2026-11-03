@@ -137,7 +137,8 @@ const FINISHED_KEEP = 200;
 export function recordSimFinished(ev: MisesEvent): void {
   if (ev.type !== "sim_finished" && ev.type !== "topopt_finished") return;
   // a generative design run (Plan 9 D14) finishes like a study, by its topopt id
-  const raw = ev.type === "sim_finished" ? ev.data.sim_id : ev.data.topopt_id;
+  // H4: a whole-assembly study (and its part-stress hand-off) finishes by its job id
+  const raw = ev.type === "sim_finished" ? ev.data.sim_id ?? (ev.data.kind === "assembly_study" ? ev.data.job_id : undefined) : ev.data.topopt_id;
   const id = typeof raw === "string" ? raw : null;
   if (!id) return;
   const m = new Map(finishedSims.peek());

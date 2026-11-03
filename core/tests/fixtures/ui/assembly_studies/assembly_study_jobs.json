@@ -1,0 +1,13 @@
+[
+  {
+    "job_id": "as_e57b0c812ffe",
+    "kind": "assembly_study",
+    "run_id": "a3713c3cd1a1",
+    "build_id": "8b5dd32e4f16",
+    "part_id": null,
+    "label": "walk study of the assembly",
+    "status": "running",
+    "started_at": 1793673735.305241,
+    "cancel_url": "/jobs/as_e57b0c812ffe/cancel"
+  }
+]

@@ -284,6 +284,11 @@ def task_torque(job: dict) -> dict:
            "total_mass_kg": _r(sum(m.body_mass))}
     if free:
         out["stability"] = _trajectory_stability(rec, active, model)
+        # H4: how far the body travelled over the motion (a gait's forward progress)
+        idx = [k for k, ok in enumerate(active) if ok]
+        if idx and rec.get("com"):
+            a, b = np.array(rec["com"][idx[0]]), np.array(rec["com"][idx[-1]])
+            out["com_travel_m"] = _r(float(np.hypot(*(b - a)[:2])))
     if job.get("reactions"):
         out["reactions"] = _reactions(m, rec, active)
     return out

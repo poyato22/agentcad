@@ -364,6 +364,13 @@ const COVERAGE: Record<string, string> = {
   "POST /projects/{project_id}/bom": "browser/bom_add.json",
   "PATCH /projects/{project_id}/bom/{item_id}": "browser/bom_patch.json",
   "GET /projects/{project_id}/skeleton": "project_skeleton_empty.json",
+  // Plan 13 H4 whole-assembly studies: contract.assemblyStudies.test.ts, fixtures from
+  // core/scripts/dump_assembly_study_fixtures.py
+  "GET /assembly_studies/kinds": "assembly_studies/assembly_study_kinds.json",
+  "GET /assembly_studies": "assembly_studies/assembly_studies.json",
+  "POST /assembly_studies": "assembly_studies/assembly_study_start.json",
+  "GET /assembly_studies/{study_id}": "assembly_studies/assembly_study_walk.json",
+  "POST /assembly_studies/{study_id}/fem": "EXEMPT: its answer is POST /assembly_studies's {run_id, status} (assembly_study_start.json); the hand-off runs CalculiX, so core test_system_study (fake sim_run) covers it",
   // Plan 9 D14 generative design: contract.topopt.test.ts, fixtures from
   // core/scripts/dump_topopt_fixtures.py
   "POST /topopt": "topopt_start.json", "GET /topopt": "topopt_list.json",

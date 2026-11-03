@@ -1,5 +1,5 @@
 """Trajectories for the dynamics worker: keyframes, IK (damped least squares) and named
-motions (squat, stand_up, trot, reach, sweep, hold). Plan 10 C3.
+motions (squat, stand_up, trot, walk, reach, sweep, hold). Plan 10 C3; walk Plan 13 H4.
 
 Worker side: numpy + mujoco only, never mises. A trajectory arrives already mapped to MuJoCo
 joint names and SI units (rad, m, s) by `mises.dyn.tools`. `plan(m, model, traj)` returns a
@@ -227,8 +227,9 @@ def plan(m, model: dict, traj: dict) -> Plan:
         targets, err = _leg_motion(m, model, joints, times, settle, lift, notes)
         notes.append(f"{kind}: root lowered by up to {depth * 1000:.0f} mm, period "
                      f"{period:g} s")
-    elif kind == "trot":
-        period = float(traj.get("period_s", 0.6))
+    elif kind in ("trot", "walk"):
+        walk = kind == "walk"
+        period = float(traj.get("period_s", 1.2 if walk else 0.6))
         step = float(traj.get("step_m", 0.04))
         lift_h = float(traj.get("lift_m", 0.025))
         cycles = int(traj.get("cycles", 3))
@@ -240,23 +241,33 @@ def plan(m, model: dict, traj: dict) -> Plan:
         c = d0.xpos[root]
         # diagonal pairs: front-left with hind-right, by the sign of x*y relative to the root
         phase = []
-        for bid, local in fs:
-            p = d0.xpos[bid] + d0.xmat[bid].reshape(3, 3) @ local - c
-            phase.append(0.0 if p[0] * p[1] >= 0 else 0.5)
+        rel = [d0.xpos[bid] + d0.xmat[bid].reshape(3, 3) @ local - c for bid, local in fs]
+        if walk:
+            # a statically stable crawl (4-beat walk): one foot in the air at a time, in the
+            # order hind-left, front-left, hind-right, front-right (by the feet's x / y signs)
+            order = sorted(range(len(fs)), key=lambda k: (rel[k][1] < 0, rel[k][0] >= 0))
+            for k in range(len(fs)):
+                phase.append(order.index(k) / max(len(fs), 1))
+        else:
+            # diagonal pairs: front-left with hind-right, by the sign of x*y relative to the root
+            for p in rel:
+                phase.append(0.0 if p[0] * p[1] >= 0 else 0.5)
+        duty = (1.0 / max(len(fs), 1)) if walk else 0.5     # the swing's share of a cycle
 
         def swing(k, t):
             if t >= period * cycles:
                 return np.zeros(3)
             ph = (t / period + phase[k]) % 1.0
-            if ph < 0.5:                 # swing: foot moves forward and up
-                s = ph / 0.5
+            if ph < duty:                # swing: foot moves forward and up
+                s = ph / duty
                 return np.array([step * (s - 0.5), 0.0, lift_h * math.sin(math.pi * s)])
-            s = (ph - 0.5) / 0.5         # stance: foot sweeps back under the body
+            s = (ph - duty) / (1.0 - duty)   # stance: foot sweeps back under the body
             return np.array([step * (0.5 - s), 0.0, 0.0])
         times = _grid(dur)
         targets, err = _leg_motion(m, model, joints, times, settle, swing, notes)
-        notes.append(f"trot in place: {cycles} cycles of {period:g} s, step {step * 1000:.0f} "
-                     f"mm, lift {lift_h * 1000:.0f} mm (feet impacts: forces are estimates)")
+        notes.append(f"{'walk (4-beat crawl)' if walk else 'trot'}: {cycles} cycles of "
+                     f"{period:g} s, step {step * 1000:.0f} mm, lift {lift_h * 1000:.0f} mm "
+                     "(feet impacts: forces are estimates)")
     elif kind == "reach":
         dur = settle + float(traj.get("duration_s", 2.0))
         times = _grid(dur)

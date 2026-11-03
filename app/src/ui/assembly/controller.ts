@@ -84,6 +84,18 @@ function wholeTurns(s: MotionStep, kind: string | undefined): boolean {
   return span >= 359.999 && Math.abs(span / 360 - Math.round(span / 360)) < 1e-6;
 }
 
+/** Plan 13 H4: a motion step on this pseudo joint moves the whole assembly by [x, y, z] mm (a
+ *  launch, a drop): every instance's pose is shifted, no joint moves. */
+export const ROOT_JOINT = "@root";
+
+/** Every pose shifted by `off` (mm), or `p` itself when there is no shift. */
+function lifted(p: Record<string, Mat4>, off: readonly number[] | null): Record<string, Mat4> {
+  if (!off || off.every((x) => x === 0)) return p;
+  const out: Record<string, Mat4> = {};
+  for (const [k, m] of Object.entries(p)) out[k] = m.map((row, r) => (r < 3 ? row.map((v, c) => (c === 3 ? v + (off[r] ?? 0) : v)) : row));
+  return out;
+}
+
 /** A presented animation being shown (G-D): `t` seconds into a pass of `duration`. */
 export interface MotionState { t: number; duration: number; playing: boolean; speed: number; loop: boolean }
 
@@ -108,6 +120,8 @@ export class AssemblyController {
   private readonly clock: Clock;
   private readonly poseListeners = new Set<(pose: Readonly<Record<string, Mat4>>) => void>();
   private pose: Record<string, Mat4> = {};
+  /** H4: the whole assembly's shift (mm) a motion shows now, or null. */
+  private rootOffset: number[] | null = null;
   /** Joint values an animation is showing (over the core's). */
   private moving = new Map<string, JointValue>();
   private dirty = false;
@@ -311,7 +325,7 @@ export class AssemblyController {
     this.cancelTween?.();
     this.cancelTween = null;
     this.arriving.value = false; // the animation took over from an agent's glide
-    this.setPose(r.transforms);
+    this.setPose(lifted(r.transforms, this.rootOffset));
   }
 
   /** Show exactly the core's last answer (no local prediction left over), when nothing is moving. */
@@ -363,7 +377,7 @@ export class AssemblyController {
 
   /** The joints `steps` touch and the value each goes back to; the steps this assembly can play. */
   private beginMotion(steps: readonly MotionStep[]): MotionStep[] | null {
-    const usable = steps.filter((s) => this.joint(s.joint_id) !== null);
+    const usable = steps.filter((s) => s.joint_id === ROOT_JOINT || this.joint(s.joint_id) !== null);
     if (usable.length === 0) return null;
     this.stopAnimate();
     const restore = new Map<string, JointValue>();
@@ -379,11 +393,19 @@ export class AssemblyController {
 
   /** The pose `u` ms into one pass of `steps`: steps before the current one at their end, the
    *  current one on its way (eased), later ones at their start. */
-  private motionValuesAt(usable: readonly MotionStep[], durs: readonly number[], u: number): { pose: Map<string, JointValue>; i: number } {
+  private motionValuesAt(usable: readonly MotionStep[], durs: readonly number[], u: number): { pose: Map<string, JointValue>; i: number; root: number[] | null } {
     let i = 0;
     while (i < usable.length - 1 && u >= durs[i]) { u -= durs[i]; i++; }
     const pose = new Map<string, JointValue>();
+    let root: number[] | null = null;
     usable.forEach((s, k) => {
+      if (s.joint_id === ROOT_JOINT) {
+        if (k > i && root !== null) return;
+        const f = k < i ? 1 : k > i ? 0 : ease(Math.min(1, u / durs[i]));
+        const v = lerpValue(s.from, s.to, f);
+        root = Array.isArray(v) ? [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0] : [0, 0, v];
+        return;
+      }
       const j = this.joint(s.joint_id) as Joint;
       // how far along its step: done, on its way (eased; whole turns at constant speed), not yet
       const f = k < i ? 1 : k > i ? 0 : wholeTurns(s, j.kind) ? Math.min(1, u / durs[i]) : ease(Math.min(1, u / durs[i]));
@@ -395,7 +417,7 @@ export class AssemblyController {
         if (fj && fw.values.length >= 2 && !(k > i && pose.has(fw.joint_id))) pose.set(fw.joint_id, clampJoint(sampleAt(fw.values, f), fj.limits));
       }
     });
-    return { pose, i };
+    return { pose, i, root };
   }
 
   /** The poses the open motion passes through (`n` + 1 samples, ends included), for framing it
@@ -406,15 +428,16 @@ export class AssemblyController {
     if (!d || this.motion.peek() === null || total <= 0) return [];
     const out: Record<string, Mat4>[] = [];
     for (let k = 0; k <= n; k++) {
-      const { pose } = this.motionValuesAt(this.motionSteps, this.motionDurs, (k / n) * total);
+      const { pose, root } = this.motionValuesAt(this.motionSteps, this.motionDurs, (k / n) * total);
       const joints = d.joints.map((j) => ({ ...j, value: pose.get(j.id) ?? this.values.peek()[j.id] ?? j.value }));
-      out.push(solve({ instances: d.instances, joints }, this.resolver()).transforms);
+      out.push(lifted(solve({ instances: d.instances, joints }, this.resolver()).transforms, root));
     }
     return out;
   }
 
   private showMotionAt(usable: readonly MotionStep[], durs: readonly number[], u: number): void {
-    const { pose, i } = this.motionValuesAt(usable, durs, u);
+    const { pose, i, root } = this.motionValuesAt(usable, durs, u);
+    this.rootOffset = root;
     const next = { ...this.values.peek() };
     for (const [id, v] of pose) { this.moving.set(id, v); next[id] = v; }
     batch(() => {
@@ -508,6 +531,7 @@ export class AssemblyController {
   }
 
   stopAnimate(): void {
+    this.rootOffset = null;
     this.cancelSweep?.();
     this.cancelSweep = null;
     const pr = this.playRestore;

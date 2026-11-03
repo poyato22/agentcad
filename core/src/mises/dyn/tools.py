@@ -40,18 +40,19 @@ class Key(BaseModel):
 
 
 class Trajectory(BaseModel):
-    kind: Literal["hold", "keyframes", "squat", "stand_up", "trot", "reach", "sweep",
+    kind: Literal["hold", "keyframes", "squat", "stand_up", "trot", "walk", "reach", "sweep",
                   "animation"] = Field(
         "hold", description="hold: the current pose; keyframes: joint values over time; "
-        "squat / stand_up / trot: a legged robot's named motions (feet held by IK); reach: "
+        "squat / stand_up / trot / walk (a 4-beat crawl, one foot up at a time): a legged "
+        "robot's named motions (feet held by IK); reach: "
         "an arm's tip to target_mm; sweep: each joint through its range in turn; animation: "
         "a saved assembly_animate motion (animation_id)")
     duration_s: float | None = Field(None, gt=0, le=60)
-    period_s: float | None = Field(None, gt=0.05, le=30, description="squat / trot / sweep")
+    period_s: float | None = Field(None, gt=0.05, le=30, description="squat / trot / walk / sweep")
     cycles: int | None = Field(None, ge=1, le=10)
     depth_mm: float | None = Field(None, gt=0, le=1000, description="squat depth")
-    step_mm: float | None = Field(None, gt=0, le=500, description="trot step length")
-    lift_mm: float | None = Field(None, gt=0, le=300, description="trot foot lift")
+    step_mm: float | None = Field(None, gt=0, le=500, description="trot / walk step length")
+    lift_mm: float | None = Field(None, gt=0, le=300, description="trot / walk foot lift")
     target_mm: list[float] | None = Field(None, min_length=3, max_length=3,
                                           description="reach: world point")
     joints: list[str] | None = Field(None, max_length=40, description="sweep: these joints")
@@ -148,7 +149,7 @@ def _traj(ctx: ToolContext, pid: str, t: Trajectory | None, ex: export.Export) -
     free = ex.base == "free"
     if t is None:
         t = Trajectory(kind="squat" if free else "sweep")
-    if t.kind in ("squat", "stand_up", "trot") and not free:
+    if t.kind in ("squat", "stand_up", "trot", "walk") and not free:
         raise MisesError(ErrorCode.INVALID_INPUT, f"{t.kind} needs a free-standing robot; "
                          "this build is fixed to the ground",
                          hint="use sweep, reach or keyframes, or base='free'")
@@ -204,12 +205,12 @@ def _traj(ctx: ToolContext, pid: str, t: Trajectory | None, ex: export.Export) -
 def _motion_seconds(t: dict, ex) -> float:
     """How long the worker would simulate this trajectory (s), before it runs."""
     k = t.get("kind")
-    period = float(t.get("period_s") or (0.6 if k == "trot" else 2.0))
+    period = float(t.get("period_s") or {"trot": 0.6, "walk": 1.2}.get(k, 2.0))
     if k == "sweep":
         n = len(t.get("joints") or [v for v in ex.map["actuators"].values()])
         return period * max(n, 1)
-    if k in ("squat", "trot"):
-        return period * int(t.get("cycles") or (3 if k == "trot" else 1))
+    if k in ("squat", "trot", "walk"):
+        return period * int(t.get("cycles") or (1 if k == "squat" else 3))
     if k == "stand_up":
         return period
     if k == "keyframes":
@@ -241,6 +242,26 @@ def _chart(title: str, unit: str, series: list[tuple[str, list, list]], x="time"
             "x": {"label": x, "unit": "s"}, "y": {"label": title, "unit": unit},
             "series": [{"name": n, "points": [[a, b] for a, b in zip(xs, ys)]}
                        for n, xs, ys in series]}
+
+
+PLAYBACK_POINTS = 97       # samples per joint of a motion's playback (the app takes <= 129)
+
+
+def _playback(res: dict, ex) -> dict:
+    """Each joint's commanded motion in Mises units, thinned: {joint id: {t, values}} (H4:
+    the assembly player replays it)."""
+    out = {}
+    for j in res.get("joints") or []:
+        s = j.get("series") or {}
+        t, v = s.get("t") or [], s.get("target") or []
+        n = min(len(t), len(v))
+        if n < 2:
+            continue
+        idx = sorted({int(round(x)) for x in np.linspace(0, n - 1, min(n, PLAYBACK_POINTS))})
+        out[_jid(ex, j["joint"])] = {
+            "t": [round(float(t[i]), 4) for i in idx],
+            "values": [round(export.from_mj(ex.map, j["joint"], float(v[i])), 3) for i in idx]}
+    return out
 
 
 def _jid(ex, name: str) -> str:
@@ -342,6 +363,7 @@ async def dyn_torque(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
     charts = [_chart("Joint torque", "N m",
                      [(f"{_jid(ex, j['joint'])}", j["series"]["t"], j["series"]["servo"])
                       for j in res["joints"][:SAMPLE_CHART_JOINTS]])]
+    playback = _playback(res, ex)
     for j in res["joints"]:
         j.pop("series", None)
         j.pop("points", None)
@@ -354,7 +376,8 @@ async def dyn_torque(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
     card = {"kind": "dyn_torque", "title": f"Joint torque: {label}", "status": status,
             "rows": rows, "accuracy": checks.ACCURACY["dynamics"], "charts": charts}
     rid = run.save_result(_home(ctx), pid, "dyn_torque", {"summary": summary, "card": card,
-                                                           "result": res, "trajectory": traj})
+                                                           "result": res, "trajectory": traj,
+                                                           "playback": playback})
     pipeline.record(_home(ctx), pid, "dyn_torque", status=status, summary=summary,
                     margins=margins, result_id=rid, sig=_sig(ctx, asm, pid),
                     extra={"rms_nm": {r["joint_id"]: r["rms_nm"] for r in rows},
@@ -367,6 +390,8 @@ async def dyn_torque(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
             "joints": rows, "duration_s": res["duration_s"], "realtime_x": res["realtime_x"],
             "stability": res.get("stability"), "notes": res["notes"] + ex.notes,
             "card": card, "accuracy": card["accuracy"], "stream": "sim"}
+    if res.get("com_travel_m") is not None:
+        data["com_travel_mm"] = round(res["com_travel_m"] * 1000, 1)
     return ToolOutput(summary=summary, data=data, warnings=ex.notes, step_kind=StepKind.SIM_RUN)
 
 
@@ -547,7 +572,7 @@ async def _fem(ctx: ToolContext, pid: str, args: FemArgs) -> ToolOutput:
                              hint="name instance ids from assembly_get")
     else:
         chosen = fem_bridge.rank(reactions, sizes, args.n_links)
-    estimate = traj.get("kind") == "trot"
+    estimate = traj.get("kind") in ("trot", "walk")
     rows, k = [], 0
     from .export import _metrics
     for r in chosen:

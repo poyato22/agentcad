@@ -32,6 +32,10 @@ import {
   type StudySection, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "./studies";
 import { studiesContextSchema, type StudiesContext } from "./studiesAgent";
+import {
+  assemblyKindsSchema, assemblyStartedSchema, assemblyStudyRecordSchema, assemblyStudySummarySchema,
+  type AssemblyKind, type AssemblyStudyKind, type AssemblyStudyRecord, type AssemblyStudySummary,
+} from "./assemblyStudies";
 import { effortDefaultSchema, type EffortDefault, type ThinkChoice } from "./think";
 import { backgroundJobSchema, jobCancelSchema, type BackgroundJob, type JobCancel } from "./jobs";
 import type {
@@ -326,6 +330,22 @@ export class CoreClient {
   /** Plan 9 U-D: the studies agent's build context and proposed next studies. */
   studiesContext(projectId: string): Promise<StudiesContext> {
     return this.json("GET", "/studies/context", studiesContextSchema, { query: { project_id: projectId } });
+  }
+  // ---- Plan 13 H4: whole-assembly studies (walk / launch / drop / run mechanism)
+  async assemblyStudyKinds(projectId: string): Promise<AssemblyKind[]> {
+    return (await this.json("GET", "/assembly_studies/kinds", assemblyKindsSchema, { query: { project_id: projectId } })).kinds;
+  }
+  listAssemblyStudies(projectId: string): Promise<AssemblyStudySummary[]> {
+    return this.json("GET", "/assembly_studies", z.array(assemblyStudySummarySchema), { query: { project_id: projectId } });
+  }
+  getAssemblyStudy(studyId: string): Promise<AssemblyStudyRecord> { return this.json("GET", `/assembly_studies/${enc(studyId)}`, assemblyStudyRecordSchema); }
+  /** 202: a "studies" run drives assembly_study through the Gate. Bad settings: 400 before any run. */
+  startAssemblyStudy(body: { project_id: string; kind: AssemblyStudyKind; settings: Record<string, unknown> }): Promise<{ run_id: string; status: string }> {
+    return this.json("POST", "/assembly_studies", assemblyStartedSchema, { body });
+  }
+  /** Check part stresses: the study's peak loads to per-part FEM (a "studies" run). */
+  assemblyStudyFem(studyId: string): Promise<{ run_id: string; status: string }> {
+    return this.json("POST", `/assembly_studies/${enc(studyId)}/fem`, assemblyStartedSchema, { body: {} });
   }
   studySolvers(): Promise<StudySolvers> { return this.json("GET", "/sims/solvers", studySolversSchema); }
   /** `projectId`: that build's assembly studies (the core lists a part's by part_id). */

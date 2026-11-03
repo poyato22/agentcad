@@ -9,6 +9,7 @@
 // study or generative tool's result). Records are core data: rendered as text.
 import { computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import { onCoreEvent } from "../../api/events";
+import { assemblyProgressSchema, type AssemblyProgress, type AssemblyStudySummary } from "../../api/assemblyStudies";
 import type { StudyRecord, StudySummary } from "../../api/studies";
 import type { TopoptRecord } from "../../api/topopt";
 import type { MisesEvent } from "../../api/types";
@@ -21,7 +22,9 @@ export const KEEP = 20;
 
 export type BuildStudy =
   | { kind: "sim"; id: string; runId: string | null; partId: string; at: number; status: string; sim: StudySummary }
-  | { kind: "topopt"; id: string; runId: string | null; partId: string; at: number; status: string; topopt: TopoptRecord };
+  | { kind: "topopt"; id: string; runId: string | null; partId: string; at: number; status: string; topopt: TopoptRecord }
+  // Plan 13 H4: a whole-assembly study (walk / launch / drop / run mechanism); partId is ""
+  | { kind: "assembly"; id: string; runId: string | null; partId: string; at: number; status: string; asm: AssemblyStudySummary };
 
 export interface BuildStudies { buildId: string | null; items: readonly BuildStudy[] }
 
@@ -36,8 +39,11 @@ export const shownBuildStudies: ReadonlySignal<readonly BuildStudy[]> = computed
   return b.buildId !== null && b.buildId === activeBuildId.value ? b.items : [];
 });
 
+/** H4: the latest `assembly_study_progress` per study id (the stream's card shows it live). */
+export const assemblyProgress: Signal<ReadonlyMap<string, AssemblyProgress>> = signal<ReadonlyMap<string, AssemblyProgress>>(new Map());
+
 /** The build's studies and generative runs, newest first, at most KEEP (pure, for tests). */
-export function mergeRecords(sims: readonly StudySummary[], topopts: readonly TopoptRecord[], partIds: ReadonlySet<string>, buildId: string): BuildStudy[] {
+export function mergeRecords(sims: readonly StudySummary[], topopts: readonly TopoptRecord[], partIds: ReadonlySet<string>, buildId: string, asms: readonly AssemblyStudySummary[] = []): BuildStudy[] {
   const seen = new Set<string>();
   const out: BuildStudy[] = [];
   for (const s of sims) {
@@ -52,6 +58,11 @@ export function mergeRecords(sims: readonly StudySummary[], topopts: readonly To
     seen.add(t.topopt_id);
     out.push({ kind: "topopt", id: t.topopt_id, runId: t.run_id ?? null, partId: t.part_id, at: t.created_at ?? 0, status: t.status, topopt: t });
   }
+  for (const a of asms) {
+    if (a.project_id !== buildId || seen.has(a.study_id)) continue;
+    seen.add(a.study_id);
+    out.push({ kind: "assembly", id: a.study_id, runId: a.run_id ?? null, partId: "", at: a.created_at, status: a.status, asm: a });
+  }
   out.sort((a, b) => b.at - a.at);
   return out.slice(0, KEEP);
 }
@@ -65,12 +76,13 @@ export async function refreshBuildStudies(): Promise<void> {
   try { client = actions.client(); } catch { return; }   // no core bound yet
   const quiet = <T>(p: Promise<T[]>): Promise<T[]> => p.catch((e: unknown) => { debug("build studies refresh", e); return []; });
   // GET /sims?project_id= lists a build's assembly studies only: its parts' come from the full list
-  const [all, asm, topopts] = await Promise.all([
+  const [all, asm, topopts, systems] = await Promise.all([
     quiet(client.listStudies()), quiet(client.listStudies({ projectId: b })), quiet(client.topoptList({ projectId: b })),
+    typeof client.listAssemblyStudies === "function" ? quiet(client.listAssemblyStudies(b)) : Promise.resolve([]),
   ]);
   if (mine !== seq || activeBuildId.peek() !== b) return;
   const ids = new Set(parts.peek().filter((p) => (p.project_id ?? b) === b).map((p) => p.part_id));
-  buildStudies.value = { buildId: b, items: mergeRecords([...asm, ...all], topopts, ids, b) };
+  buildStudies.value = { buildId: b, items: mergeRecords([...asm, ...all], topopts, ids, b, systems) };
 }
 
 /** A finished study's card: the full record, read once. */
@@ -88,7 +100,7 @@ export async function loadStudyRecord(simId: string): Promise<void> {
 }
 
 const TERMINAL = /^(done|failed|cancelled|interrupted)$/;
-const JOB_TOOLS = /^(mcp__mises__)?(sim_|topopt_run$|topopt_generate$|design_review$|study_run$)/;
+const JOB_TOOLS = /^(mcp__mises__)?(sim_|topopt_run$|topopt_generate$|design_review$|study_run$|assembly_study)/;
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 function soon(): void {
@@ -106,6 +118,10 @@ export function wantsRefresh(ev: MisesEvent, known: ReadonlySet<string>): boolea
       return id !== null && (!known.has(id) || end);
     }
     case "topopt_progress": return typeof d.topopt_id === "string" && !known.has(d.topopt_id);
+    case "assembly_study_progress": {
+      const id = typeof d.study_id === "string" ? d.study_id : null;
+      return id !== null && (!known.has(id) || (typeof d.phase === "string" && TERMINAL.test(d.phase)));
+    }
     case "sim_finished": case "topopt_finished": case "run_finished": return true;
     case "tool_result": return typeof d.name === "string" && JOB_TOOLS.test(d.name);
     default: return false;
@@ -123,6 +139,10 @@ export function retainBuildStudies(): () => void {
       // the finished study's card changed: read it again
       if (ev.type === "sim_finished" && typeof ev.data.sim_id === "string" && studyRecords.peek().has(ev.data.sim_id)) {
         const m = new Map(studyRecords.peek()); m.delete(ev.data.sim_id); studyRecords.value = m;
+      }
+      if (ev.type === "assembly_study_progress") {
+        const p = assemblyProgressSchema.safeParse(ev.data);
+        if (p.success) { const m = new Map(assemblyProgress.peek()); m.set(p.data.study_id, p.data); while (m.size > KEEP * 3) m.delete(m.keys().next().value as string); assemblyProgress.value = m; }
       }
       if (wantsRefresh(ev, known)) soon();
     });

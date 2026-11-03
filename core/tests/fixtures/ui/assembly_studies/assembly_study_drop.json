@@ -1,0 +1,465 @@
+{
+  "study_id": "as_146f2722dccb",
+  "project_id": "8b5dd32e4f16",
+  "kind": "drop",
+  "name": "Drop",
+  "status": "done",
+  "verdict": "fail",
+  "phase": "done",
+  "pct": 100,
+  "created_at": 1793673736.513582,
+  "finished_at": 1793673736.5157042,
+  "run_id": "df487aaf0e16",
+  "settings": {
+    "drop_m": 1.0,
+    "k": 10.0,
+    "max_g": 8.0,
+    "impact_face": "bottom"
+  },
+  "summary": "Drop fail: drop 1 m: 4.4 m/s at impact, ~10.0 g, 253 N equivalent (2585 g)",
+  "error": null,
+  "hint": null,
+  "checks": [
+    {
+      "name": "peak deceleration",
+      "status": "fail",
+      "reason": "~10.0 g at impact vs at most 8 g",
+      "value": 10.0,
+      "unit": "g",
+      "limit": 8.0
+    }
+  ],
+  "metrics": [
+    {
+      "label": "mass",
+      "value": 2584.8,
+      "unit": "g"
+    },
+    {
+      "label": "impact speed",
+      "value": 4.43,
+      "unit": "m/s"
+    },
+    {
+      "label": "impact energy",
+      "value": 25.348,
+      "unit": "J"
+    },
+    {
+      "label": "peak deceleration",
+      "value": 10.0,
+      "unit": "g",
+      "status": "fail"
+    },
+    {
+      "label": "equivalent force",
+      "value": 253.5,
+      "unit": "N"
+    }
+  ],
+  "charts": [
+    {
+      "id": "impact_g",
+      "kind": "line",
+      "title": "Peak deceleration vs drop height",
+      "x": {
+        "label": "drop height",
+        "unit": "m"
+      },
+      "y": {
+        "label": "deceleration",
+        "unit": "g"
+      },
+      "series": [
+        {
+          "name": "estimate",
+          "points": [
+            [
+              0.1,
+              3.16
+            ],
+            [
+              0.2,
+              4.47
+            ],
+            [
+              0.3,
+              5.48
+            ],
+            [
+              0.4,
+              6.32
+            ],
+            [
+              0.5,
+              7.07
+            ],
+            [
+              0.6,
+              7.75
+            ],
+            [
+              0.7,
+              8.37
+            ],
+            [
+              0.8,
+              8.94
+            ],
+            [
+              0.9,
+              9.49
+            ],
+            [
+              1.0,
+              10.0
+            ],
+            [
+              1.1,
+              10.49
+            ],
+            [
+              1.2,
+              10.95
+            ],
+            [
+              1.3,
+              11.4
+            ],
+            [
+              1.4,
+              11.83
+            ],
+            [
+              1.5,
+              12.25
+            ],
+            [
+              1.6,
+              12.65
+            ],
+            [
+              1.7,
+              13.04
+            ],
+            [
+              1.8,
+              13.42
+            ],
+            [
+              1.9,
+              13.78
+            ],
+            [
+              2.0,
+              14.14
+            ]
+          ]
+        }
+      ],
+      "bands": [
+        {
+          "label": "limit 8 g",
+          "axis": "y",
+          "from": 8.0,
+          "to": 8.08
+        }
+      ]
+    },
+    {
+      "id": "impact_force",
+      "kind": "line",
+      "title": "Equivalent impact force vs drop height",
+      "x": {
+        "label": "drop height",
+        "unit": "m"
+      },
+      "y": {
+        "label": "force",
+        "unit": "N"
+      },
+      "series": [
+        {
+          "name": "m g k_h",
+          "points": [
+            [
+              0.1,
+              80.16
+            ],
+            [
+              0.2,
+              113.36
+            ],
+            [
+              0.3,
+              138.84
+            ],
+            [
+              0.4,
+              160.31
+            ],
+            [
+              0.5,
+              179.24
+            ],
+            [
+              0.6,
+              196.34
+            ],
+            [
+              0.7,
+              212.07
+            ],
+            [
+              0.8,
+              226.72
+            ],
+            [
+              0.9,
+              240.47
+            ],
+            [
+              1.0,
+              253.48
+            ],
+            [
+              1.1,
+              265.85
+            ],
+            [
+              1.2,
+              277.67
+            ],
+            [
+              1.3,
+              289.01
+            ],
+            [
+              1.4,
+              299.92
+            ],
+            [
+              1.5,
+              310.45
+            ],
+            [
+              1.6,
+              320.63
+            ],
+            [
+              1.7,
+              330.49
+            ],
+            [
+              1.8,
+              340.08
+            ],
+            [
+              1.9,
+              349.4
+            ],
+            [
+              2.0,
+              358.47
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "playback": {
+    "steps": [
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          600.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          594.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          594.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          576.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          576.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          546.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          546.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          504.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          504.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          450.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          450.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          384.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          384.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          306.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          306.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          216.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          216.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          114.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          114.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "duration_s": 0.1154
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          30.0
+        ],
+        "duration_s": 0.1731
+      },
+      {
+        "joint_id": "@root",
+        "from": [
+          0.0,
+          0.0,
+          30.0
+        ],
+        "to": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "duration_s": 0.1731
+      }
+    ],
+    "loop": false,
+    "caption": "Drop from 1 m: ~10 g at impact (height not to scale)"
+  },
+  "notes": [
+    "ESTIMATE: k_h = k sqrt(h / 1 m) = 10; real impacts depend on the floor, the contact and the drop angle"
+  ],
+  "accuracy": [
+    "equivalent static estimate (no explicit dynamics); a guide only"
+  ],
+  "sources": [
+    {
+      "tool": "engineering.loads.height_scaled_k"
+    }
+  ],
+  "fem": {
+    "available": true,
+    "via": "drop",
+    "status": null,
+    "settings": {
+      "impact_face": "bottom",
+      "drop_m": 1.0,
+      "k": 10.0
+    }
+  }
+}
