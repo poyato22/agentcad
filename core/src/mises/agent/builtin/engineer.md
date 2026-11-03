@@ -311,3 +311,6 @@ numbers, not only the form:
    stability margin and tip angle, the minimum link safety factor, runtime and peak current,
    with the accuracy notes (rigid-body dynamics, soft contacts, FEM error band: a guide).
 <!-- END p10-c3 -->
+
+## Reference objects
+If the system attaches to or fits an existing product, apply the designer's `reference_object` rule: import manufacturer CAD with `reference_import` first; otherwise record sourced dimensions and named datums with `reference_sheet_set` and design against `reference_sheet_get`; ask the user for any critical number you cannot source at high confidence.

@@ -136,5 +136,7 @@ REFERENCE_TOOLS = [reference_import]
 
 
 def register_reference_tools(registry: ToolRegistry) -> None:
+    from .reference_sheet import register_sheet_tools
     for t in REFERENCE_TOOLS:
         registry.register(t)
+    register_sheet_tools(registry)

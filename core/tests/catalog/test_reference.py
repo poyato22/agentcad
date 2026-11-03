@@ -73,6 +73,29 @@ async def test_reference_step_is_a_reference_part(env, web, tmp_path):
     assert again.data["existing"]
 
 
+async def test_dimension_sheet_needs_sources_and_flags_low_confidence(env):
+    ok = await env.call("reference_sheet_set", {
+        "ref_id": "prusa_mini", "name": "Prusa MINI+",
+        "dims": {"bed_x": {"value_mm": 180, "source": "https://help.prusa3d.com/mini",
+                           "confidence": "high"},
+                 "frame_w": {"value_mm": 120, "source": "photo estimate", "confidence": "low"}},
+        "datums": {"bed_hole_fl": {"kind": "hole", "position_mm": [10, 10, 0], "size_mm": 3.4,
+                                   "source": "manual p.12", "confidence": "medium"}}})
+    assert ok.data["low_confidence"] == ["dim frame_w"]
+    got = await env.call("reference_sheet_get", {"ref_id": "prusa_mini"})
+    assert got.data["sheet"]["dims"]["bed_x"]["source"].startswith("https://")
+    assert "bed_hole_fl" in got.data["sheet"]["datums"]
+    await env.call("reference_sheet_set", {"ref_id": "prusa_mini", "dims": {
+        "frame_w": {"value_mm": 118, "source": "user measured", "confidence": "high"}}})
+    again = await env.call("reference_sheet_get", {"ref_id": "prusa_mini"})
+    assert again.data["low_confidence"] == [] and len(again.data["sheet"]["dims"]) == 2
+    with pytest.raises(MisesError):
+        await env.call("reference_sheet_set", {"ref_id": "x1", "dims": {
+            "a": {"value_mm": 1, "source": "me", "confidence": "sure"}}})
+    with pytest.raises(MisesError):
+        await env.call("reference_sheet_get", {"ref_id": "nope"})
+
+
 async def test_reference_rejects_a_web_page(env, web):
     web.page(URL, b"<html>login</html>", ctype="application/octet-stream")
     with pytest.raises(MisesError):
