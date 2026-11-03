@@ -57,3 +57,14 @@ describe("pins from the core's structured feedback", () => {
     expect(thread.some((t) => t.kind === "note")).toBe(false);
   });
 });
+
+describe("H1: a pin on empty space in the assembly", () => {
+  it("reads back from its decision step as a world-point pin (no part, no instance)", () => {
+    activeBuildId.value = "b1";
+    runs.value = new Map([[RUN, run(RUN, "b1")]]);
+    const s = { ...REAL[0], id: 777, payload: { feedback: { part_id: "", part: "empty space", point: [1, 2, 3], world_point: [1, 2, 3], text: "gap here" } } } as Step;
+    steps.value = new Map([[RUN, [s]]]);
+    const [p] = buildPins.value;
+    expect(p).toMatchObject({ n: 1, text: "gap here", instanceId: null, worldPoint: [1, 2, 3] });
+  });
+});

@@ -86,6 +86,9 @@ export interface AssemblyScene {
   setOriginShown(on: boolean): void;
   /** The part (instance) under client pixel (x, y), with the world point and normal. */
   pickAt(clientX: number, clientY: number): AssemblyHit | null;
+  /** H1: the world point (mm) under client pixel (x, y) on the view plane through the orbit target:
+   *  where a click on empty space is pinned. */
+  pointOnView(clientX: number, clientY: number): Vec3;
   /** Plan 10 E16: called with the part under the pointer as it moves (null: none), throttled to
    *  one per frame. Returns the remover. */
   onHover(cb: (hit: AssemblyHit | null, ev: PointerEvent) => void): () => void;
@@ -646,6 +649,15 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     },
     setOriginShown(on) { if (on !== originShown) { originShown = on; placeTriad(); requestRender(); } },
     pickAt,
+    pointOnView(clientX, clientY) {
+      const r = canvas.getBoundingClientRect();
+      ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      const dir = camera.getWorldDirection(new THREE.Vector3());
+      const at = ray.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(dir, orbit.target), new THREE.Vector3());
+      const v = at ?? orbit.target;
+      return [v.x, v.y, v.z];
+    },
     partToWorld(iid, p) {
       const m = bodyMatrix(iid);
       if (!m) return null;

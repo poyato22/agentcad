@@ -24,7 +24,7 @@ export type AsmTool = "select" | "measure" | "comment";
 export const asmTool = signal<AsmTool>("select");
 
 interface APick { iid: string; part: Vec3; normal: Vec3 }
-interface AComment { iid: string; part: Vec3; world: Vec3; at: { x: number; y: number }; where: string }
+interface AComment { iid: string | null; part: Vec3; world: Vec3; at: { x: number; y: number }; where: string }
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const len = (a: Vec3) => Math.hypot(a[0], a[1], a[2]);
@@ -79,7 +79,7 @@ export function useAssemblyTools(scene: AssemblyScene | null, ctl: AssemblyContr
     });
     return () => { off(); scene.setHovered(null); };
   }, [scene, tool]);
-  useEffect(() => { if (tool !== "measure") setPicks([]); if (tool !== "comment") { setComment(null); setError(null); } }, [tool]);
+  useEffect(() => { if (tool !== "measure") setPicks([]); if (tool === "measure") { setComment(null); setError(null); } }, [tool]);
 
   const toPart = (h: AssemblyHit): { part: Vec3; normal: Vec3 } | null => {
     const part = scene?.worldToPart(h.instanceId, h.point);
@@ -111,34 +111,50 @@ export function useAssemblyTools(scene: AssemblyScene | null, ctl: AssemblyContr
     return { min: lo.map(r2) as Vec3, max: hi.map(r2) as Vec3 };
   };
 
-  function click(ev: PointerEvent): boolean {
-    if (tool === "select" || !scene) return false;
-    const h = scene.pickAt(ev.clientX, ev.clientY);
-    if (!h) { if (tool === "comment") setComment(null); return true; }
+  /** H1: a click anywhere offers the inline Comment bubble at the click: on a part (pinned to the
+   *  instance) or on empty space (pinned to the world point). */
+  function offerComment(ev: PointerEvent, h: AssemblyHit | null): void {
+    if (!scene) return;
+    const r = (ev.target as HTMLElement | null)?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+    const at = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+    setError(null);
+    if (!h) {
+      const w = scene.pointOnView(ev.clientX, ev.clientY);
+      setComment({ iid: null, part: w, world: w, at, where: "Empty space" });
+      return;
+    }
     const local = toPart(h);
-    if (!local) return true;
+    if (!local) return;
+    const inst = ctl.instance(h.instanceId);
+    const part = inst ? parts.peek().find((p) => p.part_id === inst.part_id) : undefined;
+    setComment({
+      iid: h.instanceId, part: local.part, world: assembled(h.instanceId, local.part) ?? h.point, at,
+      where: `${inst?.name ?? "Part"}${part && partName(part) !== inst?.name ? ` · ${partName(part)}` : ""}`,
+    });
+  }
+
+  function click(ev: PointerEvent): boolean {
+    if (!scene) return false;
+    const h = scene.pickAt(ev.clientX, ev.clientY);
+    if (tool === "select") { offerComment(ev, h); return false; } // the part is selected as well
+    if (tool === "comment" && !h) { setComment(null); return true; }
+    if (!h) return true;
     if (tool === "measure") {
+      const local = toPart(h);
+      if (!local) return true;
       const pk = { iid: h.instanceId, ...local };
       setPicks((prev) => (prev.length >= 2 ? [pk] : [...prev, pk]));
       return true;
     }
-    const inst = ctl.instance(h.instanceId);
-    const part = inst ? parts.peek().find((p) => p.part_id === inst.part_id) : undefined;
-    const r = (ev.target as HTMLElement | null)?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-    setError(null);
-    setComment({
-      iid: h.instanceId, part: local.part, world: assembled(h.instanceId, local.part) ?? h.point,
-      at: { x: ev.clientX - r.left, y: ev.clientY - r.top },
-      where: `${inst?.name ?? "Part"}${part && partName(part) !== inst?.name ? ` · ${partName(part)}` : ""}`,
-    });
+    offerComment(ev, h);
     return true;
   }
 
   async function send(text: string): Promise<void> {
     const c = state.current.comment;
-    const inst = c ? ctl.instance(c.iid) : null;
+    const inst = c?.iid ? ctl.instance(c.iid) : null;
     const build = ctl.projectId.peek() ?? activeBuildId.peek();
-    if (!c || !inst) return;
+    if (!c || (c.iid && !inst)) return;
     if (!build) { setError("Open a build first: the comment goes to its agent."); return; }
     setSending(true);
     setError(null);
@@ -146,13 +162,15 @@ export function useAssemblyTools(scene: AssemblyScene | null, ctl: AssemblyContr
     const point = c.part.map(r6) as Vec3;
     // P11 F4: the instance's box as drawn (its mesh's box through its pose), so the core can
     // tell the agent when what the user sees is not where the model is
-    const world_bbox = drawnBox(c.iid);
+    const world_bbox = c.iid ? drawnBox(c.iid) : null;
     try {
-      const res = await actions.client().sendFeedback(build, {
-        part_id: inst.part_id, point, text, instance_id: c.iid, world_point: c.world.map(r6) as Vec3,
+      const world = c.world.map(r6) as Vec3;
+      const res = await actions.client().sendFeedback(build, inst && c.iid ? {
+        part_id: inst.part_id, point, text, instance_id: c.iid, world_point: world,
         ...(world_bbox ? { world_bbox } : {}),
-      });
-      addLocalPin({ buildId: build, runId: res.run_id, stepId: res.step_id, partId: inst.part_id, point, faceId: null, text, ts: Date.now() / 1000, instanceId: c.iid });
+      } : { part_id: "", point: world, text, world_point: world });
+      addLocalPin({ buildId: build, runId: res.run_id, stepId: res.step_id, partId: inst?.part_id ?? "", point, faceId: null, text, ts: Date.now() / 1000,
+        instanceId: c.iid, worldPoint: c.iid ? null : world });
       actions.selectRun(res.run_id);
       setComment(null);
       asmTool.value = "select";
@@ -164,7 +182,7 @@ export function useAssemblyTools(scene: AssemblyScene | null, ctl: AssemblyContr
   }
 
   const ids = new Set((ctl.data.value?.instances ?? []).map((i) => i.id));
-  const pins: Pin[] = buildPins.value.filter((p) => p.instanceId && ids.has(p.instanceId));
+  const pins: Pin[] = buildPins.value.filter((p) => (p.instanceId && ids.has(p.instanceId)) || p.worldPoint);
 
   function marks(): SceneMark[] {
     const out: SceneMark[] = [];
@@ -172,7 +190,7 @@ export function useAssemblyTools(scene: AssemblyScene | null, ctl: AssemblyContr
     if (!scene) return out;
     s.picks.forEach((p, i) => { const w = scene.partToWorld(p.iid, p.part); if (w) out.push({ key: `${i}`, point: w, text: `${i + 1}`, kind: "pick" }); });
     if (s.hover) out.push({ key: "h", point: s.hover.point, text: "", kind: "hover" });
-    for (const p of pins) { const w = scene.partToWorld(p.instanceId as string, p.point); if (w) out.push({ key: p.key, point: w, text: `${p.n}`, kind: "pin" }); }
+    for (const p of pins) { const w = p.worldPoint ?? scene.partToWorld(p.instanceId as string, p.point); if (w) out.push({ key: p.key, point: w, text: `${p.n}`, kind: "pin" }); }
     return out;
   }
 
@@ -217,12 +235,12 @@ export function useAssemblyTools(scene: AssemblyScene | null, ctl: AssemblyContr
         </section>
       )}
       {tool === "comment" && !comment && <div class="vx-mode-hint label" role="status">Click a part where something should change</div>}
-      {tool === "comment" && comment && (
+      {comment && (
         <CommentBox key={`${comment.at.x},${comment.at.y}`} at={comment.at} bounds={room} where={comment.where} busy={sending} error={error}
           onSend={(t) => { void send(t); }} onCancel={() => { setComment(null); setError(null); }} />
       )}
       {pinOpen && scene && (() => {
-        const w = scene.partToWorld(pinOpen.instanceId as string, pinOpen.point);
+        const w = pinOpen.worldPoint ?? scene.partToWorld(pinOpen.instanceId as string, pinOpen.point);
         const s = w ? scene.toCanvas(w) : { x: 0, y: 0 };
         return (
           <div class="vx-pin-note" style={{ left: `${Math.min(Math.max(room.x0 + 8, s.x + 14), room.w - 248)}px`, top: `${Math.min(Math.max(8, s.y + 4), room.h - 90)}px` }}

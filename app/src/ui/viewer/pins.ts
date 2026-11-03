@@ -17,6 +17,8 @@ export interface LocalPin {
   /** Plan 10 E35: pinned in the assembly view: on this instance (`point` is still in the part's
    *  own frame, so the pin follows the instance's pose and the explode). */
   instanceId?: string | null;
+  /** H1: a pin on empty space in the assembly: its world point (mm); no part, no instance. */
+  worldPoint?: Vec3 | null;
 }
 export interface Pin extends LocalPin { n: number; key: string }
 
@@ -44,7 +46,8 @@ export const buildPins: ReadonlySignal<Pin[]> = computed(() => {
       const f = pinStep(s);
       if (!f) continue;
       out.push({ buildId: run?.project_id ?? null, runId, stepId: s.id, partId: f.part_id, point: f.point, faceId: f.face_id ?? null,
-        text: f.text, ts: s.ts, n: 0, key: `s${s.id}`, instanceId: f.instance_id ?? null });
+        text: f.text, ts: s.ts, n: 0, key: `s${s.id}`, instanceId: f.instance_id ?? null,
+        worldPoint: !f.part_id && f.world_point ? f.world_point : null });
     }
   }
   localPins.value.forEach((p, i) => {

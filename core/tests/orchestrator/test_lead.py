@@ -504,6 +504,21 @@ async def test_assembly_pin_compares_the_drawn_box_with_the_model(home):
     await rt.aclose()
 
 
+def test_empty_space_pin_goes_to_the_lead_with_the_world_point(home):
+    # H1: a click on empty space in the assembly is pinned to the world point (no part)
+    rt = make(home, RoleProvider(engineer=[text("noted")]))
+    with TestClient(create_app(rt, TOKEN)) as client:
+        pid = rt.active_project_id()
+        bad = client.post(f"/projects/{pid}/feedback", headers=AUTH, json={
+            "part_id": "", "point": [1, 2, 3], "text": "x"})
+        assert bad.status_code in (400, 422)
+        r = client.post(f"/projects/{pid}/feedback", headers=AUTH, json={
+            "part_id": "", "point": [1, 2, 3], "world_point": [1, 2, 3], "text": "gap here"})
+        assert r.status_code == 200, r.text
+        pin = rt.store.get_step(r.json()["step_id"]).payload["feedback"]
+        assert pin["world_point"] == [1, 2, 3] and pin["empty_space"] is True
+
+
 def test_assembly_pin_route_validates_the_world_point(home):
     rt = make(home, RoleProvider(engineer=[text("noted")]))
     with TestClient(create_app(rt, TOKEN)) as client:
