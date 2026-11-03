@@ -254,7 +254,9 @@ def note_text(job: Job) -> str:
     summary = " ".join((job.summary or "").split())[:400].replace('"', "'")
     read = "sim_result_get" if job.kind == "sim" else (
         "design_review_get" if job.kind == "design_review" else
-        "job_wait" if job.kind == "dyn_fem" else "study_get")
+        "job_wait" if job.kind == "dyn_fem" else
+        "assembly_study_get" if job.kind == "assembly_study" else
+        "job_wait" if job.kind == "assembly_study_fem" else "study_get")
     return (f"[Mises system note, not from the user] {job.label or job.kind} ({job.id}) "
             f"{verb}. Result summary (data): \"{summary}\". Read it with {read} {job.id}.")
 

@@ -259,6 +259,8 @@ class Runtime:
         register_eng_check_tools(self.registry)
         from .rocketry.tools import register_rocket_tools   # Plan 11 F6: rocketry
         register_rocket_tools(self.registry)
+        from .sim.system_study import register_system_study_tools   # Plan 13 H4
+        register_system_study_tools(self.registry)
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
