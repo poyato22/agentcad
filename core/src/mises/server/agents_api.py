@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from .. import projects as _projects
 from ..orchestrator import lead as _lead
 from ..profile import load_profile
+from ..types import ErrorCode, MisesError
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
@@ -34,7 +35,8 @@ class Box(BaseModel):
 
 
 class Feedback(BaseModel):
-    part_id: str = Field(min_length=1, max_length=80)
+    # H1: empty space in the assembly has no part: "" with a world_point (and no instance_id)
+    part_id: str = Field(min_length=0, max_length=80)
     point: list[Finite] = Field(min_length=3, max_length=3)
     face_id: str | None = Field(default=None, pattern=r"^f\d{1,6}$")
     text: str = Field(min_length=1, max_length=4000)
@@ -57,6 +59,9 @@ def build_agents_router(runtime: Runtime) -> APIRouter:
     @r.post("/projects/{project_id}/feedback")
     async def feedback(project_id: str, body: Feedback):
         _projects.check_project(runtime.store, project_id)
+        if not body.part_id and (body.world_point is None or body.instance_id is not None):
+            raise MisesError(ErrorCode.INVALID_INPUT,
+                             "a pin on empty space needs a world_point and no instance_id")
         prof = load_profile(runtime.home)
         return await _lead.submit_feedback(runtime, project_id, part_id=body.part_id,
                                            point=body.point, face_id=body.face_id,
