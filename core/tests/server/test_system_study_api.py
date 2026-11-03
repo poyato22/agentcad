@@ -71,6 +71,10 @@ def test_drop_study_runs_as_a_studies_run(client, rt, build):
     # the hand-off refuses an unknown study and a launch-style study with none
     assert client.post("/assembly_studies/as_000000000000/fem", headers=AUTH,
                        json={}).status_code == 404
+    # its job id is a job id the Stop button may send (B3's POST /jobs/{id}/cancel)
+    r = client.post(f"/jobs/{rows[0]['study_id']}/cancel", headers=AUTH)
+    assert r.status_code in (404, 409), r.text
+    assert client.post("/jobs/as_000000000000_fem/cancel", headers=AUTH).status_code == 404
 
 
 def test_unknown_build_and_empty_assembly(client, rt):

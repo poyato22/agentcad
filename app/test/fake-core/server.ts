@@ -31,6 +31,7 @@ import { specFrom, specRoutes, type FakeSpec, type SpecScenario } from "./spec";
 import { streamOf } from "./streams";
 import type { BackgroundJob } from "../../src/api/jobs";
 import { topoptFake } from "./topopt";
+import { assemblyStudiesFake } from "./assemblyStudies";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SCENARIO_DIR = resolve(HERE, "scenarios");
@@ -807,6 +808,12 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
   const topopt = topoptFake({ parts: () => state.parts, setParts: (p) => { state.parts = p; }, emit: (ev) => { emit(ev); },
     projectOf: (id) => state.builds.rows.get(id)?.project_id
       ?? (state.setup.profile as { active_project_id?: string | null }).active_project_id ?? state.builds.defaultId ?? DEFAULT_PROJECT });
+  // Plan 13 H4: whole-assembly studies (records live with this fake core, cleared on reset)
+  const asmStudies = assemblyStudiesFake({
+    liveBuild: (id) => state.builds.builds.some((b) => b.id === id && b.trashed_at === null),
+    newRun: (task) => newRun("studies", "ui", "studies-page", task, true),
+    emit: (ev) => { emit(ev); }, jobs: () => state.jobs, setJobs: (j) => { state.jobs = j; },
+  });
   const routes: Route[] = [
     { method: "GET", re: /^\/health$/, h: () => ({ ok: true }) },
     {
@@ -967,7 +974,8 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     {
       method: "POST", re: /^\/jobs\/([^/]+)\/cancel$/, h: (m) => {
         const id = decodeURIComponent(m[1]);
-        if (!/^(sim_|review_|study_|to_)[0-9a-f]{12}$/.test(id)) throw mises("invalid_input", `bad job id: '${id}'`, "sim_…, review_…, study_… or to_… ids");
+        if (!/^(sim_|review_|study_|to_|dyn_|as_)[0-9a-f]{12}(_fem)?$/.test(id)) throw mises("invalid_input", `bad job id: '${id}'`, "sim_…, review_…, study_… or to_… ids");
+        if (id.startsWith("as_") && asmStudies.cancel(id)) return { job_id: id, status: "cancelling" };
         const j = state.jobs.find((x) => x.job_id === id);
         if (!j) {
           if (state.jobsEnded.has(id)) throw new HttpError(409, { error: "not_running", status: "cancelled", message: `${id} is not running` });
@@ -1301,6 +1309,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       },
     },
     ...topopt.routes,
+    ...asmStudies.routes,
     ...simRoutes({
       sims: () => state.sims, parts: () => state.parts, defaultMaterial: () => state.setup.profile.default_material,
       newRun, emit,
@@ -1559,6 +1568,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
     scriptStarted = false;
     clearSimTimers(state.sims);
     topopt.reset();
+    asmStudies.reset();
     thinkDefaults.clear();                 // G8: a build's Think pick is per scenario, like the core's meta
     dropSockets();
     stopPrinting(state.print);
@@ -1595,6 +1605,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
       scriptTimers.forEach(clearTimeout);
       clearSimTimers(state.sims);
       topopt.reset();
+      asmStudies.reset();
       stopPrinting(state.print);
       dropSockets("terminate");
       wss.close();
