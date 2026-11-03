@@ -1,0 +1,302 @@
+{
+  "project_id": "8b5dd32e4f16",
+  "kinds": [
+    {
+      "kind": "walk",
+      "name": "Walk",
+      "applicable": true,
+      "recommended": true,
+      "why": "8 revolute joints on legs: walk it to check the actuators, stability and leg collisions",
+      "settings": {},
+      "doc": "the legged build walks: joint torques vs actuators, power, travel, stability and range-of-motion collisions (MuJoCo rigid-body dynamics)",
+      "schema": {
+        "properties": {
+          "gait": {
+            "default": "walk",
+            "description": "walk: a 4-beat crawl (one foot up at a time); trot: diagonal pairs",
+            "enum": [
+              "walk",
+              "trot"
+            ],
+            "title": "Gait",
+            "type": "string"
+          },
+          "period_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.2,
+                "maximum": 10,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "one gait cycle",
+            "title": "Period S"
+          },
+          "cycles": {
+            "default": 3,
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Cycles",
+            "type": "integer"
+          },
+          "step_mm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 300,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Step Mm"
+          },
+          "lift_mm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 150,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lift Mm"
+          },
+          "min_travel_mm": {
+            "anyOf": [
+              {
+                "maximum": 10000,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the body must travel at least this far (target)",
+            "title": "Min Travel Mm"
+          },
+          "actuators": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "joint id -> actuator (default: each joint's own, else an ideal servo)",
+            "title": "Actuators",
+            "type": "object"
+          },
+          "rom_poses": {
+            "default": 500,
+            "maximum": 5000,
+            "minimum": 10,
+            "title": "Rom Poses",
+            "type": "integer"
+          }
+        },
+        "title": "WalkSettings",
+        "type": "object"
+      }
+    },
+    {
+      "kind": "drop",
+      "name": "Drop",
+      "applicable": true,
+      "recommended": false,
+      "why": "how hard the whole build lands from a drop",
+      "settings": {},
+      "doc": "the whole assembly is dropped: impact speed, energy and peak deceleration (an equivalent static estimate)",
+      "schema": {
+        "properties": {
+          "drop_m": {
+            "default": 1.0,
+            "description": "drop height",
+            "exclusiveMinimum": 0,
+            "maximum": 50,
+            "title": "Drop M",
+            "type": "number"
+          },
+          "k": {
+            "default": 10.0,
+            "description": "dynamic factor for a 1 m drop (equivalent static load m g k sqrt(h / 1 m); ~5-20 rigid floors)",
+            "maximum": 500,
+            "minimum": 1,
+            "title": "K",
+            "type": "number"
+          },
+          "max_g": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 5000,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the payload's g limit",
+            "title": "Max G"
+          },
+          "impact_face": {
+            "default": "bottom",
+            "description": "face preset that hits the floor (for the per-part stress check)",
+            "maxLength": 40,
+            "title": "Impact Face",
+            "type": "string"
+          }
+        },
+        "title": "DropSettings",
+        "type": "object"
+      }
+    },
+    {
+      "kind": "mechanism",
+      "name": "Run mechanism",
+      "applicable": true,
+      "recommended": false,
+      "why": "8 moving joint(s): run the mechanism to check the actuators and collisions",
+      "settings": {},
+      "doc": "the mechanism runs through its motion: joint torques vs actuators and range-of-motion collisions",
+      "schema": {
+        "properties": {
+          "animation_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "a saved animation (default: the newest, else every joint swept)",
+            "title": "Animation Id"
+          },
+          "period_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.2,
+                "maximum": 20,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "sweep: per joint",
+            "title": "Period S"
+          },
+          "actuators": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Actuators",
+            "type": "object"
+          },
+          "rom_poses": {
+            "default": 500,
+            "maximum": 5000,
+            "minimum": 10,
+            "title": "Rom Poses",
+            "type": "integer"
+          }
+        },
+        "title": "MechanismSettings",
+        "type": "object"
+      }
+    },
+    {
+      "kind": "launch",
+      "name": "Launch",
+      "applicable": false,
+      "recommended": false,
+      "why": "needs a rocket build (nose cone, body tube, fins)",
+      "settings": {},
+      "doc": "the rocket flies on its motor: stability margin, fin flutter, apogee, payload g and descent (3-DOF flight, Barrowman)",
+      "schema": {
+        "properties": {
+          "motors": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Motors",
+            "type": "array"
+          },
+          "target_apogee_m": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 10000,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Apogee M"
+          },
+          "max_payload_g": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 500,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the payload's g limit (an egg: ~10-15 g is a common rule of thumb)",
+            "title": "Max Payload G"
+          },
+          "wind_mps": {
+            "default": 0.0,
+            "maximum": 20,
+            "minimum": 0,
+            "title": "Wind Mps",
+            "type": "number"
+          },
+          "rail_length_m": {
+            "default": 1.0,
+            "exclusiveMinimum": 0,
+            "maximum": 10,
+            "title": "Rail Length M",
+            "type": "number"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "rocket_analyze geometry (default: the build's skeleton)",
+            "title": "Geometry"
+          }
+        },
+        "title": "LaunchSettings",
+        "type": "object"
+      }
+    }
+  ]
+}
