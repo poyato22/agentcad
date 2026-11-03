@@ -111,7 +111,7 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
       const q = questionAskedSchema.safeParse(d);
       if (!rid || !q.success) return { state: s, effects: [] };
       const question: Question = { question_id: q.data.question_id, run_id: rid, question: q.data.question, options: q.data.options,
-        ...(q.data.questions.length ? { items: q.data.questions } : {}) };
+        ...(q.data.questions.length ? { items: q.data.questions } : {}), ...(q.data.image_id ? { image_id: q.data.image_id } : {}) };
       return { state: { ...s, questions: setIn(s.questions, question.question_id, question) }, effects: [] };
     }
     case "question_answered": {

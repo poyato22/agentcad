@@ -34,7 +34,7 @@ export function masses(list: readonly PartSummary[]): Map<string, TreeMass> {
       unknownBelow += m.unknown;
     }
     let res: TreeMass;
-    if (p.kind === "skeleton") res = { g: null, note: null, unknown: 0, sum: false };
+    if ((p.kind === "skeleton" || p.kind === "reference")) res = { g: null, note: null, unknown: 0, sum: false };
     else if (own.g !== null || p.kind !== "group") {
       res = { g: own.g, note: partMassNote(p) ?? own.note, unknown: (own.g === null ? 1 : 0) + unknownBelow, sum: p.mass_source === "sum" };
     } else {
@@ -62,7 +62,7 @@ export function totalMass(list: readonly PartSummary[]): { g: number; unknown: n
 
 /** A tree row's mass text: "Σ" in front of a sum, "—" when unknown, nothing for the skeleton. */
 export function rowMassText(p: PartSummary, m: TreeMass | undefined): string {
-  if (p.kind === "skeleton" || !m) return "";
+  if ((p.kind === "skeleton" || p.kind === "reference") || !m) return "";
   if (m.g === null) return "—";
   return `${m.sum ? "Σ " : ""}${fmtMass(m.g)}`;
 }

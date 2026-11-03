@@ -110,6 +110,8 @@ def _own(r: dict, has_disk: bool, home: Path | None, default_mat: str,
         return None, "unknown", "layout skeleton: it has no mass"
     if kind == "group":
         return None, "unknown", None
+    if kind == "reference":
+        return None, "unknown", "reference object: not part of the build, so it adds no mass"
     if kind == "catalog":
         m = _num((metrics or {}).get("mass_g"))
         if m is not None and m >= 0:

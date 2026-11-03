@@ -10,6 +10,7 @@ import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
 import { clickArmed, isTrustedActivation } from "./approvalKeys";
 import { InterviewCard } from "../questions/InterviewCard";
+import { useImageUrl } from "../cards/critique/images";
 import "./approvals.css";
 
 /** A batched question (ui_ask_user `questions`, the engineer's interview) gets the ONE interview
@@ -55,6 +56,7 @@ function SingleQuestionCard(props: { question: Question; runLabel: string }): JS
         <span class="faint text acard-run">{props.runLabel}</span>
       </div>
       <div class="qcard-question text">{q.question}</div>
+      {q.image_id && <QuestionImage id={q.image_id} />}
       {q.options.length > 0 && (
         <div class="qcard-options">
           {q.options.map((o, i) => (
@@ -71,4 +73,10 @@ function SingleQuestionCard(props: { question: Question; runLabel: string }): JS
       {error && <div class="qcard-error tone-red text" data-error>{error}</div>}
     </div>
   );
+}
+
+/** H5: the picture that marks where to measure (a render id served by GET /renders/{id}.png). */
+function QuestionImage(props: { id: string }): JSX.Element | null {
+  const url = useImageUrl({ id: props.id });
+  return url ? <img class="qcard-image" src={url} alt="Where to measure" style={{ maxWidth: "100%", borderRadius: "4px" }} /> : null;
 }

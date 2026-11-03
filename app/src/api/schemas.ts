@@ -188,7 +188,7 @@ export const partSummarySchema = z.object({
   part_id: z.string(), vars: z.record(z.string(), z.number()), metrics: partMetricsLenientSchema.nullable().catch(null),
   mtime: z.number().nullable().transform((v) => v ?? 0),
   id: z.string().optional(), label: z.string().optional(), project_id: z.string().nullish(), parent_id: z.string().nullish(),
-  order: z.number().optional(), color: z.string().nullish(), kind: z.enum(["part", "group", "catalog", "skeleton"]).optional(),
+  order: z.number().optional(), color: z.string().nullish(), kind: z.enum(["part", "group", "catalog", "skeleton", "reference"]).optional(),
   version: z.number().int().optional(),
   // a malformed appearance falls back to the drafting look (the row is never dropped)
   appearance: appearanceSchema.nullish().catch(null),
@@ -230,6 +230,7 @@ export const questionAskedSchema = z.object({
   question_id: z.string(), question: z.string(), options: z.array(z.string()).default([]),
   // a malformed batch falls back to the plain question (whose text lists every prompt)
   questions: z.array(askItemSchema).max(6).catch([]),
+  image_id: z.string().regex(/^[A-Za-z0-9_-]{1,96}$/).optional().catch(undefined),
 });
 
 // ---- Plan 3: profile, keys, setup, Claude Code, Onshape test

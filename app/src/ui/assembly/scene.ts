@@ -25,6 +25,8 @@ export interface SceneInstance {
   hidden?: boolean;
   /** Plan 10 E36: its name under it when laid out. */
   name?: string;
+  /** H5: a reference object (the real thing the build fits): drawn ghosted and neutral. */
+  reference?: boolean;
 }
 
 export interface OverlayLabel {
@@ -135,7 +137,7 @@ function defaultRenderer(canvas: HTMLCanvasElement): RendererLike {
   return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true, stencil: true });
 }
 
-interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null; material: MaterialParams | null; hidden: boolean; name?: string }
+interface Entry { id: string; group: THREE.Group; body: THREE.Object3D | null; template: PartScene | null; color: string | null; material: MaterialParams | null; hidden: boolean; name?: string; reference?: boolean }
 
 export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallbacks, deps: AssemblySceneDeps = {}): AssemblyScene {
   const renderer = (deps.createRenderer ?? defaultRenderer)(canvas);
@@ -248,7 +250,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
     for (const e of entries.values()) {
       if (!e.body) continue;
       // the part keeps its own color; a clash shows as red edges and the red overlap block
-      const face = e.material?.shiny ? (e.material.color ?? e.color ?? colors.face) : (e.color ?? colors.face);
+      const face = e.reference ? colors.edge : e.material?.shiny ? (e.material.color ?? e.color ?? colors.face) : (e.color ?? colors.face);
       const edge = e.id === selected || e.id === hovered || arriving ? colors.blue : hot.has(e.id) ? colors.red : colors.edge;
       e.body.traverse((o) => {
         if (o instanceof THREE.LineSegments) (o.material as THREE.LineBasicMaterial).color.set(edge);
@@ -256,7 +258,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
           const m = meshMaterial(o, e.material);
           m.color.set(face);
           // a clash shows through; else the finish's own opacity (glass-like looks)
-          const see = hot.has(e.id) ? 0.55 : (e.material?.shiny ? e.material.opacity : 1);
+          const see = hot.has(e.id) ? 0.55 : e.reference ? 0.28 : (e.material?.shiny ? e.material.opacity : 1);
           if (m.transparent !== see < 1) m.needsUpdate = true;
           m.transparent = see < 1;
           m.opacity = see;
@@ -608,6 +610,7 @@ export function createAssemblyScene(canvas: HTMLCanvasElement, cb: SceneCallback
         e.material = inst.material ?? null;
         e.hidden = !!inst.hidden;
         e.name = inst.name;
+        e.reference = !!inst.reference;
         const sp = shown.get(e.id);
         if (sp) sp.label = inst.name;
         e.group.visible = !e.hidden;

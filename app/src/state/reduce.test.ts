@@ -91,6 +91,13 @@ describe("reduce", () => {
     expect([...s.questions.keys()]).toEqual(["q2"]);
   });
 
+  it("question_asked_keeps_a_valid_image_id_and_drops_a_bad_one", () => {
+    let s = reduce(withRun(), ev("question_asked", { question_id: "q1", question: "How far?", options: [], image_id: "ask_run_ab12_measure" })).state;
+    expect(s.questions.get("q1")?.image_id).toBe("ask_run_ab12_measure");
+    s = reduce(s, ev("question_asked", { question_id: "q2", question: "How far?", options: [], image_id: "../etc/passwd" })).state;
+    expect(s.questions.get("q2")?.image_id).toBeUndefined();
+  });
+
   it("applyRuns_terminal_status_clears_questions", () => {
     let s = reduce(withRun(), ev("question_asked", { question_id: "q1", question: "Which side?", options: [] })).state;
     s = applyRuns(s, [run({ status: "running" })]);
