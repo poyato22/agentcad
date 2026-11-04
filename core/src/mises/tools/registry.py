@@ -106,6 +106,18 @@ def _inline_refs(node: Any, defs: dict[str, Any]) -> Any:
     return node
 
 
+def _drop_titles(node: Any, in_properties: bool = False) -> Any:
+    """The schema without pydantic's generated "title" labels (they repeat each field name and
+    cost every Claude Code turn ~26k characters over the registry); a property that is itself
+    named "title" is kept."""
+    if isinstance(node, dict):
+        return {k: _drop_titles(v, k == "properties") for k, v in node.items()
+                if in_properties or not (k == "title" and isinstance(v, str))}
+    if isinstance(node, list):
+        return [_drop_titles(v) for v in node]
+    return node
+
+
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, ToolDef] = {}
@@ -132,4 +144,4 @@ class ToolRegistry:
     def schema(self, t: ToolDef) -> dict:
         raw = t.input_model.model_json_schema()
         return {"name": t.name, "description": t.description,
-                "input_schema": _inline_refs(raw, raw.get("$defs", {}))}
+                "input_schema": _drop_titles(_inline_refs(raw, raw.get("$defs", {})))}

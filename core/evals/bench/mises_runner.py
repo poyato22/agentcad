@@ -264,6 +264,10 @@ def run_task(task: Task, out: Path, home_root: Path, cap_s: float, effort: str =
             row["export_error"] = f"{type(e).__name__}: {e}"
     row["decisions"] = decisions
     row["seconds"] = round(time.monotonic() - t0, 1)
+    try:
+        row["agent_seconds"] = agent_seconds(home)
+    except Exception:  # noqa: BLE001
+        pass
     write_json(out / "run.json", row)
     return row
 
@@ -279,6 +283,22 @@ def _last_words(core: Core, run_id: str | None) -> str:
             if isinstance(txt, str) and txt.strip():
                 return txt[-1500:]
     return ""
+
+
+def agent_seconds(home: Path) -> float | None:
+    """The build's own time: first to last step of any of its runs (from the home's step log,
+    read only). Excludes the harness' core start-up and idle polling, which `seconds`
+    includes."""
+    import sqlite3
+    db = Path(home) / "mises.db"
+    if not db.is_file():
+        return None
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        lo, hi = con.execute("select min(ts), max(ts) from steps").fetchone()
+    finally:
+        con.close()
+    return round(float(hi) - float(lo), 1) if lo is not None else None
 
 
 def tool_calls(core: Core, run_ids: list[str]) -> int:
