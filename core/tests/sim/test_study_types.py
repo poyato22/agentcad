@@ -101,6 +101,19 @@ async def test_modal_tip_mass_lowers_the_cantilever_to_the_spring_mass_answer(tm
     assert r["point_masses"] == [{"face": "x-max", "label": "motor", "mass_g": 50.0,
                                   "nodes": r["point_masses"][0]["nodes"]}]
     assert r["point_masses"][0]["nodes"] > 3 and r["added_mass_g"] == pytest.approx(50.0)
+    # the same mass at a point (the tip's centre) gives the same answer
+    out2 = await _run(ctx, "modal", "beam", {
+        "supports": [{"kind": "fixed", "face": "x-min"}], "n_modes": 2,
+        "point_masses": [{"point": [100, 5, 5], "radius_mm": 7.5, "mass_g": 50.0}],
+        "material": {"name": "PLA"}})
+    assert out2.ok, out2.summary
+    f2 = out2.data["results"]["first_freq_hz"]
+    assert abs(f2 - f) / f < 0.12, (f2, f)
+    assert out2.data["results"]["point_masses"][0]["point"] == [100, 5, 5]
+    from mises.types import MisesError
+    with pytest.raises(MisesError, match="exactly one of face or point"):
+        await _run(ctx, "modal", "beam", {"supports": [{"kind": "fixed", "face": "x-min"}],
+                                         "point_masses": [{"mass_g": 5.0}]})
 
 
 @pytest.mark.timeout(240)

@@ -93,3 +93,11 @@ def test_mesh_sizes_coarse_then_fine_and_capped():
     # a huge solid block is capped so the fine mesh stays within the node budget
     c2, f2 = mesh_sizes([500, 500, 500], 500 ** 3)
     assert f2 > 500 / 40
+
+
+def test_a_material_name_string_and_a_point_mass_by_point_validate():
+    # DRONE demo: the lead sent "material": "CF plate" and point masses at motor positions
+    from mises.sim.settings import ModalSettings
+    s = ModalSettings.model_validate({"material": "CF plate", "point_masses": [
+        {"point": [43, -43, 11], "mass_g": 9.3}]})
+    assert s.material.name == "CF plate" and s.point_masses[0].radius_mm == 4.0
