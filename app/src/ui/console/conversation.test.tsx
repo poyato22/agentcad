@@ -50,6 +50,7 @@ function client(over: Record<string, unknown> = {}) {
     cancelQueued: vi.fn().mockResolvedValue(true),
     cancel: vi.fn().mockResolvedValue({ ok: true }),
     message: vi.fn().mockResolvedValue({ ok: true }),
+    continueRun: vi.fn().mockResolvedValue({ ok: true }),
     ...over,
   };
   bindClient(c as unknown as CoreClient);
