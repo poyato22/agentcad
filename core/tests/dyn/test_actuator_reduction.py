@@ -14,6 +14,15 @@ def test_resolve_keeps_a_reduction_suffix():
     assert again.no_load_rpm == base.no_load_rpm / 2
 
 
+def test_waveshare_st3215_servos_are_known():
+    """DOG demo: the lead had to check its ST3215-HS legs against an MG996R stand-in."""
+    hs = act.resolve("servo_st3215_hs")
+    assert hs.stall_torque_nm == 1.96 and hs.no_load_rpm == 106
+    assert act.resolve("ST3215-HS bus servo").id == "servo_st3215_hs"
+    assert act.resolve("st3215").id == "servo_st3215"
+    assert act.resolve("sts3215").id == "servo_sts3215"
+
+
 def test_torque_rows_check_against_the_reduced_actuator():
     reduced = act.resolve({"id": "mg996r", "ratio": 2})
     peak = 1.5 * act.resolve("mg996r").stall_torque_nm * 0.6   # over 1:1, fine at 2:1

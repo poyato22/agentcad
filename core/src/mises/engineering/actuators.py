@@ -84,6 +84,15 @@ TABLE: tuple[Perf, ...] = (
     Perf("servo_sts3215", "Feetech STS3215 bus servo", "bus_servo", 7.4, 1.9, 0.6,
          _RPM(0.222), 2.7, 0.05, 55, (45.2, 24.7, 35), source="Feetech [V]",
          aliases=("sts3215",)),
+    # Waveshare's 12 V bus servos (the STS3215 body): product pages, read 2026-11-04
+    Perf("servo_st3215_hs", "Waveshare ST3215-HS bus servo (12 V, high speed)", "bus_servo",
+         12.0, 1.96, 0.65, 106, 2.4, 0.24, 68, (45.2, 24.7, 35),
+         source="Waveshare ST3215-HS page [V]: 20 kg.cm @12 V, 0.094 s/60 deg, 2.4 A locked; "
+                "rated ~1/3 stall [2]", aliases=("st3215_hs", "st3215hs", "st3215-hs")),
+    Perf("servo_st3215", "Waveshare ST3215 bus servo (12 V)", "bus_servo", 12.0, 2.94, 0.98,
+         _RPM(0.222), 2.7, 0.18, 55, (45.2, 24.7, 35),
+         source="Waveshare ST3215 page [V]: 30 kg.cm @12 V, 0.222 s/60 deg; rated ~1/3 "
+                "stall [2]", aliases=("st3215",)),
     Perf("dynamixel_xl430_w250", "Dynamixel XL430-W250-T", "bus_servo", 11.1, 1.4, 0.5, 57,
          1.3, 0.05, 57.2, (28.5, 46.5, 34), source="ROBOTIS e-manual [V]",
          aliases=("xl430", "xl430_w250")),
