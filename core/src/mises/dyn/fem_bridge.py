@@ -50,6 +50,10 @@ class Frames:
         return self.Ri.T @ (at_export * 1000.0 - self.ti)                       # mm, part
 
 
+class NoLoad(ValueError):
+    """The link carries no load at its peak in this motion: there is nothing to check."""
+
+
 def nearest_face(metrics: dict, point_mm, axis=None, *, avoid: set | None = None) -> dict:
     """The bore at a joint: the cylindrical face whose axis passes nearest the point (and runs
     along `axis` when given), else the face whose centre is nearest. {face, kind, distance,
@@ -149,7 +153,7 @@ def load_case(link: dict, frames: Frames, metrics: dict, *, label: str) -> dict:
                         "force_n": round(float(np.linalg.norm(fp)), 3)})
     merged = _merge(loads)
     if not merged:
-        raise ValueError("no load enters this link at its peak (a leaf with no contact)")
+        raise NoLoad("no load enters this link at its peak (a leaf with no contact)")
     if len(merged) > 12:
         merged = sorted(merged, key=lambda x: -(x.get("newtons") or x.get("n_mm", 0) / 100))[:12]
         notes.append("more than 12 loads: the 12 largest kept")

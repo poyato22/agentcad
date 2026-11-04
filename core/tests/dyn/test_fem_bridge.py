@@ -48,3 +48,13 @@ def test_a_ring_held_at_pitch_and_loaded_at_yaw_uses_four_distinct_bores():
     loaded = {ld["face"]: ld["newtons"] for ld in case["loads"]}
     assert set(loaded) == {"f5", "f6"}
     assert sum(loaded.values()) == 122.6
+
+
+
+def test_an_unloaded_leaf_is_a_distinct_no_load_case():
+    import pytest
+
+    from mises.dyn.fem_bridge import NoLoad
+    link = {"anchor_m": [0, 0, 0], "axis": [1, 0, 0], "children": [], "contacts": []}
+    with pytest.raises(NoLoad):
+        load_case(link, _Identity(), RING, label="motor")

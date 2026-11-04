@@ -642,6 +642,12 @@ async def _fem(ctx: ToolContext, pid: str, args: FemArgs) -> ToolOutput:
         label = f"{inst[iid].name or iid} @ {_label(traj)} t={r['at_s']:.2f}s"
         try:
             lc = fem_bridge.load_case(r, frames, metrics, label=label)
+        except fem_bridge.NoLoad as e:
+            # an unloaded leaf (the TVC motor in its tube: the dynamics carry no thrust) has
+            # nothing to check in this motion; it must not hold the whole study at not_checked
+            rows.append({"link": inst[iid].name or iid, "instance_id": iid, "part_id": part_id,
+                         "status": "n/a", "reason": f"{e}: unloaded in this motion"})
+            continue
         except ValueError as e:
             rows.append({"link": inst[iid].name or iid, "instance_id": iid, "part_id": part_id,
                          "status": "not_checked", "reason": str(e)})
