@@ -259,7 +259,7 @@
       "suggested": true
     }
   ],
-  "browser_fetches_per_run": 60,
+  "browser_fetches_per_run": 300,
   "max_spawns_per_turn": 8,
   "dollar_caps": false,
   "default_effort": "auto",
