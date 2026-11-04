@@ -58,10 +58,14 @@ def _overlap(a, b) -> float:
     return c.volume
 
 
-@pytest.mark.parametrize("airframe_id,layout", [(76.2, "outboard"), (66.0, "inboard")])
-def test_no_interference_through_the_full_two_axis_range(airframe_id, layout):
-    # 76.2 mm (3 in) fits the pitch servo beside the gimbal; a 66 mm BT-80 puts it over the motor
-    m, p, plan = library.plan_for("tvc_gimbal", {"airframe_id": airframe_id})
+@pytest.mark.parametrize("airframe_id,horn_r,layout", [(76.2, 8.0, "outboard"),
+                                                       (66.0, 8.0, "inboard"),
+                                                       (62.0, 14.0, "inboard")])
+def test_no_interference_through_the_full_two_axis_range(airframe_id, horn_r, layout):
+    # 76.2 mm (3 in) fits the pitch servo beside the gimbal; a 66 mm BT-80 puts it over the
+    # motor; a long horn in a 62 mm bore (the demo build's pick) must not put the pitch servo
+    # in the yaw pushrod's path
+    m, p, plan = library.plan_for("tvc_gimbal", {"airframe_id": airframe_id, "horn_r": horn_r})
     assert plan.sizing["servo_layout"] == layout
     contacts = {frozenset(c) for c in plan.contacts}
     pr, yr = plan.rom["pitch_servo"], plan.rom["yaw_servo"]

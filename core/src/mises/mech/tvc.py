@@ -165,6 +165,7 @@ def tvc_gimbal(p: dict):
                                      or (sh["l"] / 2 - sh["w"] / 2, 0.0, sh["h"])))
     md, mat, defl = p["motor_d"], p["material"], p["max_deflection_deg"]
     pin_d, hr = p["pin_d"], p["horn_r"]
+    hr_p = hr                                 # the pitch horn (inboard: capped, see below)
     bore = pin_d + PIN_CLEAR
     rod_pin = 2.0
     rod_bore = rod_pin + PIN_CLEAR
@@ -247,7 +248,13 @@ def tvc_gimbal(p: dict):
     else:
         # pitch servo over the motor (clear of the tilting tube top), horn reaching out to the
         # tab; its post is a block behind the servo on a column outside the gimbal
-        p_hub_y = p_tab_y - hr
+        # the pitch servo body must stay clear of the yaw rod, which swings toward -X as the
+        # tube yaws: cap the pitch horn so the body's near side stays off the X axis
+        rod_sway = y_tab_z * math.sin(math.radians(defl + 2.0))   # the rod foot, pitched
+        hr_p = min(hr, p_tab_y - (rod_t / 2 + 1.0 + rod_sway + sw / 2))
+        if hr_p < 4.0:
+            raise ValueError("no room for an inboard pitch servo beside the yaw pushrod")
+        p_hub_y = p_tab_y - hr_p
         p_z = max(p_tab_z + 29.0, tube_h / 2 + 6.0 + out_bot)
         col_y0 = math.sqrt(max(0.0, (o_ro + gap + 0.5) ** 2 - px0 ** 2))
         col_y1 = math.sqrt(max(0.0, (R - tol) ** 2 - px1 ** 2))
@@ -338,7 +345,7 @@ def tvc_gimbal(p: dict):
     # servo travel for exactly -max..+max gimbal: each channel is a planar four-bar when the
     # other axis is at 0 (pitch in the YZ plane, yaw in the ZX plane); the pitch servo turns
     # about -X, so its joint value is minus the CCW angle about +X
-    sp = [-_servo_deg((p_hub_y, p_z), hr, (p_tab_y, p_z), (p_tab_y, p_tab_z), p_rod_l, t)
+    sp = [-_servo_deg((p_hub_y, p_z), hr_p, (p_tab_y, p_z), (p_tab_y, p_tab_z), p_rod_l, t)
           for t in (-defl, defl)]
     sy_ = [_servo_deg((y_z, y_hub_x), hr, (y_z, y_tab_x), (y_tab_z, y_tab_x), y_rod_l, t)
            for t in (-defl, defl)]
@@ -430,7 +437,7 @@ def tvc_gimbal(p: dict):
         "lug_bearing_sf": round(ys / bearing, 2) if bearing else None,
         "motor_com_below_pivot_mm": round(-zc * 1000, 1), "servo_layout": layout,
         "stack_height_mm": round(max(p_z, y_z) + out_top, 1)}
-    k.plan.transmission = {"pitch": f"gimbal ~ asin({hr:g} sin(servo) / {p_tab_y:.1f})",
+    k.plan.transmission = {"pitch": f"gimbal ~ asin({hr_p:g} sin(servo) / {p_tab_y:.1f})",
                            "yaw": f"gimbal ~ asin({hr:g} sin(servo) / {y_tab_x:.1f})"}
     k.plan.rom = {"pitch": [-defl, defl], "yaw": [-defl, defl],
                   "pitch_servo": s_rng_p, "yaw_servo": s_rng_y}
