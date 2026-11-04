@@ -40,6 +40,7 @@ _BLOCK_MARKERS = ("captcha", "robot check", "are you a human", "are you a robot"
                   "unusual traffic", "verify you are human", "attention required",
                   "enable javascript and cookies", "bot detection", "just a moment...")
 BLOCKED_STATUSES = {401, 403, 429, 503, 999}
+_HTML_TYPES = ("text/html", "application/xhtml+xml", "")
 BLOCKED = "site blocked automated access"
 
 
@@ -160,10 +161,12 @@ def new_id() -> str:
 
 
 def build(page: Page, *, run_id: str, project_id: str | None, kind: str = "page",
-          sid: str | None = None) -> dict:
+          sid: str | None = None, pdf_text: str | None = None) -> dict:
     """A stored snapshot of a fetched page (the full record; `public()` is what routes return).
     HTML pages also get the importer's product extraction (`part`: name, vendor, price, specs,
-    dims, mount) and the catalog item it would make (`item`)."""
+    dims, mount) and the catalog item it would make (`item`). Plain text, markdown, CSV, XML
+    and JSON are kept as they are (not parsed as HTML); a PDF keeps `pdf_text`, its text layer
+    read in the sandboxed worker (browser.pdftext), when there is one."""
     sid = sid or new_id()
     host = urlsplit(page.final_url).hostname or ""
     rec = {"id": sid, "run_id": run_id, "project_id": project_id, "kind": kind,
@@ -171,13 +174,19 @@ def build(page: Page, *, run_id: str, project_id: str | None, kind: str = "page"
            "content_type": page.content_type, "fetched_at": time.time(),
            "title": "", "text": "", "tables": [], "images": [], "part": None, "_images": [],
            "_item": None}
+    if getattr(page, "partial", False):
+        rec["partial"] = True
+    name = urlsplit(page.final_url).path.rsplit("/", 1)[-1][:200]
     if page.content_type == "application/pdf":
-        rec["title"] = urlsplit(page.final_url).path.rsplit("/", 1)[-1][:200] or host
-        rec["text"] = (f"PDF document ({len(page.body or b'')} bytes). Mises does not read PDF"
-                       " text yet: open it in the browser to read it.")
-        return rec
-    p = parse(page.text) if page.content_type not in ("application/json",
-                                                       "application/ld+json") else None
+        rec["title"] = name or host
+        if not pdf_text:
+            rec["text"] = (f"PDF document ({len(page.body or b'')} bytes) with no readable text"
+                           " layer (it may be a scan): open it in the browser to read it.")
+            return rec
+        page = Page(page.url, page.final_url, "text/plain", pdf_text)
+    elif page.content_type not in _HTML_TYPES:
+        rec["title"] = name or host
+    p = parse(page.text) if page.content_type in _HTML_TYPES else None
     if p is not None:
         rec["title"] = _squash(p.title or p.meta.get("og:title") or host)[:300]
         rec["text"] = _clean_text(p.text)[:TEXT_MAX]
@@ -187,7 +196,7 @@ def build(page: Page, *, run_id: str, project_id: str | None, kind: str = "page"
         rec["images"] = [{"proxy_url": f"/browser/snapshots/{sid}/images/{i}",
                           "alt": im["alt"]} for i, im in enumerate(imgs)]
     else:
-        rec["title"] = host
+        rec["title"] = rec["title"] or host
         rec["text"] = page.text[:TEXT_MAX]
     item = extract(page)
     rec["_item"] = {**item, "raw_text": item.get("raw_text", "")[:20_000]}

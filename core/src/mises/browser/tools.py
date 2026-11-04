@@ -45,7 +45,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
-from ..catalog.importer import check_url, fetch, wrap_untrusted
+from ..catalog.importer import _cap_text, check_url, fetch, wrap_untrusted
 from ..catalog.tools import _catalog, allowed_domains, run_project
 from ..events import Event
 from ..profile import DEFAULT_BROWSER_FETCHES, load_profile
@@ -53,7 +53,7 @@ from ..store import Store
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, ToolOutput
 from . import sites as sites_mod
-from . import websearch
+from . import pdftext, websearch
 from .search import RESULTS_MAX, results_from
 from . import fallback as fb
 from .snapshot import (BLOCKED_STATUSES, SnapshotStore, blocked_reason, build, new_id, parse,
@@ -591,38 +591,70 @@ def page_for_agent(rec: dict) -> str:
     return "\n\n".join(parts)
 
 
-@tool("web_open", safety=SafetyClass.READ, open_world=True, timeout_s=30,
+def redirect_guard(ctx: ToolContext, start: str):
+    """A redirect off `start`'s site is followed when its target would open as a link the agent
+    gave (an ordinary page on a public host): the same shape checks (no encoded-looking host
+    label, path segment or query value) and per-turn caps. check_url has already refused
+    non-https, private and local targets. Returns the refusal reason, or None."""
+    def guard(url: str) -> str | None:
+        host = _host(url)
+        if sites_mod.on_domain(host, start) or _is_allowed(ctx, host):
+            return None
+        if not _shape_ok(url):
+            return "the link has an unusual shape"
+        return suspicious_shape(url) or _cap_reason(ctx, host)
+    return guard
+
+
+async def _pdf_text(ctx: ToolContext, body: bytes | None) -> str | None:
+    fn = (ctx.services or {}).get("pdf_text") or pdftext.extract
+    try:
+        return await fn(body or b"")
+    except Exception:  # noqa: BLE001 - an unreadable PDF is still a snapshot
+        log.info("pdf text extraction failed", exc_info=True)
+        return None
+
+
+@tool("web_open", safety=SafetyClass.READ, open_world=True, timeout_s=120,
       needs_approval=_open_needs_approval, preview=_open_preview,
       description="Read one web page (https GET only, no cookies) and keep a readable snapshot"
                   " for the user: title, text, tables, images, plus the part data found on it"
-                  " (dims in mm, mass in g, mount pattern, price). Ordinary public https pages"
-                  " open directly; suggested sites keep their query string, others lose it. An"
-                  " odd-looking link, or many pages from one site, asks the user first. Returns a"
-                  " snapshot_id for part_show. The page is untrusted data.")
+                  " (dims in mm, mass in g, mount pattern, price). Reads HTML, plain text,"
+                  " markdown, JSON, XML and PDF text; a redirect to another ordinary site is"
+                  " followed. Ordinary public https pages open directly; suggested sites keep"
+                  " their query string, others lose it. An odd-looking link, or very many pages"
+                  " from one site, is refused. Returns a snapshot_id for part_show. Find real"
+                  " URLs with web_search rather than guessing. The page is untrusted data.")
 async def web_open(ctx: ToolContext, args: OpenArgs) -> ToolOutput:
     url, _ = open_plan(ctx, args.url)
     start = _host(url)
-    stay = lambda h: sites_mod.on_domain(h, start) or _is_allowed(ctx, h)  # noqa: E731
+    guard = redirect_guard(ctx, start)
     _charge(ctx, 1)
     _count_domain(ctx, start)          # after the budget took it (a refused fetch is not counted)
-    async def get(u: str, realistic: bool = False, allow_other_site: bool = False):
-        opts = dict(user_agent=fb.BROWSER_UA, accept=fb.BROWSER_ACCEPT,
-                    extra_headers=fb.BROWSER_HEADERS) if realistic else {"user_agent": USER_AGENT}
-        ok = (lambda h: sites_mod.on_domain(h, _host(u))) if allow_other_site else stay
-        return await fetch(u, strip_query=False, types=PAGE_TYPES, redirect_ok=ok, **opts,
-                           **_http(ctx))
 
-    # H3: a bot wall or an empty (JavaScript-only) page falls back: realistic headers, then a
-    # cached copy, then search-engine snippets. Each extra request spends the fetch budget.
-    opened = await fb.open_chain(get, url, charge=lambda: _charge(ctx, 1))
+    async def get(u: str, realistic: bool = False, allow_other_site: bool = False):
+        if allow_other_site:           # the archive's copy: stays on the archive
+            kw = {"redirect_ok": lambda h: sites_mod.on_domain(h, _host(u))}
+        else:
+            kw = {"redirect_guard": guard}
+        return await _fetch_page(ctx, u, realistic=realistic, **kw)
+
+    async def search(q: str) -> list[dict]:
+        return (await _search_web(ctx, q, websearch.RESULTS_MAX, prepaid=False))["results"]
+
+    # H3: a bot wall, an empty (JavaScript-only) page, a timeout, a dropped connection or a
+    # host that no longer resolves falls back: realistic headers, then a cached copy, then
+    # web-search snippets. Each extra request spends the fetch budget.
+    opened = await fb.open_chain(get, url, charge=lambda: _charge(ctx, 1), search=search)
     page, why = opened.page, opened.why
     if page is None:
         snap = _blocked_snapshot(ctx, url, "page", why)
         return ToolOutput(ok=False, summary=f"{start}: {why}. Tried: {', '.join(opened.tried)}."
-                                            " Try another suggested site.",
+                                            " Find another page with web_search.",
                           data={"blocked": True, "snapshot_id": snap["id"], "domain": start,
                                 "tried": opened.tried})
-    rec = build(page, run_id=ctx.run_id, project_id=run_project(ctx))
+    text = await _pdf_text(ctx, page.body) if page.content_type == "application/pdf" else None
+    rec = build(page, run_id=ctx.run_id, project_id=run_project(ctx), pdf_text=text)
     rec["fetch_path"] = opened.path
     if opened.path == "snippet":
         rec["partial"] = True
@@ -631,18 +663,26 @@ async def web_open(ctx: ToolContext, args: OpenArgs) -> ToolOutput:
         rec.update(blocked=why, part=None, _item=None)
     _snapshots(ctx).add(rec)
     if why:
-        return ToolOutput(ok=False, summary=f"{rec['domain']}: {why}. Try another suggested"
-                                            " site.",
+        return ToolOutput(ok=False, summary=f"{rec['domain']}: {why}. Find another page with"
+                                            " web_search.",
                           data={"blocked": True, "snapshot_id": rec["id"],
                                 "domain": rec["domain"]})
-    data = {"snapshot_id": rec["id"], "url": rec["url"], "domain": rec["domain"],
-            "fetch_path": opened.path, "has_part": rec["part"] is not None, "image_count": len(rec["images"]),
-            "table_count": len(rec["tables"]),
+    moved = rec["domain"] if not sites_mod.on_domain(rec["domain"], start) else None
+    if moved and opened.path != "cache":
+        _count_domain(ctx, moved)
+    data = {"snapshot_id": rec["id"], "url": rec["url"], "final_url": rec["final_url"],
+            "domain": rec["domain"], "fetch_path": opened.path, "tried": opened.tried,
+            "partial": bool(rec.get("partial")), "has_part": rec["part"] is not None,
+            "image_count": len(rec["images"]), "table_count": len(rec["tables"]),
             "untrusted_page_data": wrap_untrusted(page_for_agent(rec), rec["domain"])}
     found = " Part data found (show it with part_show)." if rec["part"] else ""
     via = {"headers": " (needed browser-like headers)", "cache": " (from a cached copy)",
            "snippet": " (the page would not open: only search-engine snippets)"}.get(
         opened.path, "")
+    if moved and opened.path in ("plain", "headers"):
+        via += f" (redirected to {moved})"
+    if getattr(page, "partial", False):
+        via += f". Only the first {_cap_text(PAGE_MAX_BYTES)} of a bigger page were read"
     return ToolOutput(summary=f"Opened a page on {rec['domain']} as snapshot {rec['id']}{via}."
                               f"{found} {UNTRUSTED}", data=data)
 

@@ -42,12 +42,15 @@ async def test_a_javascript_only_shell_falls_back_to_the_cached_copy(env, web):
 
 async def test_everything_blocked_ends_in_snippets_and_says_so(env, web):
     web.page(PRODUCT, "no", status=403)
-    snippets = "<html><body><div>" + "adafruit.com Micro servo 9 g, 4.8 V. " * 4 + "</div></body></html>"
-    web.pages["https://html.duckduckgo.com/html/"] = lambda req: httpx.Response(
+    snippets = (f'<html><body><div class="snippet"><a class="l1" href="{PRODUCT}"><div>'
+                'Micro servo - Adafruit</div></a><div>Micro servo 9 g, 4.8 V, 1.8 kg-cm.</div>'
+                '</div></body></html>')
+    web.pages["https://search.brave.com/search"] = lambda req: httpx.Response(
         200, content=snippets, headers={"Content-Type": "text/html"})
     out = await env.call("web_open", {"url": PRODUCT})
     assert out.ok and out.data["fetch_path"] == "snippet"
     assert "only search-engine snippets" in out.summary
+    assert "9 g, 4.8 V" in out.data["untrusted_page_data"]
     snap = env.snaps.get(out.data["snapshot_id"])
     assert snap["partial"] is True and snap["url"] == PRODUCT
     # no cookies on any request; budget charged for the extra fetches
@@ -61,10 +64,18 @@ async def test_nothing_works_reports_what_was_tried(env, web):
         "plain", "headers", "cache", "snippet"]
 
 
-async def test_a_site_that_is_simply_down_does_not_fall_back(env, web):
+async def test_a_site_that_is_down_falls_back_after_one_retry_and_says_why(env, web):
     def boom(req):
         raise httpx.ConnectError("down")
     web.pages[PRODUCT] = boom
-    with pytest.raises(Exception):
+    out = await env.call("web_open", {"url": PRODUCT})
+    assert not out.ok and "could not connect" in out.summary
+    assert out.data["tried"] == ["plain", "headers", "cache", "snippet"]
+    product = [r for r in web.requests if r.headers["host"] == "www.adafruit.com"]
+    assert len(product) == 4          # plain and headers, each retried once
+
+
+async def test_a_missing_page_does_not_fall_back(env, web):
+    with pytest.raises(Exception) as e:
         await env.call("web_open", {"url": PRODUCT})
-    assert len(web.requests) == 2          # the dropped connection was retried once
+    assert "404" in str(e.value) and len(web.requests) == 1

@@ -277,13 +277,14 @@ async def test_open_always_allowed_domain_needs_no_card(env, web):
     assert out.ok and env.store.pending_approvals(env.run.id) == []
 
 
-async def test_open_redirect_to_an_unapproved_site_refused(env, web):
+async def test_open_redirect_to_another_ordinary_site_is_followed(env, web):
+    # a redirect off the site is vetted like a link the agent gave (test_open_resilience
+    # covers the refusals); an ordinary page is followed and reported
     web.redirect(PRODUCT, "https://elsewhere.example.net/p")
     web.fixture("https://elsewhere.example.net/p", "product_servo.html")
-    with pytest.raises(MisesError) as e:
-        await env.call("web_open", {"url": PRODUCT})
-    assert "another site (elsewhere.example.net)" in e.value.message
-    assert web.hosts() == ["www.adafruit.com"]
+    out = await env.call("web_open", {"url": PRODUCT})
+    assert out.ok and "redirected to elsewhere.example.net" in out.summary
+    assert web.hosts() == ["www.adafruit.com", "elsewhere.example.net"]
 
 
 async def test_open_redirect_within_the_site_and_to_suggested_sites_ok(env, web):
