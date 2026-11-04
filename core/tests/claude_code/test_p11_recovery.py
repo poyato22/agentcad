@@ -1,7 +1,7 @@
 """P11 F9 (fake claude): a Claude Code run recovers by itself from run-level failures (the process
 exiting, error_during_execution, the Mises tools not connecting, a network hiccup), at most 3
 times per user turn with a visible note each time; once that budget is spent it stops with one
-clear card (what failed, what was tried, Retry / Continue). A config failure is not retried."""
+clear card (what failed, what was tried, Continue). A config failure is not retried."""
 import asyncio
 import os
 
@@ -68,7 +68,7 @@ async def test_the_budget_spent_the_run_stops_with_one_clear_card(rt, claude_bin
     cards = [s.payload for s in rt.store.steps(rid, [StepKind.ERROR]) if "recovery" in s.payload]
     assert len(cards) == 1
     card = cards[0]["recovery"]
-    assert card["exhausted"] is True and card["actions"] == ["retry", "continue"]
+    assert card["exhausted"] is True and card["actions"] == ["continue"]
     assert len(card["tried"]) == 3 and "exited" in card["cause"]
     assert cards[0]["message"].startswith("Stopped after 3 recoveries")
     assert rt.store.get_run(rid).status == "failed"

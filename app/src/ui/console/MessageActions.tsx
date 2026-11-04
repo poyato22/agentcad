@@ -1,7 +1,8 @@
 // P10 E9 / E3: what you can do with a message in the thread. Your own messages get Edit (the words
-// back in the composer); an error or a stalled turn gets Retry (the same words again, to the same
-// agent); a message still queued for a busy lead gets Cancel (core C1 — hidden for good once the
-// core says it has no such route). The error card says what happened, the likely cause and what to
+// back in the composer); an error the run did not get past gets Continue (the core carries the run
+// on with an internal continuation: never your message again, never as your words); a message
+// still queued for a busy lead gets Cancel (core C1 — hidden for good once the core says it has
+// no such route). The error card says what happened, the likely cause and what to
 // do, all as plain wrapped text (the message is untrusted and never markup).
 import { signal } from "@preact/signals";
 import type { JSX } from "preact";
@@ -9,7 +10,7 @@ import { useState } from "preact/hooks";
 import type { AgentRun } from "../../api/types";
 import { actions } from "../../state/store";
 import { Button } from "../common/Button";
-import { editMessage, sendChat } from "./chat";
+import { editMessage } from "./chat";
 import { explainError } from "./errorText";
 import { openProfile } from "../profile/open";
 import { startErrorText } from "./startError";
@@ -17,27 +18,22 @@ import { startErrorText } from "./startError";
 /** The words go back to the composer; sending them marks this row edited. */
 export function EditButton({ text, rowKey }: { text: string; rowKey: string }): JSX.Element {
   return (
-    <button type="button" class="cv-copy cv-edit" aria-label="Edit and resend" title="Edit and resend" data-edit-message
+    <button type="button" class="cv-copy cv-edit" aria-label="Edit message" title="Put these words back in the composer to change them" data-edit-message
       onClick={() => editMessage(text, rowKey)}>
       Edit
     </button>
   );
 }
 
-/** Send `text` again to `run` (its lead, or that sub-agent). A stalled run is stopped first. */
-export async function retry(text: string, run: AgentRun | null, stalled = false): Promise<void> {
-  if (stalled && run) {
-    try { await actions.client().cancel(run.id); } catch { /* already over: just send */ }
-  }
-  await sendChat(text, run && run.role !== "lead" ? run : null);
-}
-
-export function RetryButton({ text, run, stalled = false, label = "Retry" }: { text: string; run: AgentRun | null; stalled?: boolean; label?: string }): JSX.Element {
+/** Continue: the core carries `run` on from where it stopped with an internal continuation
+ *  (shown as "Mises continued after: <cause>"). Never re-sends your message. */
+export function ContinueButton({ run, cause }: { run: AgentRun | null; cause: string | null }): JSX.Element | null {
   const [state, setState] = useState<{ busy: boolean; error: string | null; sent: boolean }>({ busy: false, error: null, sent: false });
+  if (!run) return null;
   const go = async () => {
     setState({ busy: true, error: null, sent: false });
     try {
-      await retry(text, run, stalled);
+      await actions.client().continueRun(run.id, cause);
       setState({ busy: false, error: null, sent: true });
     } catch (e) {
       setState({ busy: false, error: startErrorText(e), sent: false });
@@ -45,11 +41,11 @@ export function RetryButton({ text, run, stalled = false, label = "Retry" }: { t
   };
   return (
     <span class="cv-retry">
-      <Button variant="default" class="cv-retry-btn" disabled={state.busy} data-retry onClick={() => void go()}
-        title={`Send "${text.length > 60 ? `${text.slice(0, 60)}…` : text}" again`}>
-        {state.busy ? "Sending…" : label}
+      <Button variant="default" class="cv-retry-btn" disabled={state.busy || state.sent} data-continue onClick={() => void go()}
+        title="Mises carries the run on from where it stopped">
+        {state.busy ? "Continuing…" : "Continue"}
       </Button>
-      {state.sent && <span class="faint" role="status">sent again</span>}
+      {state.sent && <span class="faint" role="status">continuing</span>}
       {state.error && <span class="cv-fail text" role="alert">{state.error}</span>}
     </span>
   );
@@ -88,15 +84,15 @@ export function CancelQueuedButton({ runId, messageId }: { runId: string; messag
   );
 }
 
-/** An error in the thread: what happened, the likely cause, what to do, and Retry when there is a
- *  message of yours to send again. */
-export function ErrorCard({ item, retryText, run }: {
+/** An error in the thread: what happened, the likely cause, what to do, and Continue when the run
+ *  did not get past it (`stopped`). */
+export function ErrorCard({ item, stopped, run }: {
   item: { code: string; message: string; hint: string | null; cause?: string | null; recovery?: { tried: number } | null };
-  retryText: string | null; run: AgentRun | null;
+  stopped: boolean; run: AgentRun | null;
 }): JSX.Element {
   const v = explainError(item);
   // P11 F9: the run recovered by itself until its budget ran out: say what was tried, and offer
-  // Retry (your last message again) and Continue (carry on from here)
+  // Continue (Mises carries it on; your message is never sent again)
   if (item.recovery) {
     const n = item.recovery.tried;
     return (
@@ -109,8 +105,7 @@ export function ErrorCard({ item, retryText, run }: {
         <p class="cv-err-msg text" data-error-message>{item.message}</p>
         <p class="cv-err-line text"><span class="cv-err-l">Tried</span>{`restarting the session ${n} time${n === 1 ? "" : "s"}`}</p>
         <div class="cv-err-actions">
-          {retryText && <RetryButton text={retryText} run={run} />}
-          <RetryButton text="Continue from where you stopped." run={run} label="Continue" />
+          <ContinueButton run={run} cause={item.message || null} />
         </div>
       </div>
     );
@@ -125,9 +120,9 @@ export function ErrorCard({ item, retryText, run }: {
       {v.message && <p class="cv-err-msg text" data-error-message>{v.message}</p>}
       {v.cause && <p class="cv-err-line text"><span class="cv-err-l">Likely cause</span>{v.cause}</p>}
       {v.hint && <p class="cv-err-line text" data-error-hint><span class="cv-err-l">What to do</span>{v.hint}</p>}
-      {(retryText || v.kind === "tls" || v.kind === "network") && (
+      {((stopped && run) || v.kind === "tls" || v.kind === "network") && (
         <div class="cv-err-actions">
-          {retryText && <RetryButton text={retryText} run={run} />}
+          {stopped && <ContinueButton run={run} cause={item.message || null} />}
           {/* the CA bundle / proxy live in Profile & settings → Claude Code → Network */}
           {(v.kind === "tls" || v.kind === "network") && (
             <Button variant="ghost" data-network-settings onClick={() => openProfile("claude")}>Network settings</Button>

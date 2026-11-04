@@ -127,7 +127,9 @@ class _BearerAuth:
 
 
 class _McpEndpoint:
-    """Requires a valid, running `X-Mises-Run` before handing the request to the MCP app."""
+    """Requires a valid, running `X-Mises-Run` before handing the request to the MCP app (or one
+    whose live Claude Code session this process holds: its proxy connects at launch, maybe
+    while the run is queued; mcp_server refuses its tool calls until the run is running)."""
 
     def __init__(self, runtime: Runtime, inner: ASGIApp):
         self.runtime = runtime
@@ -149,7 +151,7 @@ class _McpEndpoint:
                     resp = _error_response(MisesError(
                         ErrorCode.DENIED, "the app's own run cannot be used over MCP",
                         hint="bind the MCP connection to your own run id"))
-                elif run.status != "running":
+                elif run.status != "running" and not self.runtime.mcp_attachable(run_id):
                     resp = _error_response(MisesError(
                         ErrorCode.INVALID_INPUT, f"run {run_id} is {run.status}",
                         hint="create a new run"), status=409)
@@ -244,6 +246,10 @@ class Resume(BaseModel):
     text: str | None = None
 
 
+class ContinueRun(BaseModel):
+    cause: str | None = Field(default=None, max_length=2000)   # what stopped it (shown, told)
+
+
 class Decision(BaseModel):
     payload_hash: str
     approve: bool
@@ -301,15 +307,33 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
             except Exception:  # noqa: BLE001 - a watchdog must never crash the server
                 log.debug("stall scan failed", exc_info=True)
 
+    async def _resume_interrupted():
+        """Runs the restart interrupted mid-turn carry on by themselves once Claude Code can
+        reach the Mises tools (attach_mcp follows the server's start)."""
+        if not runtime.interrupted:
+            return
+        for _ in range(600):
+            if runtime.mcp_endpoint is not None:
+                break
+            await asyncio.sleep(0.1)
+        else:
+            return
+        try:
+            await runtime.resume_interrupted()
+        except Exception:  # noqa: BLE001 - never crash the server over it
+            log.warning("resuming interrupted runs failed", exc_info=True)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         # warm 2D drawings in the background as parts change (U6)
         runtime.drawing_pregen.start()
         stall_task = asyncio.create_task(_stall_watch())
+        resume_task = asyncio.create_task(_resume_interrupted())
         try:
             async with manager.run():
                 yield
         finally:
+            resume_task.cancel()
             stall_task.cancel()
             await runtime.drawing_pregen.aclose()
             # background work of the UI routes (OpenRouter refresh, model downloads) stops here
@@ -547,6 +571,14 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         """E9: re-send the run's last user turn after an error or a stall."""
         _run(run_id)
         return await runtime.retry_last(run_id)
+
+    @app.post("/runs/{run_id}/continue")
+    async def continue_(run_id: str, body: ContinueRun | None = None):
+        """Carry a stopped run on with an internal continuation (the error card's Continue):
+        never the user's message again, never a user bubble; budgets keep their window."""
+        _run(run_id)
+        cause = (body.cause if body is not None and body.cause else None) or "the run stopped"
+        return await runtime.continue_run(run_id, cause[:300])
 
     @app.post("/runs/{run_id}/resume")
     async def resume(run_id: str, body: Resume | None = None):

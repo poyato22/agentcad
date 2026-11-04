@@ -82,7 +82,7 @@ log = logging.getLogger(__name__)
 #: offered every tool (the designer) does not get these on such a model. An agent that lists
 #: them by name (the planner) keeps them.
 STRONG_MODEL_TOOLS = frozenset({"orchestrator_run", "agent_spawn", "agent_wait", "agent_result",
-                                "orchestrator_submit_plan"})
+                                "agent_continue", "orchestrator_submit_plan"})
 
 
 #: `log` key naming the words the design-class classifier may read for this message (the
@@ -384,10 +384,14 @@ class Runtime:
         owned by another live process (e.g. a `mises serve` next to this CLI) are left alone.
         Once failed, the MCP endpoint refuses them (it only serves running runs)."""
         out = []
+        # when each last worked (before this marking bumps it): resume_interrupted's age limit
+        self._interrupted_last: dict[str, float] = {}
         for run in self.store.running_runs(include_queued=True):
             pid = run.owner_pid
             if pid is not None and (pid == os.getpid() or self._pid_alive(pid)):
                 continue
+            self._interrupted_last[run.id] = float(run.last_activity_at or run.updated_at
+                                                   or run.created_at or 0)
             self.approvals.cancel_run(run.id)
             self.store.release_run_reservations(run.id)
             self.store.append_step(run.id, StepKind.ERROR, {
@@ -401,6 +405,57 @@ class Runtime:
         if out:
             log.warning("marked %d interrupted run(s) failed: %s", len(out), ", ".join(out))
         return out
+
+    #: a run interrupted longer ago than this (by its last activity) is not continued by itself
+    RESUME_MAX_AGE_S = 24 * 3600.0
+    RESTART_CAUSE = "the app restarted before the turn finished"
+
+    def _resumable(self, run_id: str) -> bool:
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return False
+        if not (run.external and run.provider == CLAUDE_CODE and run.session_ref):
+            return False      # a native run's conversation lived in the dead process
+        last = getattr(self, "_interrupted_last", {}).get(run_id) or float(
+            run.last_activity_at or run.updated_at or run.created_at or 0)
+        if time.time() - last > self.RESUME_MAX_AGE_S:
+            return False
+        return self.auto_continue_blocked(run_id) is None
+
+    async def resume_interrupted(self) -> list[str]:
+        """The app (core) restarted mid-turn: carry each interrupted Claude Code run on from its
+        stored session with an internal continuation, sub-agents before their parents, so a
+        lead told "your sub-agents were continued" can collect them with agent_wait. Bounded
+        by auto_continue_blocked (a Stop, the per-turn cap, a spent budget). Returns the ids
+        continued; one that cannot be continued keeps its interrupted card."""
+        ids = [r for r in self.interrupted if self._resumable(r)]
+        self.interrupted = []
+
+        def depth(rid: str) -> int:
+            n, seen = 0, {rid}
+            with contextlib.suppress(KeyError):
+                run = self.store.get_run(rid)
+                while run.parent_id and run.parent_id not in seen:
+                    seen.add(run.parent_id)
+                    run = self.store.get_run(run.parent_id)
+                    n += 1
+            return n
+
+        done: list[str] = []
+        for rid in sorted(ids, key=depth, reverse=True):
+            kids = [k for k in done if self.store.get_run(k).parent_id == rid]
+            extra = (f"Mises continued your sub-agents {', '.join(kids)} too; collect them with "
+                     "agent_wait and agent_result." if kids else None)
+            try:
+                await self.continue_run(rid, self.RESTART_CAUSE, auto=True, extra=extra)
+            except Exception as e:  # noqa: BLE001 - one run must not stop the others
+                log.warning("could not continue interrupted run %s: %s", rid, e)
+                continue
+            done.append(rid)
+        if done:
+            log.info("continued %d interrupted run(s): %s", len(done), ", ".join(done))
+        return done
 
     def _remove_stale_mcp_files(self) -> None:
         """A Claude Code session's MCP config (it holds an MCP-only token) is deleted when the
@@ -1487,7 +1542,7 @@ class Runtime:
 
     async def _drive_claude(self, rid: str, text: str, *, first: bool,
                             images: list[tuple[str, str]] | None = None,
-                            log: dict | None = None) -> RunResult:
+                            log: dict | None = None, record: bool = True) -> RunResult:
         st = self._claude[rid]
         assert st.session is not None
         slot, st.slot = st.slot, None
@@ -1507,7 +1562,8 @@ class Runtime:
                 context = {**(context or {}), **st.first_context}
             level, st.effort = st.effort, None
             final = await self._prompt_claude(rid, st, text, context=context, images=images,
-                                              log=log, effort=level, first=first)
+                                              log=log, effort=level, first=first,
+                                              record=record)
             result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
@@ -1535,7 +1591,7 @@ class Runtime:
         Claude Code has the conversation, else fresh and seeded with a recap of the thread)
         and told to carry on, with a backoff, at most CLAUDE_RECOVERIES times per user turn.
         Each recovery is a visible note step; once the budget is spent the run stops with one
-        card saying what failed and what was tried (Retry / Continue in the app)."""
+        card saying what failed and what was tried (Continue in the app)."""
         from .claude_code.recap import thread_recap
         from .claude_code.session import RECOVERABLE
         tried: list[dict] = []
@@ -1678,12 +1734,12 @@ class Runtime:
 
     def _recovery_exhausted(self, rid: str, cause: str, tried: list[dict]) -> None:
         """The recovery budget is spent: one clear card (P11 F9): what failed, what was tried,
-        and the two ways on (Retry the last message, Continue from here)."""
+        and the way on: Continue (an internal continuation, never the message again)."""
         body = {"code": str(ErrorCode.TOOL_FAILED), "source": CLAUDE_CODE,
                 "message": f"Stopped after {len(tried)} recover{'y' if len(tried) == 1 else 'ies'}:"
                            f" {cause}",
                 "recovery": {"exhausted": True, "cause": cause, "tried": tried,
-                             "actions": ["retry", "continue"]}}
+                             "actions": ["continue"]}}
         with contextlib.suppress(Exception):
             self.store.append_step(rid, StepKind.ERROR, body)
     async def _respawn_without_effort(self, rid: str, st: _ClaudeRun) -> None:
@@ -1723,6 +1779,16 @@ class Runtime:
             self.store.append_step(run_id, StepKind.VERIFY, body)
         self.events.publish(Event(type="engineering_warning", run_id=run_id, data={
             "text": text, **({"assembly_health": health} if health else {})}))
+
+    def mcp_attachable(self, run_id: str) -> bool:
+        """The MCP endpoint lets a run that is not `running` connect when this process holds
+        its live Claude Code session: the `claude` process (and its stdio proxy) starts when
+        the run is created, and connects its MCP server at launch, while the run may still be
+        `queued` for a parallel-agents slot (a lead's fanned-out sub-agents) or between turns
+        (a follow-up, a recovery restart). Its tool calls still need a running run."""
+        st = self._claude.get(run_id)
+        s = st.session if st is not None else None
+        return s is not None and s.alive
 
     def _is_claude_run(self, run_id: str) -> bool:
         if run_id in self._claude:
@@ -1766,7 +1832,9 @@ class Runtime:
                                  resume=run.session_ref)
 
     async def _send_claude(self, run_id: str, text: str, log: dict | None = None,
-                           images: list[tuple[str, str]] | None = None) -> None:
+                           images: list[tuple[str, str]] | None = None, *,
+                           record: bool = True) -> None:
+        """`record=False`: an internal continuation (no user message step)."""
         st = self._claude.get(run_id)
         if st is not None and st.task is not None and not st.task.done():
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
@@ -1785,7 +1853,8 @@ class Runtime:
         st.slot = (None if self.parallel.try_acquire(run_id, st.ref)
                    else self._queue(run_id, st.ref, st.started_data))
         st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False, log=log,
-                                                         images=images or None))
+                                                         images=images or None,
+                                                         record=record))
 
     async def release_claude_session(self, run_id: str) -> None:
         """Close an idle Claude Code session once its result is collected (orchestrated
@@ -2466,6 +2535,99 @@ class Runtime:
         text, log = turn
         await (self.send(run_id, text, log=log) if log else self.send(run_id, text))
         return {"ok": True, "run_id": run_id}
+
+    #: automatic continuations (restart resume, a lead continuing its sub-agent) per user turn
+    AUTO_CONTINUES = 2
+
+    @staticmethod
+    def continuation_text(cause: str) -> str:
+        """The internal message that carries a run on. Plain words (no safety-filter bait)."""
+        return (f"Mises note: your last turn stopped ({cause.rstrip('.')}). Carry on with the "
+                "user's request from where you left off. Check what is already built before "
+                "you redo anything. Any approval you were waiting for was cancelled: ask again "
+                "only if the action is still needed.")
+
+    def last_error(self, run_id: str) -> str | None:
+        """What stopped the run: its last run-level error (not a tool call's), plain."""
+        with contextlib.suppress(Exception):
+            for s in reversed(self.store.steps(run_id, [StepKind.ERROR])):
+                p = s.payload or {}
+                if p.get("call_id"):
+                    continue
+                msg = str(p.get("message") or p.get("error") or "").strip()
+                if msg:
+                    return msg[:300]
+        return None
+
+    def _auto_continues(self, run_id: str) -> int:
+        """Automatic continuations since the run's last user message."""
+        n = 0
+        with contextlib.suppress(Exception):
+            for s in self.store.steps(run_id, [StepKind.MESSAGE, StepKind.DECISION]):
+                p = s.payload
+                if s.kind == StepKind.MESSAGE and p.get("role") == "user" \
+                        and "system_note" not in p:
+                    n = 0
+                elif s.kind == StepKind.DECISION and (p.get("continuation") or {}).get("auto"):
+                    n += 1
+        return n
+
+    def auto_continue_blocked(self, run_id: str) -> str | None:
+        """Why Mises may not continue this run by itself now (None: it may). A user Stop always
+        wins, the per-turn cap bounds the loop, and a spent budget is not worked around."""
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return "unknown run"
+        if run.archived or run_id in self._deleting:
+            return "the run is archived or being deleted"
+        if run.status == "cancelled" or run_id in self.note_hold:
+            return "the user stopped it"
+        if self.run_busy(run_id):
+            return "it is still working"
+        if self._auto_continues(run_id) >= self.AUTO_CONTINUES:
+            return f"Mises already continued it {self.AUTO_CONTINUES} times for this message"
+        if budget_mod.usd_exhausted(self.store, run_id) is not None:
+            return "its budget for this message is spent"
+        return None
+
+    async def continue_run(self, run_id: str, cause: str, *, auto: bool = False,
+                           extra: str | None = None) -> dict:
+        """Carry a stopped run on with an internal continuation (never the user's message
+        again, never a user bubble): a `continuation` decision step ("Mises continued after:
+        <cause>") and a turn that is not a new user turn, so budgets keep their window. A
+        Claude Code run resumes its session (else a fresh one with a recap). `auto`: Mises
+        decided it by itself, bounded by auto_continue_blocked; the app's Continue is not."""
+        try:
+            self.store.get_run(run_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        if auto:
+            why = self.auto_continue_blocked(run_id)
+            if why is not None:
+                raise MisesError(ErrorCode.INVALID_INPUT, f"not continued: {why}")
+        elif run_id in self._deleting:
+            raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is being deleted")
+        if self.run_busy(run_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
+                             hint="wait for it to finish or cancel it")
+        text = self.continuation_text(cause) + (f"\n{extra}" if extra else "")
+        body = {"cause": cause, "auto": auto, "text": f"Mises continued after: {cause}"}
+        self.note_hold.discard(run_id)
+        self._sending.add(run_id)
+        try:
+            if self._is_claude_run(run_id):
+                await self._send_claude(run_id, text, record=False)
+            else:
+                self._sending.discard(run_id)
+                await self.send(run_id, text, user_turn=False, log={
+                    "text": text, "system_note": {"kind": "continuation", **body}})
+        finally:
+            self._sending.discard(run_id)
+        with contextlib.suppress(Exception):
+            self.store.append_step(run_id, StepKind.DECISION, {"continuation": body})
+        self.events.publish(Event(type="run_continued", run_id=run_id, data=body))
+        return {"ok": True, "run_id": run_id, "continuation": body}
 
     #: a running turn with no activity for this long is reported as stalled (E9)
     STALL_S = 90.0

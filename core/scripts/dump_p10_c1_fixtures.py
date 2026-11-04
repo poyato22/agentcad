@@ -8,6 +8,7 @@ routes:
   queued_cancel.json               POST /runs/{id}/queued/{mid}/cancel -> {ok: true}
   queued_cancel_events.jsonl       the message_dropped event (reason "cancelled")
   retry.json                       POST /runs/{id}/retry
+  continue.json                    POST /runs/{id}/continue {cause} (an internal continuation)
   message_edit_steps.json          GET /runs/{id}/steps after POST /runs/{id}/message {edits}
   error_step_tls_steps.json        GET /runs/{id}/steps of a Claude Code run whose turn failed with
                                    a TLS error: the error step carries kind / cause / hint
@@ -122,6 +123,9 @@ async def dump(out: Path, only: str = "all") -> None:
         write("message_edit_steps.json", ok(c.get(f"/runs/{lead}/steps", headers=h)))
 
         write("retry.json", ok(c.post(f"/runs/{lead}/retry", headers=h)))
+        wait(lead)
+        write("continue.json", ok(c.post(f"/runs/{lead}/continue", headers=h,
+                                         json={"cause": "the tools hung"})))
         wait(lead)
 
         # a Claude Code turn that failed on a TLS-intercepting proxy

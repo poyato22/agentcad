@@ -276,6 +276,9 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
     switch (s.kind) {
       case "message": {
         const role = p.role === "user" ? "user" : "assistant";
+        // a native run's internal continuation is stored as a system-note message: its own
+        // `continuation` decision step is the thread's note, so it is no bubble of yours
+        if (role === "user" && rec(p.system_note).kind === "continuation") continue;
         const text = role === "user" ? userWords(p) : str(p.text) ?? "";
         open.length = 0;                            // a new message: earlier calls are over
         if (!text.trim()) continue;                 // tool-use-only turn: its calls are the rows
@@ -297,6 +300,10 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
         const recovered = str(rec(p.recovery).text);
         const stuck = rec(p.stuck);
         if (recovered) { push({ kind: "note", text: recovered, ts: s.ts, stepId: s.id }, s.ts); break; }
+        // the core carried a stopped run on with an internal message: a small system note, never
+        // a bubble of yours ("Mises continued after: <cause>")
+        const continued = str(rec(p.continuation).text);
+        if (continued) { push({ kind: "note", text: continued, ts: s.ts, stepId: s.id }, s.ts); break; }
         if (str(stuck.kind)) {
           const why = stuck.kind === "oscillation" ? "edits going back and forth" : stuck.kind === "no_progress" ? "no progress" : `${str(stuck.tool) ?? "a call"} failing repeatedly`;
           push({ kind: "note", text: `Stuck (${why}): told the agent to switch strategy`, ts: s.ts, stepId: s.id }, s.ts);

@@ -59,8 +59,9 @@ def _tool_only(subagent_names: tuple[str, ...] = (), *, lead: bool = False) -> s
         return _TOOL_ONLY_BASE + f"""
 - You may delegate to these Mises agents: {agents}. Spawn every sub-agent with \
 `mcp__mises__agent_spawn` (with `wait:false` to run several at once, then `agent_wait` / \
-`agent_result`): each runs as its own Mises sub-agent the user can see and open. Never use \
-the `Agent` tool for sub-agents in this session."""
+`agent_result`): each runs as its own Mises sub-agent the user can see and open; one that \
+failed or stopped carries on with `agent_continue`. Never use the `Agent` tool for sub-agents \
+in this session."""
     return _TOOL_ONLY_BASE + f"""
 - You may delegate to these Mises agents: {agents}. Two ways:
   - the `Agent` tool, for a quick role switch inside this run (same policy and budget, no \

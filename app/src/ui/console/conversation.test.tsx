@@ -10,7 +10,7 @@ import { actions, approvals, bindClient, coreStatus, focusedStepId, questions, r
 import { resetCatalog } from "../dialogs/catalog";
 import { showDockView } from "../profile/sections/DeveloperSection";
 import { ConsolePane } from "./ConsolePane";
-import { retryTextFor } from "./Conversation";
+import { stoppedAt } from "./Conversation";
 import type { ThreadItem } from "./threadModel";
 import { expandedFolds, resetOffListRuns } from "./derived";
 import { approval, message, resetIds, run, step, toolCall, toolFailure } from "./testSteps";
@@ -123,7 +123,8 @@ describe("conversation view (default)", () => {
     const err = thread.querySelector("[data-error]") as HTMLElement;
     expect(err.querySelector("[data-error-message]")?.textContent).toBe("provider timed out");
     expect(err.querySelector(".cv-err-code")?.textContent).toBe("transient");
-    // the run went on (an approval card followed): no Retry on an error it got past
+    // the run went on (an approval card followed): no Continue on an error it got past
+    expect(within(err).queryByRole("button", { name: "Continue" })).toBeNull();
     expect(within(err).queryByRole("button", { name: "Retry" })).toBeNull();
     expect(err.textContent).toContain("try again later");
     expect(thread.querySelector('[data-approval="ap1"]')).toBeTruthy();
@@ -410,7 +411,7 @@ describe("one chat per build (P10 E24)", () => {
     selectedRunId.value = "lead1";
     render(<ConsolePane />);
     await frame();
-    fireEvent.click(screen.getByRole("button", { name: "Edit and resend" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
     await frame();
     expect(box().value).toBe("make it 5 mm");
     expect(screen.getByTestId("editing-chip")).toBeTruthy();
@@ -421,8 +422,9 @@ describe("one chat per build (P10 E24)", () => {
     expect(screen.queryByTestId("editing-chip")).toBeNull();
   });
 
-  it("an error card is plain wrapped text with the cause, what to do and Retry (the same words again)", async () => {
-    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, notes: [] }) });
+  it("an error card is plain wrapped text with the cause, what to do and Continue (never the same words again)", async () => {
+    const c = client({ chat: vi.fn().mockResolvedValue({ run_id: "lead1", role: "lead", new_lead: false, notes: [] }),
+      continueRun: vi.fn().mockResolvedValue(undefined) });
     const ssl = "Claude Code: API Error: Unable to connect to API due to SSL error (UNABLE_TO_GET_ISSUER_CERT_LOCALLY)";
     setRuns([run("lead1", { role: "lead", project_id: "b1", status: "failed", provider: "claude-code" })]);
     setSteps([
@@ -441,8 +443,10 @@ describe("one chat per build (P10 E24)", () => {
     expect(err.querySelector("em, strong")).toBeNull();
     // the echoed reply is plain text too: the code stays whole
     expect(document.querySelector("[data-plain-error]")?.textContent).toContain("UNABLE_TO_GET_ISSUER_CERT_LOCALLY");
-    fireEvent.click(within(err).getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(c.chat).toHaveBeenCalledWith("b1", "add a wrist joint"));
+    expect(within(err).queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(within(err).getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(c.continueRun).toHaveBeenCalledWith("lead1", ssl));
+    expect(c.chat).not.toHaveBeenCalled();
     // the way out: Profile & settings → Claude Code → Network (the CA bundle / proxy)
     fireEvent.click(within(err).getByRole("button", { name: "Network settings" }));
     expect([profileOpen.value, profileSection.value]).toEqual([true, "claude"]);
@@ -471,31 +475,31 @@ describe("one chat per build (P10 E24)", () => {
   });
 });
 
-describe("Retry only where the run did not get past the error (review fix 1)", () => {
+describe("Continue only where the run did not get past the error (review fix 1)", () => {
   const u = (key: string, text: string): ThreadItem => ({ kind: "user", key, text, ts: 1, stepIds: [] });
   const e = (key: string): ThreadItem => ({ kind: "error", key, code: "tool_failed", message: "boom", hint: null, ts: 2, stepIds: [] });
   const a = (key: string): ThreadItem => ({ kind: "agent", key, text: "recovered, done", ts: 3, live: false, stepIds: [] });
   const n = (key: string): ThreadItem => ({ kind: "note", key, text: "note", stepIds: [] });
 
-  it("the last item (notes aside) offers the words before it", () => {
-    expect(retryTextFor([u("u1", "make it"), e("e1"), n("n1")], "e1", null, "running")).toBe("make it");
+  it("the last item (notes aside) offers it", () => {
+    expect(stoppedAt([u("u1", "make it"), e("e1"), n("n1")], "e1", "running")).toBe(true);
   });
-  it("an error the agent recovered from never offers Retry (no resend of a finished turn)", () => {
-    expect(retryTextFor([u("u1", "make it"), e("e1"), a("a1")], "e1", null, "done")).toBeNull();
-    expect(retryTextFor([u("u1", "make it"), e("e1"), a("a1")], "e1", null, "running")).toBeNull();
+  it("an error the agent recovered from never offers it (a finished turn is not carried on twice)", () => {
+    expect(stoppedAt([u("u1", "make it"), e("e1"), a("a1")], "e1", "done")).toBe(false);
+    expect(stoppedAt([u("u1", "make it"), e("e1"), a("a1")], "e1", "running")).toBe(false);
   });
   it("a failed / cancelled run offers it on its last error only", () => {
     const items = [u("u1", "make it"), e("e1"), a("a1"), e("e2"), a("a2")];
-    expect(retryTextFor(items, "e2", null, "failed")).toBe("make it");
-    expect(retryTextFor(items, "e1", null, "failed")).toBeNull();
-    expect(retryTextFor(items, "e2", null, "cancelled")).toBe("make it");
-    expect(retryTextFor(items, "e2", null, "done")).toBeNull();
+    expect(stoppedAt(items, "e2", "failed")).toBe(true);
+    expect(stoppedAt(items, "e1", "failed")).toBe(false);
+    expect(stoppedAt(items, "e2", "cancelled")).toBe(true);
+    expect(stoppedAt(items, "e2", "done")).toBe(false);
   });
   it("nothing after a message of yours", () => {
-    expect(retryTextFor([u("u1", "a"), e("e1"), u("u2", "b")], "e1", null, "failed")).toBeNull();
+    expect(stoppedAt([u("u1", "a"), e("e1"), u("u2", "b")], "e1", "failed")).toBe(false);
   });
 
-  it("the dock shows no Retry on a recovered error", async () => {
+  it("the dock shows no Continue on a recovered error", async () => {
     client();
     setRuns([run("r1", { status: "done" })]);
     setSteps([
@@ -507,7 +511,7 @@ describe("Retry only where the run did not get past the error (review fix 1)", (
     await frame();
     const err = screen.getByRole("log", { name: "Conversation" }).querySelector("[data-error]") as HTMLElement;
     expect(err).toBeTruthy();
-    expect(within(err).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(within(err).queryByRole("button", { name: "Continue" })).toBeNull();
   });
 });
 
@@ -524,7 +528,7 @@ describe("Edit never loses a draft (review minor 4)", () => {
     render(<ConsolePane />);
     await frame();
     fireEvent.input(box(), { target: { value: "half a thought" } });
-    fireEvent.click(screen.getByRole("button", { name: "Edit and resend" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
     await frame();
     expect(box().value).toBe("make it 5 mm");
     expect(screen.getByTestId("editing-chip").textContent).toContain("your draft comes back after");
@@ -532,7 +536,7 @@ describe("Edit never loses a draft (review minor 4)", () => {
     await frame();
     expect(box().value).toBe("half a thought");
     // again, and this time send the edit: the draft returns once it is sent
-    fireEvent.click(screen.getByRole("button", { name: "Edit and resend" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
     await frame();
     fireEvent.input(box(), { target: { value: "make it 6 mm" } });
     fireEvent.keyDown(box(), { key: "Enter" });

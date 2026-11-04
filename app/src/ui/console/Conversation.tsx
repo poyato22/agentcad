@@ -121,7 +121,7 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
           : (
             <div key={r.item.key} class="cv-item" data-key={r.item.key}>
               <Item item={r.item} agent={run?.agent ?? "agent"} runId={run?.id ?? null} run={run ?? null}
-                retryText={r.item.kind === "error" ? retryTextFor(items, r.item.key, run?.task ?? null, run?.status ?? null) : null} />
+                stopped={r.item.kind === "error" && stoppedAt(items, r.item.key, run?.status ?? null)} />
             </div>
           )))}
         {run && items.length === 0 && run.task && (
@@ -155,31 +155,18 @@ function Empty(): JSX.Element {
   );
 }
 
-/** Your last words before the row `key` (null: before the end), for Retry. */
-export function promptBefore(items: readonly ThreadItem[], key: string | null): string | null {
-  let end = key === null ? items.length : items.findIndex((i) => i.key === key);
-  if (end < 0) end = items.length;
-  for (let i = end - 1; i >= 0; i--) {
-    const it = items[i];
-    if ((it.kind === "user" || it.kind === "queued") && it.text.trim()) return it.text;
-  }
-  return null;
-}
-
-/** Retry is offered only on an error the run did not get past (review fix 1): the error is the
+/** Continue is offered only on an error the run did not get past (review fix 1): the error is the
  *  thread's last item (notes aside), or the run ended failed / cancelled and this is its last
  *  error with nothing of yours after it. An error the agent recovered from (a reply followed)
- *  never offers it, so a finished turn is never sent twice. It sends your words before the error
- *  (else the run's task). */
-export function retryTextFor(items: readonly ThreadItem[], key: string, task: string | null, status: string | null = null): string | null {
+ *  never offers it, so a finished turn is never carried on twice. */
+export function stoppedAt(items: readonly ThreadItem[], key: string, status: string | null = null): boolean {
   const at = items.findIndex((i) => i.key === key);
-  if (at < 0) return null;
+  if (at < 0) return false;
   const after = items.slice(at + 1);
-  if (after.some((i) => i.kind === "user" || i.kind === "queued")) return null;
+  if (after.some((i) => i.kind === "user" || i.kind === "queued")) return false;
   const last = after.every((i) => i.kind === "note");
   const ended = (status === "failed" || status === "cancelled") && !after.some((i) => i.kind === "error");
-  if (!last && !ended) return null;
-  return promptBefore(items, key) ?? (task?.trim() ? task : null);
+  return last || ended;
 }
 
 function Queued(): JSX.Element {
@@ -188,9 +175,10 @@ function Queued(): JSX.Element {
   return <div class="cv-note faint" data-queued>{`waiting for a free agent slot${why}`}</div>;
 }
 
-/** `run` / `retryText` (the dock's Conversation): an error row offers Retry with those words. */
-export function Item({ item, agent, runId = null, run = null, retryText = null }: {
-  item: ThreadItem; agent: AgentRun["agent"]; runId?: string | null; run?: AgentRun | null; retryText?: string | null;
+/** `run` / `stopped` (the dock's Conversation): an error row the run did not get past offers
+ *  Continue. */
+export function Item({ item, agent, runId = null, run = null, stopped = false }: {
+  item: ThreadItem; agent: AgentRun["agent"]; runId?: string | null; run?: AgentRun | null; stopped?: boolean;
 }): JSX.Element {
   switch (item.kind) {
     case "user": {
@@ -204,7 +192,7 @@ export function Item({ item, agent, runId = null, run = null, retryText = null }
           <div class="cv-msg-head">
             <span class="label">you</span>
             {item.effort && <EffortChip effort={item.effort} />}
-            {edited && <span class="cv-edited faint">edited · sent again below</span>}
+            {edited && <span class="cv-edited faint">edited · the new version is below</span>}
             {!fb && item.key !== "task" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={rowKey} />}
           </div>
           {fb ? <FeedbackNote feedback={fb} runId={runId} /> : <div class="cv-text text">{item.text}</div>}
@@ -238,7 +226,7 @@ export function Item({ item, agent, runId = null, run = null, retryText = null }
         </button>
       );
     case "error":
-      return <ErrorCard item={item} retryText={retryText} run={run} />;
+      return <ErrorCard item={item} stopped={stopped} run={run} />;
     case "note":
       return <div class="cv-note faint text" data-row data-kind="note">{item.text}</div>;
     case "approval":
@@ -279,7 +267,7 @@ function QueuedLine({ item, runId }: { item: Extract<ThreadItem, { kind: "queued
         <span class={`cv-queued-chip is-${status}`} data-queued-chip role="status">{chip}</span>
         {item.effort && <EffortChip effort={item.effort} />}
         {status === "queued" && runId && <CancelQueuedButton runId={runId} messageId={item.messageId} />}
-        {edited && <span class="cv-edited faint">edited · sent again below</span>}
+        {edited && <span class="cv-edited faint">edited · the new version is below</span>}
         {status !== "queued" && item.text.trim() !== "" && <EditButton text={item.text} rowKey={rowKey} />}
       </div>
       <div class="cv-text text">{item.text}</div>

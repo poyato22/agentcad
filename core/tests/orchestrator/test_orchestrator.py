@@ -562,3 +562,56 @@ async def test_children_release_their_claude_session_once_collected(tmp_path, mo
     await rt.orchestrator.run("bracket", parent_run_id=parent)
     kids = {r.id for r in rt.store.list_runs() if r.parent_id == parent}
     assert set(released) == kids and len(released) == len(kids) == 4
+
+
+async def test_a_lead_is_told_a_child_failed_and_carries_it_on(tmp_path):
+    """A failed sub-agent is reported with what stopped it and the way on; agent_continue
+    carries it on with an internal note (no new user message)."""
+    class FlakyFirst:
+        name = "fake"
+
+        def __init__(self):
+            self.inner = FakeProvider([text("carried on"), text("again"), text("more")])
+            self.n = 0
+
+        async def stream(self, req):
+            self.n += 1
+            if self.n == 1:
+                raise MisesError(ErrorCode.TOOL_FAILED, "the model connection dropped")
+            async for ev in self.inner.stream(req):
+                yield ev
+
+    rt = make(tmp_path, FlakyFirst())
+    parent = rt.store.create_run("designer", "fake", "m", "t").id
+    rt.store.create_policy(parent, ["*"], ["*"], Caps(), list(C))
+    out = await rt.gate.call(parent, "agent_spawn",
+                             {"agent": "designer", "prompt": "build it", "wait": False},
+                             call_id="s", workdir=rt.workdir(parent))
+    kid = out.data["run_id"]
+    waited = await rt.gate.call(parent, "agent_wait", {"run_ids": [kid]}, call_id="w",
+                                workdir=rt.workdir(parent))
+    assert waited.data["statuses"] == {kid: "failed"}
+    assert "connection dropped" in waited.data["errors"][kid]
+    assert "agent_continue" in waited.summary
+    res = await rt.gate.call(parent, "agent_result", {"run_id": kid}, call_id="r",
+                             workdir=rt.workdir(parent))
+    assert res.data["status"] == "failed" and "connection dropped" in res.data["error"]
+    cont = await rt.gate.call(parent, "agent_continue", {"run_id": kid}, call_id="c",
+                              workdir=rt.workdir(parent))
+    assert cont.ok and cont.data["status"] == "running"
+    res = await rt.gate.call(parent, "agent_result", {"run_id": kid}, call_id="r2",
+                             workdir=rt.workdir(parent))
+    assert res.data["status"] == "done" and "carried on" in res.data["final_text"]
+    users = [s.payload for s in rt.store.steps(kid, [StepKind.MESSAGE])
+             if s.payload.get("role") == "user"]
+    assert [u["text"] for u in users if "system_note" not in u] == ["build it"]
+    # a finished child is not continued; one never spawned by this caller is refused
+    with pytest.raises(MisesError):
+        await rt.gate.call(parent, "agent_continue", {"run_id": kid}, call_id="c2",
+                           workdir=rt.workdir(parent))
+    other = rt.store.create_run("designer", "fake", "m", "t").id
+    rt.store.create_policy(other, ["*"], ["*"], Caps(), list(C))
+    with pytest.raises(MisesError) as e:
+        await rt.gate.call(other, "agent_continue", {"run_id": kid}, call_id="x",
+                           workdir=rt.workdir(other))
+    assert e.value.code == ErrorCode.DENIED

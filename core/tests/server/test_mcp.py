@@ -196,6 +196,38 @@ async def test_mcp_refuses_interrupted_run(rt, home):
             assert r.status_code == 409
 
 
+async def test_mcp_lets_a_held_sessions_proxy_connect_but_not_call_while_queued(rt):
+    """A Claude Code session this process holds connects its proxy at launch, maybe while its
+    run is queued for a slot: the handshake and tools/list are served, a tool call is not."""
+    from types import SimpleNamespace
+    async with running(rt) as app:
+        rid = rt.create_external_run("designer", provider="claude-code", model="sonnet")
+        rt.store.update_run(rid, status="queued")
+        rt._claude[rid] = SimpleNamespace(session=SimpleNamespace(alive=True))
+        try:
+            http, client = mcp_client(app, rid)
+            async with http, client:
+                names = {t.name for t in (await client.list_tools()).tools}
+                assert "mirror_part_list" in names
+                res = await client.call_tool("mirror_part_list", {})
+            assert res.is_error is True
+            err = json.loads(res.content[0].text)
+            assert err["error"] == "invalid_input" and "queued" in err["message"]
+            assert rt.store.steps(rid, [StepKind.TOOL_CALL]) == []
+            # its session gone: refused like any run that is not running
+            rt._claude[rid].session.alive = False
+            async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),
+                                          base_url="http://127.0.0.1") as h:
+                r = await h.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+                                               "params": {}},
+                                 headers={**AUTH, "X-Mises-Run": rid,
+                                          "Content-Type": "application/json",
+                                          "Accept": "application/json, text/event-stream"})
+                assert r.status_code == 409
+        finally:
+            rt._claude.pop(rid, None)
+
+
 async def test_mcp_keeps_only_plan_submission_internal(rt):
     # C4: agent_spawn / agent_wait / agent_result / orchestrator_run are exposed so a Claude
     # Code run can delegate to Mises workers; only the planner's plan handshake stays internal.
