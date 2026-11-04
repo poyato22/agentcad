@@ -84,7 +84,7 @@ CLAUDE_CODE_TOOLS = frozenset({
 # connecting, and transient network / API trouble. A config problem (sign-in, TLS, proxy) or a
 # confinement abort is not retried.
 RECOVERABLE = frozenset({"exit", "error_during_execution", "mcp", "network", "rate_limit",
-                         "overloaded", "stalled"})
+                         "overloaded", "stalled", "safeguard"})
 # G7: the turn watchdog. A turn is stuck when the process is alive but nothing arrives on its
 # stream for STALL_S with no tool in flight, or a tool has run past its own limit (a Mises
 # tool: its registry timeout + TOOL_GRACE_S; any other: TOOL_LIMIT_S) while the run reports no
@@ -118,6 +118,11 @@ NETWORK_SETTINGS = "Profile & settings → Claude Code → Network"
 # offer the right fix. Ordered: the most specific cause first (TLS before a generic network
 # error, which a cert failure can also look like).
 _ERROR_CLASSES: tuple[tuple[re.Pattern, str, str, str], ...] = (
+    # the API's safety classifier refused this conversation on this model (false positives
+    # happen on normal requests): the runtime retries on a stronger model in a fresh session
+    (re.compile(r"safeguards flagged|reasoning_extraction|legal/aup", re.I),
+     "safeguard", "The model's safety filter flagged this turn (a false positive is common).",
+     "Mises retries once on Opus in a fresh session; if it repeats, rephrase or use Think: High."),
     (re.compile(r"UNABLE_TO_GET_ISSUER|SELF_SIGNED_CERT|CERT_|CERTIFICATE|\bSSL\b|ERR_TLS|"
                 r"DEPTH_ZERO_SELF_SIGNED", re.I),
      "tls", "Claude Code could not verify the TLS certificate on the way to Anthropic.",

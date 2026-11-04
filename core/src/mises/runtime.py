@@ -1566,6 +1566,18 @@ class Runtime:
                     raise
             # restart: resume the conversation Claude Code still has, else a fresh session
             keep = None if lost or not s._init_ok else s.session_id
+            safeguard = bool(failure and failure.get("kind") == "safeguard")
+            if safeguard:
+                # the flagged conversation is not resumed; the retry runs on Opus, and the
+                # Max-loop preamble (the likeliest trigger) is left off the re-sent request
+                keep = None
+                with contextlib.suppress(Exception):
+                    if self.store.get_run(rid).model != "opus":
+                        self.store.update_run(rid, model="opus")
+                        cause += " — retrying on Opus"
+                from .effort import MAX_LOOP
+                if isinstance(text, str) and MAX_LOOP in text:
+                    text = text.replace(MAX_LOOP, "").strip()
             s.handed_on = True
             await s.close()
             # I2 (fix round 1): nothing of the dead session may still act: its pending
