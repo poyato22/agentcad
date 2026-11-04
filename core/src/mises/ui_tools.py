@@ -98,6 +98,16 @@ async def ui_ask_user(ctx: ToolContext, args: AskArgs) -> ToolOutput:
     if rt is None:
         raise MisesError(ErrorCode.DENIED, "no user interface is attached to this run",
                          hint="proceed without asking, and state your assumptions")
+    queued = [{"message_id": m.get("message_id"), "text": m.get("shown")}
+              for m in (getattr(rt, "lead_queues", None) or {}).get(ctx.run_id) or []]
+    if queued:
+        # the user already wrote again (sketch marks, a pick, a reply): those messages reach
+        # the lead only when this turn ends, so asking now would make them answer twice
+        return ToolOutput(
+            summary=f"Not asked: the user has {len(queued)} message(s) waiting for you (in "
+                    "data.queued_messages, oldest first). They answer or replace this "
+                    "question: end this turn to read them in full (with any images).",
+            data={"asked": False, "question": args.question, "queued_messages": queued})
     if not take_question(ctx.workdir):
         raise MisesError(ErrorCode.INVALID_INPUT,
                          f"a sketch run may ask at most {MAX_SKETCH_QUESTIONS} questions",
