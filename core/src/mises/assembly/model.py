@@ -618,6 +618,11 @@ class AssemblyStore:
             raise KeyError(gid)
         return {"id": row["id"], **json.loads(row["spec"])}
 
+    def delete_mech(self, project_id: str, gid: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM assembly_mechs WHERE project_id=? AND id=?",
+                             (project_id, gid))
+
     def list_mechs(self, project_id: str) -> list[dict]:
         with self._lock:
             rows = self._db.execute("SELECT * FROM assembly_mechs WHERE project_id=? ORDER BY"

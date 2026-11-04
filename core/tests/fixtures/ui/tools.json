@@ -106,7 +106,7 @@
   },
   {
     "name": "assembly_remove",
-    "description": "Remove one instance (and any joints that used it) or one joint.",
+    "description": "Remove one instance (and any joints that used it), one joint, or a whole mech_insert group (mech_group).",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false
