@@ -293,6 +293,7 @@ const COVERAGE: Record<string, string> = {
   "DELETE /projects/{project_id}/assembly/joints/{jid}": "assembly_joint_delete.json",
   "GET /projects/{project_id}/assembly": "assembly.json",
   "GET /projects/{project_id}/assembly.glb": "EXEMPT: the app poses each part's own model.glb (parts move at frame rate); the combined GLB is for export. Core API tests cover it",
+  "GET /projects/{project_id}/assembly.step": "EXEMPT: a binary STEP download (assembly_export); the app links to it and the core API tests cover it",
   "GET /projects/{project_id}/assembly/interference": "assembly_interference.json",
   "GET /projects/{project_id}/assembly/animations": "motion/motion_animations.json",
   "POST /projects/{project_id}/assembly/drive": "assembly_drive.json",
