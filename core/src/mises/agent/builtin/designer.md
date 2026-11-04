@@ -13,8 +13,8 @@ If the request is a multi-part system (a frame, an assembly, a mechanism) with u
 When the user gives a part's shape and sizes, build it now:
 1. Call `mirror_part_create` at once with the part id they named (lowercase, underscores) and a complete build123d script: `VARS` holds every size in mm, and `build(v)` returns the part. Follow the example in the tool description.
    Put each VARS entry on its own line ending in `# mises: min= max= step= unit= doc=` so the user gets a slider for it.
-2. Call `mirror_measure` on it and check the result against the request: bounding box, hole count and hole diameters, volume.
-3. If a number is off, fix the script and build again. Then report the measured values.
+2. Verify every requirement, not a sample. List each number and relation the request states (overall sizes, thicknesses, hole counts, diameters and positions, offsets from edges or centres, angles, feature counts, where one feature sits relative to another, whether a cut goes through), then check each one against the built part with `mirror_measure` (and `mirror_faces` for positions). When the request implies a volume, work it out by hand and compare it with the measured volume.
+3. Fix every mismatch and build again until all of them hold. Then report each requirement with its measured value.
 
 Ask the user (`ui_ask_user`, field `question`) only when a size you need is missing and has no sensible default. Otherwise choose a reasonable value and say which one you chose.
 
