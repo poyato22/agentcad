@@ -72,13 +72,18 @@ async def assembly_report(asm_store, root: Path, project_id: str, *,
     try:
         geo = await run_geometry(root, asm, res, want="interference", timeout_s=timeout_s)
     except MisesError as e:
-        # no OCCT verdict (a part not built as STEP, a timeout): keep the bbox candidates,
-        # marked as approximate, rather than claim the assembly is clear
+        # no OCCT verdict (a part not built as STEP, a timeout): the box candidates are kept,
+        # apart and marked unverified, never as overlaps (a shell's box holds the chassis'
+        # box: 1.5e6 mm^3 of "overlap" between parts that do not touch, DOG demo)
         log.info("assembly interference check unavailable: %s", e.message)
         cand = [o for o in rep["overlaps"]
                 if tuple(sorted((o["a_id"], o["b_id"]))) not in allowed]
-        return finalize({**rep, "overlaps": cand, "intended": [], "overlap_method": "bbox",
-                         "overlap_note": e.message})
+        out = finalize({**rep, "overlaps": [], "intended": [], "overlap_method": "bbox",
+                        "unverified_overlaps": cand, "overlap_note": e.message})
+        if cand:
+            out["summary"] += (f" ({len(cand)} box candidate(s) unverified: the exact check "
+                               "did not run)")
+        return out
     items = classify(geo.interferences, asm, allowed)
     return finalize({**rep, "overlaps": problems(items),
                      "intended": [i for i in items if i.get("intended")],

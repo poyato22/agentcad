@@ -62,6 +62,24 @@ async def test_bbox_overlap_is_replaced_by_real_interference(tmp_path, monkeypat
     assert not rep["ok"]
 
 
+async def test_a_timed_out_exact_check_reports_box_candidates_as_unverified(tmp_path,
+                                                                           monkeypatch):
+    """DOG demo: with organic topology-optimized brackets the exact check timed out, the box
+    candidates came back as 'overlaps' (chassis / torso shell: 1.56e6 mm^3, i.e. a box inside a
+    box), the lead was told 91 pairs overlap 'and the user sees each as a red box', and started
+    moving parts that did not clash. Unverified candidates are not overlaps."""
+    from mises.types import ErrorCode, MisesError
+    store, root, _ = _build(tmp_path, [0, 3])
+
+    async def slow(root_, asm, res, **kw):
+        raise MisesError(ErrorCode.TOOL_FAILED, "assembly geometry timed out after 90s")
+    monkeypatch.setattr(review, "run_geometry", slow)
+    rep = await review.assembly_report(store, root, "p")
+    assert rep["overlaps"] == [] and rep["overlap_method"] == "bbox"
+    assert len(rep["unverified_overlaps"]) == 1 and "timed out" in rep["overlap_note"]
+    assert "unverified" in rep["summary"] and review.overlap_signature(rep) == ()
+
+
 async def test_bbox_overlap_without_real_contact_is_clean(tmp_path, monkeypatch):
     store, root, ids = _build(tmp_path, [0, 3])
     store.add_joint("p", Joint(kind="fixed", a=JointRef(instance_id=ids[0], frame=Z),
