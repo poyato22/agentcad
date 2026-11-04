@@ -484,6 +484,16 @@ def test_choose_a_pitch_option_or_a_mix(home):
         assert "concept_sketch the chosen direction" in prov.users[-1][0].text
 
 
+def test_a_mix_label_drops_the_takes_leading_article():
+    # DRONE demo: the thread read "Chose Lattice X's the 2.5-D ... plate"
+    from mises.concept import ChooseIn
+    from mises.concept.service import _chosen_label
+    body = ChooseIn.model_validate({"mix": [
+        {"option": "Lattice X", "take": "the 2.5-D carbon plate"},
+        {"option": "Ring Spine", "take": "A ring guard"}, {"option": "Honest"}]})
+    assert _chosen_label(body) == "Lattice X's 2.5-D carbon plate + Ring Spine's ring guard + Honest"
+
+
 def test_lead_prompt_and_tools_carry_the_concept_stage():
     from mises.orchestrator.lead import LEAD_PROMPT, LEAD_TOOLS
     for t in ("pitch_options", "concept_sketch", "concept_status"):

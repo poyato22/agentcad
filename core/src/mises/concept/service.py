@@ -3,6 +3,7 @@ build's lead, approve or skip the sketch (the concept gate), and pick or mix a p
 from __future__ import annotations
 
 import base64
+import re
 from typing import TYPE_CHECKING
 
 from ..types import ErrorCode, MisesError
@@ -176,7 +177,9 @@ def _mark_chosen(store: ConceptStore, project: str, pitch: dict, names: list) ->
 def _chosen_label(body: ChooseIn) -> str:
     if body.option:
         return body.option
-    return " + ".join(f"{m.option}'s {m.take}".strip() if m.take else m.option
+    def take(t: str) -> str:            # "Athlete's the legs" reads wrong: drop the article
+        return re.sub(r"^(?:the|a|an)\s+", "", t.strip(), flags=re.I)
+    return " + ".join(f"{m.option}'s {take(m.take)}".strip() if m.take.strip() else m.option
                       for m in body.mix)
 
 
