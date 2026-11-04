@@ -457,6 +457,30 @@ async def test_blind_retry_after_a_source_conflict_is_refused_again(tmp_path):
     assert "mises-op hole" in (tmp_path / "parts" / "bracket" / "part.py").read_text()
 
 
+async def test_an_agents_own_write_counts_as_reading_the_source(tmp_path):
+    """DRONE demo: two set_source in a row by the same agent were refused (the second one
+    'changed since you read the source'). Its own write is the source; a user op still is not."""
+    agent, user = _runs(tmp_path)
+    await mk(agent)
+    r1 = await mirror_part_set_source.handler(
+        agent, SetSourceArgs(part_id="bracket", source=BOX.replace("40.0", "45.0")))
+    r2 = await mirror_part_set_source.handler(
+        agent, SetSourceArgs(part_id="bracket", source=BOX.replace("40.0", "46.0")))
+    assert r1.ok and r2.ok and r2.data["version"] == 3, (r1.summary, r2.summary)
+    await _user_hole(user)
+    r3 = await mirror_part_set_source.handler(
+        agent, SetSourceArgs(part_id="bracket", source=BOX.replace("40.0", "47.0")))
+    assert not r3.ok and r3.data["conflict"]
+    await read_src(agent)
+    r4 = await mirror_part_set_source.handler(
+        agent, SetSourceArgs(part_id="bracket", source=BOX.replace("40.0", "48.0")))
+    assert r4.ok and "kept its feature ops" in r4.summary
+    # the kept op block makes the disk differ from what the agent wrote: read again first
+    r5 = await mirror_part_set_source.handler(
+        agent, SetSourceArgs(part_id="bracket", source=BOX.replace("40.0", "49.0")))
+    assert not r5.ok and r5.data["conflict"]
+
+
 async def test_source_replacement_after_a_fresh_read_keeps_the_users_ops(tmp_path):
     agent, user = _runs(tmp_path)
     await mk(agent)
