@@ -127,7 +127,9 @@ class _BearerAuth:
 
 
 class _McpEndpoint:
-    """Requires a valid, running `X-Mises-Run` before handing the request to the MCP app."""
+    """Requires a valid, running `X-Mises-Run` before handing the request to the MCP app (or one
+    whose live Claude Code session this process holds: its proxy connects at launch, maybe
+    while the run is queued; mcp_server refuses its tool calls until the run is running)."""
 
     def __init__(self, runtime: Runtime, inner: ASGIApp):
         self.runtime = runtime
@@ -149,7 +151,7 @@ class _McpEndpoint:
                     resp = _error_response(MisesError(
                         ErrorCode.DENIED, "the app's own run cannot be used over MCP",
                         hint="bind the MCP connection to your own run id"))
-                elif run.status != "running":
+                elif run.status != "running" and not self.runtime.mcp_attachable(run_id):
                     resp = _error_response(MisesError(
                         ErrorCode.INVALID_INPUT, f"run {run_id} is {run.status}",
                         hint="create a new run"), status=409)

@@ -37,6 +37,17 @@ def run_id_of(ctx: ServerRequestContext[Any, Any]) -> str:
     return run_id
 
 
+def _require_running(runtime: Runtime, run_id: str) -> None:
+    """A tool runs only in a running run's turn (a queued run's proxy may be connected)."""
+    try:
+        status = runtime.store.get_run(run_id).status
+    except KeyError:
+        raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+    if status != "running":
+        raise MisesError(ErrorCode.INVALID_INPUT, f"run {run_id} is {status}",
+                         hint="tools run once the run's turn has started")
+
+
 def annotations_for(t: ToolDef) -> types.ToolAnnotations:
     return types.ToolAnnotations(
         read_only_hint=t.safety == SafetyClass.READ,
@@ -80,6 +91,7 @@ def build_mcp_server(runtime: Runtime) -> Server:
         try:
             if name in INTERNAL_ONLY:
                 raise MisesError(ErrorCode.NOT_FOUND, f"unknown tool: {params.name}")
+            _require_running(runtime, run_id)
             out = await runtime.gate.call(run_id, name, dict(params.arguments or {}),
                                           call_id=call_id, workdir=runtime.workdir(run_id),
                                           agent=True)

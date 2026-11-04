@@ -42,6 +42,9 @@ Run through a `claude` shim on PATH. Never touches the network or any real Claud
   `--help` lists --effort unless $HOME/fake-claude-no-effort exists; with
   $HOME/fake-claude-reject-effort a -p run started with --effort exits 1 ("unknown option"); each is logged as a 'control' line,
   and every turn's log line carries the effort it ran at.
+  $HOME/fake-claude-mcp-at-start: like the real CLI, connect the --mcp-config server (the real
+  stdio proxy: initialize + tools/list) as the process starts, before any message; system/init
+  then reports "connected" or "failed" from that attempt.
   <cwd>/fake_init.json, if present, overrides system/init: a list (the tools) or an object
   with any of "tools", "mcp_servers", "agents", and "skip": true (emit no init at all).
 """
@@ -126,6 +129,7 @@ class Session:
         self.model = flag(argv, "--model") or "default"
         self.effort = flag(argv, "--effort")
         self.inited = False
+        self.mcp_status: str | None = None      # set by connect_at_start
         self.cwd = Path.cwd()
         with open(self.cwd / "fake_claude.jsonl", "a") as f:
             f.write(json.dumps({"event": "argv", "argv": argv,
@@ -139,6 +143,8 @@ class Session:
                          "EndConversation"],
                "mcp_servers": [{"name": "mises", "status": "connected"}],
                "agents": ["designer", "verifier", "general-purpose", "Explore", "Plan"]}
+        if self.mcp_status is not None:
+            cfg["mcp_servers"] = [{"name": "mises", "status": self.mcp_status}]
         custom = self.cwd / "fake_init.json"
         if custom.exists():
             c = json.loads(custom.read_text())
@@ -331,8 +337,27 @@ class Session:
             self.result(f"echo: {text}")
 
 
+async def connect_at_start(s: Session) -> None:
+    """The real CLI connects its MCP servers at launch: list the mises tools now."""
+    from mcp import Client, StdioServerParameters
+    cfg = json.loads(Path(flag(s.argv, "--mcp-config")).read_text())["mcpServers"]["mises"]
+    params = StdioServerParameters(command=cfg["command"], args=cfg["args"],
+                                   env={**os.environ, **cfg.get("env", {})})
+    try:
+        async with Client(params) as client:
+            await client.list_tools()
+        s.mcp_status = "connected"
+    except BaseException as e:  # noqa: BLE001 - any failure is a failed server
+        s.mcp_status = "failed"
+        with open(s.cwd / "fake_claude.jsonl", "a") as f:
+            f.write(json.dumps({"event": "mcp_failed", "error": repr(e)[:300]}) + "\n")
+
+
 async def session(argv: list[str]) -> int:
     s = Session(argv)
+    at_start = home_file("fake-claude-mcp-at-start")
+    if at_start and at_start.exists():
+        await connect_at_start(s)
     loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader(limit=10 * 1024 * 1024)
     await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)

@@ -1724,6 +1724,16 @@ class Runtime:
         self.events.publish(Event(type="engineering_warning", run_id=run_id, data={
             "text": text, **({"assembly_health": health} if health else {})}))
 
+    def mcp_attachable(self, run_id: str) -> bool:
+        """The MCP endpoint lets a run that is not `running` connect when this process holds
+        its live Claude Code session: the `claude` process (and its stdio proxy) starts when
+        the run is created, and connects its MCP server at launch, while the run may still be
+        `queued` for a parallel-agents slot (a lead's fanned-out sub-agents) or between turns
+        (a follow-up, a recovery restart). Its tool calls still need a running run."""
+        st = self._claude.get(run_id)
+        s = st.session if st is not None else None
+        return s is not None and s.alive
+
     def _is_claude_run(self, run_id: str) -> bool:
         if run_id in self._claude:
             return True
