@@ -515,8 +515,7 @@ async def _run_variant(ctx_events, rec: dict, v: dict, d: Path, args: TopoptRunA
                              "under 3 voxels thick: the voxel model is optimistic there; "
                              "refine resolution_mm or raise filter_radius_mm")
     if rep.get("islands_dropped_pct"):
-        v["warnings"].append(f"{rep['islands_dropped_pct']:.1f}% of the volume was in "
-                             "disconnected islands and was removed")
+        v["warnings"].append(split_warning(rep))
     if not rep.get("converged"):
         v["warnings"].append(f"stopped at max_iter {v['max_iter']} before converging")
     save()
@@ -541,8 +540,35 @@ async def _run_variant(ctx_events, rec: dict, v: dict, d: Path, args: TopoptRunA
                 v["compliance_error_pct"] = (round(100 * (v["verify"]["compliance"] - c_ref)
                                                    / c_ref, 2) if c_ref else None)
             except SimError as e:
-                v["verify"] = {"error": e.message, "hint": e.hint}
+                v["verify"] = {"error": e.message, "hint": verify_hint(e, rep)}
     v.update(status="done", phase="done", pct=100.0, finished_at=time.time())
+
+
+SPLIT_PCT = 5.0          # dropped share over which a split result is a setup problem
+
+
+def split_warning(rep: dict) -> str:
+    """The variant's islands warning. A big share in other bodies (the drone frame: four arms,
+    each held by its own stack-hole fixture and tied to nothing else) is a setup problem, not
+    specks: say what happened and how to join them."""
+    pct, n = float(rep.get("islands_dropped_pct") or 0.0), int(rep.get("bodies") or 0)
+    if pct < SPLIT_PCT:
+        return f"{pct:.1f}% of the volume was in disconnected islands and was removed"
+    return (f"the optimized material split into {n if n > 1 else 'several'} separate bodies "
+            f"and only the largest was kept ({pct:.1f}% of the volume dropped): each fixture "
+            "region held its own piece, so nothing had to tie them together. If this must be "
+            "one part, add a keep region joining them (e.g. a box over the hub between the "
+            "fixtures), or fix one region and load the others")
+
+
+def verify_hint(e: SimError, rep: dict) -> str | None:
+    """A verification error's hint; a missing load / fixture face on a split result points at
+    the split (the face went with a dropped body), not at the design space."""
+    if ("is not on the variant" in (e.message or "")
+            and float(rep.get("islands_dropped_pct") or 0.0) >= SPLIT_PCT):
+        return ("that face was on a body dropped when the result split apart; join the bodies "
+                "with a keep region (see the variant's warning) and run it again")
+    return e.hint
 
 
 _note_tasks: set[asyncio.Task] = set()

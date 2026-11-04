@@ -381,6 +381,9 @@ def run(job: Path, progress=None) -> dict:
     kos = keep_out_solids(spec, job)
     if kos:
         part = geo.bool_op("cut", part, kos)
+    sols = part.solids()
+    vol_all = sum(x.volume for x in sols) or 1.0
+    bodies = sum(1 for x in sols if x.volume >= 0.01 * vol_all)
     part, dropped = geo.largest_solid(part)
     if not part.is_valid:
         raise TopoptError("the re-imposed solid is not valid")
@@ -410,6 +413,7 @@ def run(job: Path, progress=None) -> dict:
         "space_volume_mm3": space_vol,
         "final_vf": float(part.volume) / space_vol if space_vol else None,
         "islands_dropped_pct": round(100 * dropped, 2),
+        "bodies": bodies,
         "step_bytes": (job / "part.step").stat().st_size,
         "stl_bytes": (job / "part.stl").stat().st_size,
         "thin_member_pct": thin_member_pct(res.x, p),
