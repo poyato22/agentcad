@@ -43,7 +43,7 @@ function readEdited(): ReadonlySet<string> {
     return new Set(Array.isArray(raw) ? raw.filter((k): k is string => typeof k === "string").slice(-500) : []);
   } catch { return new Set(); }
 }
-/** Thread rows (run-scoped keys) whose words were edited and sent again. */
+/** Thread rows (run-scoped keys) whose words you edited and sent as a new message. */
 export const editedKeys: Signal<ReadonlySet<string>> = signal<ReadonlySet<string>>(readEdited());
 export function markEdited(key: string): void {
   const next = new Set(editedKeys.peek());

@@ -117,7 +117,7 @@ export class StudiesAgentController {
       } else if (run) {
         throw new Error("The studies agent is still working. Wait for it to finish, or stop it.");
       } else if (this.started.has(this.projectId)) {
-        throw new Error("The studies agent is starting. Send again once it answers.");
+        throw new Error("The studies agent is still starting: send this once it has answered.");
       }
       const { run_id } = await this.client().createRun({ agent: STUDIES_AGENT, prompt: t, project_id: this.projectId });
       this.started.set(this.projectId, run_id);
