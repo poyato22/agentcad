@@ -152,7 +152,11 @@ def _servo(item: str) -> dict:
                            "the tube's lip"),
             "slew_s": P(0.06, 0.01, 1.0, "s", "time for a full -max..+max gimbal swing"),
             "material": P("PETG", choices=("PETG", "PLA", "ABS", "ASA", "PA12", "PA-CF"),
-                          unit="", doc="printed rings, tabs and horns")},
+                          unit="", doc="printed rings, tabs and horns"),
+            "servo_layout": P("auto", choices=("auto", "outboard", "inboard"), unit="",
+                              doc="pitch servo beside the gimbal (short stack, needs ~76 mm "
+                                  "ID for 29 mm) or over the motor (fits 66 mm BT-80); auto "
+                                  "picks outboard when it fits")},
            ["servo_torque", "pin_shear", "lug_bearing", "rom_sweep"], "rot->rot")
 def tvc_gimbal(p: dict):
     it = _servo(p["servo"])
@@ -201,9 +205,9 @@ def tvc_gimbal(p: dict):
     # horn sits on the tab's side of the rod, above the tab: between rod and servo face
     p_horn_x = p_rod_x0 + clr                          # horn faces: p_horn_x .. + horn_t
     p_face_x = p_horn_x + horn_t + clr                 # servo output face (axis -X)
-    p_hub_y = p_tab_y + hr
-    p_rod_l = 29.0
-    p_z = p_tab_z + p_rod_l                            # horn / servo axis height
+    span = max(sl, float(sh.get("tab_l") or sl))      # body + mounting ears, along the servo
+    out_top = span / 2 - out_o[0]                      # servo above / below its axis
+    out_bot = span / 2 + out_o[0]
     # ---- yaw channel (tube about Y), tab on +X; rod plane normal Y
     y_tab_x = t_ri + (t_ro - t_ri) / 2 - 0.2
     # the yaw rod runs in a clevis on the X axis (y = 0): pitching the outer ring then barely
@@ -219,26 +223,54 @@ def tvc_gimbal(p: dict):
     p_body_x1 = p_face_x + shh                         # pitch servo bottom face
     y_body_y1 = y_face_y - shh                         # yaw servo bottom face
     z_lo = -ring_h / 2 + 3.0                           # flange top
-    long_lo = out_o[0] - sl / 2                        # servo local x of the body ends
-    long_hi = out_o[0] + sl / 2
     post_t = 3.0
-    p_post = [p_body_x1 + post_t / 2, p_hub_y, (z_lo + p_z + (sl / 2 - out_o[0])) / 2,
-              post_t, sw, p_z + (sl / 2 - out_o[0]) - z_lo]
+    px0, px1 = p_body_x1, p_body_x1 + post_t           # the pitch post's x span
     y_post_x0 = y_hub_x - sw / 2
     y_post_x1 = y_hub_x + sw / 2
     y_post = [(y_post_x0 + y_post_x1) / 2, y_body_y1 - post_t / 2,
-              (z_lo + y_z + (sl / 2 - out_o[0])) / 2, y_post_x1 - y_post_x0, post_t,
-              y_z + (sl / 2 - out_o[0]) - z_lo]
-    corner = max(math.hypot(p_body_x1 + post_t, p_hub_y + sw / 2),
-                 math.hypot(y_post_x1, y_body_y1 - post_t),
-                 math.hypot(p_hub_y + sw / 2, p_face_x))
-    if corner > R - 0.5:
-        raise ValueError(f"the servos need an airframe ID over {2 * corner + 1:.0f} mm "
-                         f"(have {p['airframe_id']:g}); pick a smaller horn_r or servo")
+              (z_lo + y_z + out_top) / 2, y_post_x1 - y_post_x0, post_t,
+              y_z + out_top - z_lo]
+    y_corner = math.hypot(y_post_x1, y_body_y1 - post_t)
+    out_corner = max(math.hypot(px1, p_tab_y + hr + sw / 2),
+                     math.hypot(p_tab_y + hr + sw / 2, p_face_x))
+    tol = 0.3                                          # the flange edge meets the tube wall
+    layout = p["servo_layout"]
+    if layout == "auto":
+        layout = "outboard" if max(out_corner, y_corner) <= R - tol else "inboard"
+    if layout == "outboard":
+        # pitch servo outside the outer ring, its post straight up from the flange
+        p_hub_y = p_tab_y + hr
+        p_z = p_tab_z + 29.0
+        posts = [[px0 + post_t / 2, p_hub_y, (z_lo + p_z + out_top) / 2, post_t, sw,
+                  p_z + out_top - z_lo]]
+        corner = max(out_corner, y_corner)
+    else:
+        # pitch servo over the motor (clear of the tilting tube top), horn reaching out to the
+        # tab; its post is a block behind the servo on a column outside the gimbal
+        p_hub_y = p_tab_y - hr
+        p_z = max(p_tab_z + 29.0, tube_h / 2 + 6.0 + out_bot)
+        col_y0 = math.sqrt(max(0.0, (o_ro + gap + 0.5) ** 2 - px0 ** 2))
+        col_y1 = math.sqrt(max(0.0, (R - tol) ** 2 - px1 ** 2))
+        if col_y1 - col_y0 < 4.0:
+            raise ValueError(f"the airframe ID {p['airframe_id']:g} mm leaves no room for the "
+                             "pitch servo's post column; use a larger airframe")
+        # the block stays clear of the yaw clevis cheeks as the tube pitches and yaws
+        cheek_y = rod_t / 2 + 1.0 + 2.7 + (y_tab_z + 3.0) * math.sin(math.radians(defl + 2))
+        yb0 = max(p_hub_y - sw / 2, cheek_y + 0.5)
+        posts = [[px0 + post_t / 2, (yb0 + col_y1) / 2, (p_z - out_bot + p_z + out_top) / 2,
+                  post_t, col_y1 - yb0, out_bot + out_top],
+                 [px0 + post_t / 2, (col_y0 + col_y1) / 2, (z_lo + p_z - out_bot + 0.5) / 2,
+                  post_t, col_y1 - col_y0, p_z - out_bot + 0.5 - z_lo]]
+        corner = max(math.hypot(px1, col_y1), y_corner)
+    p_rod_l = p_z - p_tab_z
+    if corner > R - tol + 1e-6:
+        raise ValueError(f"the servos need an airframe ID over {2 * (corner + tol):.0f} mm "
+                         f"(have {p['airframe_id']:g}) in the {layout} layout; try "
+                         "servo_layout inboard, a smaller horn_r or a larger airframe")
 
     k.part("mount", "gimbal_ring", "thrust ring + servo mount", mat, id=2 * m_ri, od=2 * m_ro,
            height=ring_h, pin_d=bore, pin_angles=[0.0, 180.0], flange_od=2 * R,
-           flange_t=3.0, boxes=[[round(c, 4) for c in p_post], [round(c, 4) for c in y_post]])
+           flange_t=3.0, boxes=[[round(c, 4) for c in b] for b in (*posts, y_post)])
     k.inst("mount", "mount", "thrust ring (grounded)")
     w.W["mount"] = I4
     k.part("outer", "gimbal_ring", "outer gimbal ring (pitch)", mat, id=2 * o_ri, od=2 * o_ro,
@@ -392,7 +424,8 @@ def tvc_gimbal(p: dict):
         "servo_rate_deg_s": round(servo_rate, 1), "needed_rate_deg_s": round(need_rate, 1),
         "pin_shear_mpa": round(shear, 2), "lug_bearing_mpa": round(bearing, 2),
         "lug_bearing_sf": round(ys / bearing, 2) if bearing else None,
-        "motor_com_below_pivot_mm": round(-zc * 1000, 1)}
+        "motor_com_below_pivot_mm": round(-zc * 1000, 1), "servo_layout": layout,
+        "stack_height_mm": round(max(p_z, y_z) + out_top, 1)}
     k.plan.transmission = {"pitch": f"gimbal ~ asin({hr:g} sin(servo) / {p_tab_y:.1f})",
                            "yaw": f"gimbal ~ asin({hr:g} sin(servo) / {y_tab_x:.1f})"}
     k.plan.rom = {"pitch": [-defl, defl], "yaw": [-defl, defl],

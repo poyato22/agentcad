@@ -58,8 +58,11 @@ def _overlap(a, b) -> float:
     return c.volume
 
 
-def test_no_interference_through_the_full_two_axis_range():
-    m, p, plan = library.plan_for("tvc_gimbal", {})
+@pytest.mark.parametrize("airframe_id,layout", [(76.2, "outboard"), (66.0, "inboard")])
+def test_no_interference_through_the_full_two_axis_range(airframe_id, layout):
+    # 76.2 mm (3 in) fits the pitch servo beside the gimbal; a 66 mm BT-80 puts it over the motor
+    m, p, plan = library.plan_for("tvc_gimbal", {"airframe_id": airframe_id})
+    assert plan.sizing["servo_layout"] == layout
     contacts = {frozenset(c) for c in plan.contacts}
     pr, yr = plan.rom["pitch_servo"], plan.rom["yaw_servo"]
     poses = [{}] + [{"pitch_servo": a, "yaw_servo": b} for a in (*pr, 0.0) for b in (*yr, 0.0)]
@@ -78,5 +81,5 @@ def test_library_finds_it_for_a_tvc_request():
 
 
 def test_too_small_an_airframe_is_refused_with_the_size_needed():
-    with pytest.raises(MisesError, match="airframe ID over"):
+    with pytest.raises(MisesError, match="airframe ID"):
         library.plan_for("tvc_gimbal", {"airframe_id": 60.0})
