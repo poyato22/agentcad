@@ -831,9 +831,13 @@ def _with_mass(ctx, part_id: str, metrics: dict) -> dict:
 
 def _summary(part_id: str, m: dict) -> str:
     s = m["bbox"]["size"]
+    n = m.get("solids") or 1
+    split = (f"; WARNING: {n} separate solids. A part is normally one connected solid: if a "
+             "cut split it or a feature floats, fix the geometry; if they really are separate "
+             "pieces, make them separate parts") if n > 1 else ""
     return (f"{part_id}: volume {m['volume_mm3']:.1f} mm3, mass {m['mass_g']:.2f} g, "
             f"bbox {s[0]:.1f}x{s[1]:.1f}x{s[2]:.1f} mm, {len(m['holes'])} hole(s), "
-            f"valid={m['valid']}")
+            f"valid={m['valid']}{split}")
 
 
 def register_mirror_tools(registry: ToolRegistry) -> None:
