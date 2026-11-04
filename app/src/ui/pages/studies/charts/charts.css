@@ -3,7 +3,7 @@
 .sc { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; position: relative; }
 .sc-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .sc-title { font-weight: 700; color: var(--ink); }
-.sc-legend { display: flex; gap: 12px; color: var(--dim); font-size: var(--fs-small); }
+.sc-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 0; color: var(--dim); font-size: var(--fs-small); }
 .sc-key { display: inline-flex; align-items: center; gap: 6px; }
 .sc-key-line { display: inline-block; width: 12px; height: 2px; border-radius: 1px; }
 .sc-table-btn { margin-left: auto; background: transparent; border: 0; color: var(--dim); font: inherit; font-size: var(--fs-small); cursor: pointer; padding: 0 2px; text-decoration: underline; text-underline-offset: 2px; }
