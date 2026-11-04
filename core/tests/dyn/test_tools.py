@@ -158,3 +158,31 @@ async def test_long_motions_are_refused_on_the_host(ctx):
     with pytest.raises(MisesError):
         await dt.dyn_torque.handler(ctx, dt.TorqueArgs(project_id="quad", trajectory=dt.Trajectory(
             kind="keyframes", keys=[dt.Key(t=90, joints={"fl_hip": 10})])))
+
+
+
+async def test_rom_sweep_bbox_hits_are_rechecked_with_the_exact_brep(ctx, monkeypatch):
+    # the TVC build: the MuJoCo box sweep kept failing the pitch pushrod against the motor
+    # tube although assembly_check (exact) was clean at that pose; the lead could not clear
+    # the fail. A hit the exact solids clear is now a near miss (warn); a real one stays fail
+    from mises.assembly import geometry
+    from mises.assembly.geometry import GeometryResult
+    for pid in ("quad_fl_shank", "quad_fr_shank", "quad_torso"):
+        (ctx.workdir / "parts" / pid / "model.step").write_text("stub")
+    vols = iter([0.0, 7.5])
+
+    async def fake_geometry(parts, asm, result, *, poses=None, **kw):
+        return GeometryResult(positions=[{"interferences": [
+            {"a": "fl_shank", "b": "fr_shank", "volume_mm3": next(vols)}]}
+            for _ in poses])
+    monkeypatch.setattr(geometry, "run_geometry", fake_geometry)
+    asm = ctx.services["assembly"].get("quad")
+    ex = SimpleNamespace(map={"bodies": {"b1": ["fl_shank"], "b2": ["fr_shank"],
+                                         "b0": ["torso"]}})
+    res = {"collisions": [{"bodies": ["b1", "b2"]}, {"bodies": ["b2", "b1"]}]}
+    rows = [{"status": "fail", "pose": {"fl_hip": 10.0}, "reason": "a hits b"},
+            {"status": "fail", "pose": {"fl_hip": 20.0}, "reason": "a hits b"}]
+    note = await dt._confirm_exact(ctx, asm, ex, res, rows)
+    assert [r["status"] for r in rows] == ["warn", "fail"]
+    assert "near miss" in rows[0]["reason"] and rows[1]["exact_interference_mm3"] == 7.5
+    assert note.startswith("1 of 2")
