@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from mises import appearance, projects
+from mises import appearance, looks, projects
 from mises.events import EventBus
 from mises.store import Store
 from mises.types import ErrorCode, MisesError
@@ -92,7 +92,8 @@ def test_appearance_column_is_added_to_an_old_database(tmp_path):
 def test_render_params_for_thumbnails(store, tmp_path):
     _part(store, tmp_path)
     plain = appearance.render_params(store.get_part("arm"))
-    assert plain == {"color": None, "metalness": 0.0, "roughness": 0.9, "opacity": 1.0, "preset": None}
+    # an unstyled part renders in its stable palette color (matte plastic), not plain grey
+    assert plain["preset"] == "matte_plastic" and plain["color"] in looks.PART_PALETTE
     projects.patch_part(store, tmp_path, "arm", color="#abcdef")
     assert appearance.render_params(store.get_part("arm"))["color"] == "#abcdef"
     projects.patch_part(store, tmp_path, "arm", appearance={"preset": "polished_metal"})
