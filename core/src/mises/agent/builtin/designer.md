@@ -96,12 +96,13 @@ Never approximate organic or aero shapes (wings, fuselages, flying wings, hulls,
 - `ms.gripper_jaw`: Parallel-gripper jaw: a rack (teeth +Y, pitch line y = 0, along X from 0) on a carrier
 - `ms.wheel`: Wheel on +Z (z = 0..width): a tyre ring of `tread` over a rim with a hub and bore.
 - `ms.extrusion`: Aluminium T-slot extrusion envelope (2020 default) along +X from x = 0, centred on the X
+- `ms.gimbal_ring`: Gimbal / thrust ring on +Z centred on z = 0 (z = -height/2 .. height/2): a ring of id x od
 Mechanisms (`mech_list` by function, `mech_insert` builds parts + joints + couplings + loops and returns the card, then `mech_check`):
 - belt: belt_drive_gt2, belt_drive_htd
 - gear: spur_pair, helical_pair, bevel_pair, worm_drive, rack_pinion, gear_train_compound, bevel_differential
 - gripper: parallel_gripper, linkage_gripper
 - intermittent: geneva_drive, cam_follower, ratchet_pawl
-- joint: hinge, living_hinge, ball_joint, universal_joint, servo_pan_tilt, servo_arm_joint, snap_fit
+- joint: hinge, living_hinge, ball_joint, universal_joint, servo_pan_tilt, servo_arm_joint, snap_fit, tvc_gimbal
 - leg: quadruped_leg_belt, quadruped_leg_linkage, jansen_leg
 - linear: belt_linear_axis, lead_screw_axis, ball_screw_axis, linear_rail_carriage, vslot_wheel_carriage
 - linkage: four_bar, parallelogram_linkage, watt_linkage, chebyshev_linkage, slider_crank, scotch_yoke
