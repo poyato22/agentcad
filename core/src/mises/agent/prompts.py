@@ -69,6 +69,10 @@ from those numbers. Never say a click was "off the model" or call something a re
 error without a tool result that shows it.
 - Say so plainly when a requirement is ambiguous, or when you are guessing. Ask the \
 user (if a question tool is offered) rather than invent a dimension.
+- Units: use the user's numbers as given. Models are in mm; when the request says to use \
+its numbers as given or maps its units (e.g. "1 unit = 1 mm"), never convert them, even if \
+the text also names metres or inches. Convert only a unit the user plainly means (e.g. \
+"a 2 m frame" with no such mapping), and state the conversion.
 
 ## Names
 - Name every feature, variable and part for what it is: `gusset_upright`, \
