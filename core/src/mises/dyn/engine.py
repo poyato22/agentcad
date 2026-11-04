@@ -140,7 +140,8 @@ def _simulate(m, d, plan, record_reactions: bool, floor_id: int):
     jnames = trajmod.actuated(m)
     every = max(1, int(round(SAMPLE_S / m.opt.timestep)))
     steps = int(round(plan.duration_s / m.opt.timestep))
-    rec = {"t": [], "qpos": [], "qvel": [], "force": [], "err": [], "cop": [], "support": [],
+    rec = {"t": [], "qpos": [], "qvel": [], "qacc": [], "force": [], "err": [], "cop": [],
+           "support": [],
            "com": [], "react": [], "contacts": [], "xmat": [], "xpos": [], "subcom": []}
     jq = [int(m.joint(j).qposadr[0]) for j in jnames]
     for i in range(steps + 1):
@@ -153,6 +154,7 @@ def _simulate(m, d, plan, record_reactions: bool, floor_id: int):
             rec["t"].append(t)
             rec["qpos"].append(d.qpos.copy())
             rec["qvel"].append(d.qvel.copy())
+            rec["qacc"].append(d.qacc.copy())
             rec["force"].append(d.actuator_force.copy())
             rec["err"].append([tg[j] - d.qpos[q] for j, q in zip(jnames, jq)])
             root = m.body_rootid[1] if m.nbody > 1 else 0
@@ -186,11 +188,24 @@ def _settle(m, d, seconds: float) -> None:
 
 
 def _inverse(m, rec, active, plan, jnames, free: bool):
-    """Joint torques by inverse dynamics. A fixed base: the ideal plan itself (exact). A free
-    base: the recorded (contact-consistent) motion with finite-difference accelerations."""
+    """Joint torques by inverse dynamics. A fixed open chain: the ideal plan itself (exact). A
+    free base: the recorded (contact-consistent) motion with finite-difference accelerations.
+    A fixed closed chain (loop equalities): the recorded motion with the simulator's own
+    accelerations, because the plan only moves the actuated joints and leaves the passive
+    joints of a loop where they were: the loop would be torn apart and the constraint forces
+    of that violation (thousands of N m on a TVC gimbal) read as joint torque, and differenced
+    accelerations are amplified by the stiff loop constraints."""
     dofs = [int(m.joint(j).dofadr[0]) for j in jnames]
     d2 = mujoco.MjData(m)
     out = []
+    if not free and m.neq:
+        for i in range(len(rec["qpos"])):
+            d2.qpos[:] = rec["qpos"][i]
+            d2.qvel[:] = rec["qvel"][i]
+            d2.qacc[:] = rec["qacc"][i]
+            mujoco.mj_inverse(m, d2)
+            out.append([d2.qfrc_inverse[k] for k in dofs])
+        return np.array(out)
     if not free:
         # the ideal motion's own derivatives, taken on the plan's grid (smooth) and then
         # sampled: differencing the linearly interpolated targets would spike at grid nodes
