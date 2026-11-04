@@ -83,7 +83,8 @@ def run_one(task: Task, system: str, runs: Path, cap: float) -> dict:
 def cmd_run(a) -> int:
     tasks = pilot_order(load_tasks(a.suite))
     if a.ids:
-        keep = set(a.ids.split(","))
+        ids = Path(a.ids[1:]).read_text().strip() if a.ids.startswith("@") else a.ids
+        keep = set(ids.split(","))
         tasks = [t for t in tasks if t.id in keep]
     if a.limit:
         tasks = tasks[:a.limit]
