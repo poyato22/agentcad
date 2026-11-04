@@ -188,6 +188,9 @@ def test_rom_sweep_finds_a_self_collision():
     hit = out["collisions"][0]
     assert sorted(hit["bodies"]) == ["base", "link"]
     assert hit["pose"]["j"] < -0.5        # the bar (+y) swings towards +x at a negative angle
+    # counted in poses, never more than were tried (the TVC sweep read "6367 of 2000 poses":
+    # every contact point counted, and the tally restarted at each deeper hit)
+    assert 0 < hit["count"] <= 200
     out = engine.run({"task": "rom", "model": model, "n": 200, "joints": ["j"]})
     assert out["colliding_pairs"] == 1    # deterministic
 

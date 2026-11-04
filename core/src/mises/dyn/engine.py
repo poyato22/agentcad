@@ -484,6 +484,7 @@ def task_rom(job: dict) -> dict:
     if k == 1:
         u = np.linspace(0, 1, n).reshape(n, 1)
     hits: dict[tuple, dict] = {}
+    count: dict[tuple, int] = {}       # poses (not contact points) in which a pair collides
     t0 = time.perf_counter()
     for i in range(n):
         d.qpos[:] = m.qpos0
@@ -491,12 +492,17 @@ def task_rom(job: dict) -> dict:
             lo, hi = ranges[c]
             d.qpos[m.joint(j).qposadr[0]] = lo + (hi - lo) * u[i, c]
         mujoco.mj_forward(m, d)
+        here = set()
         for p in _penetrations(m, d, rest, PENETRATION_TOL_M):
             key = tuple(p["bodies"])
+            here.add(key)
             if key not in hits or p["depth_mm"] > hits[key]["depth_mm"]:
                 hits[key] = {**p, "pose": {j: _r(d.qpos[m.joint(j).qposadr[0]])
                                            for j in names}, "first_pose": i}
-            hits[key]["count"] = hits[key].get("count", 0) + 1
+        for key in here:
+            count[key] = count.get(key, 0) + 1
+    for key, h in hits.items():
+        h["count"] = count.get(key, 0)
     worst = sorted(hits.values(), key=lambda h: -h["depth_mm"])
     return {"poses": n, "joints": names, "ranges": _r(ranges), "rest_contacts": sorted(rest),
             "collisions": worst[:20], "colliding_pairs": len(worst),
