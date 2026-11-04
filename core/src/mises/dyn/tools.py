@@ -486,13 +486,54 @@ async def dyn_reactions(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
 
 # ---- dyn_rom_sweep
 
-@tool("dyn_rom_sweep", safety=SafetyClass.READ, scope_arg="project_id", timeout_s=240,
+ROM_CONFIRM = 6           # the worst box hits re-checked on the exact geometry
+ROM_CONFIRM_TIMEOUT_S = 60.0
+
+
+async def _confirm_exact(ctx: ToolContext, asm, ex, res: dict, rows: list[dict]) -> None:
+    """Re-check the worst box hits on the exact B-reps at the pose that collided: only the two
+    bodies' parts, posed by the assembly solved at those joint values. A hit the exact check
+    clears becomes a pass (a box near-miss); a confirmed one keeps failing with its real
+    overlap. A part not built (no STEP) or a slow check leaves the box verdict as it was."""
+    from ..assembly import geometry, motion
+    from ..assembly.solve import solve
+    parts = Path(ctx.workdir) / "parts"
+    for c, r in list(zip(res.get("collisions") or [], rows))[:ROM_CONFIRM]:
+        if not r.get("pair"):
+            continue
+        a_ids = set(ex.map["bodies"].get(c["bodies"][0]) or [])
+        b_ids = set(ex.map["bodies"].get(c["bodies"][1]) or [])
+        if not a_ids or not b_ids:
+            continue
+        values = {_jid(ex, k): export.from_mj(ex.map, k, v) for k, v in c["pose"].items()}
+        try:
+            posed = solve(motion.with_values(asm, values),
+                          resolve_face=geometry.face_resolver(parts))
+            sub = asm.model_copy(update={"instances": [i for i in asm.instances
+                                                       if i.id in a_ids | b_ids]})
+            geo = await geometry.run_geometry(parts, sub, posed, want="interference",
+                                              timeout_s=ROM_CONFIRM_TIMEOUT_S)
+        except Exception:  # noqa: BLE001 - the box verdict stands
+            continue
+        vol = sum(float(h.get("volume_mm3") or 0.0) for h in geo.interferences
+                  if {h.get("a_id", h.get("a")), h.get("b_id", h.get("b"))} & a_ids
+                  and {h.get("a_id", h.get("a")), h.get("b_id", h.get("b"))} & b_ids)
+        r["exact_mm3"] = round(vol, 3)
+        if vol <= 0.0:
+            r["status"] = "pass"
+            r["reason"] += ("; the exact geometry at that pose is clear (a bounding-box "
+                            "near-miss)")
+        else:
+            r["reason"] += f"; the exact geometry confirms it: {vol:.1f} mm3 of overlap"
+
+
+@tool("dyn_rom_sweep", safety=SafetyClass.READ, scope_arg="project_id", timeout_s=420,
       description="Range-of-motion collision sweep: thousands of poses across the joints' "
                   "limits (Latin hypercube, MuJoCo), every pair of parts that collides (not a "
                   "part and the part it is jointed to), how deep and at which joint values. "
-                  "Fast and conservative (bounding boxes): confirm a hit with assembly_check "
-                  "sweep (exact) before you redesign. Pairs that already touch at rest are "
-                  "reported apart.")
+                  "Fast and conservative (bounding boxes); the worst hits are then re-checked "
+                  "on the exact geometry at their pose (exact_mm3: 0 = a box near-miss, which "
+                  "passes). Pairs that already touch at rest are reported apart.")
 async def dyn_rom_sweep(ctx: ToolContext, args: RomArgs) -> ToolOutput:
     pid = _build(ctx, args.project_id)
     asm, ex = _export(ctx, pid, args)
@@ -503,6 +544,7 @@ async def dyn_rom_sweep(ctx: ToolContext, args: RomArgs) -> ToolOutput:
                                          "n": args.n})
     names = _names(ex, asm)
     rows = checks.rom_rows(res, names)
+    await _confirm_exact(ctx, asm, ex, res, rows)
     for r in rows:
         if r.get("pose"):
             r["pose"] = {_jid(ex, k): round(export.from_mj(ex.map, k, v), 2)
