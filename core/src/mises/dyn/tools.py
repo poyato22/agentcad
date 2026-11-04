@@ -626,9 +626,10 @@ async def _fem(ctx: ToolContext, pid: str, args: FemArgs) -> ToolOutput:
     from .export import _metrics
     for r in chosen:
         members = ex.map["bodies"].get(r["body"], [])
-        # the link's main part: the heaviest instance of the body
+        # the link's structural member: the instance carrying its moving joints (a servo or
+        # a cover bolted to it can outweigh it), the heaviest of those
         body = next(b for b in ex.model["bodies"] if b["name"] == r["body"])
-        iid = max(members, key=lambda i: _part_mass(ctx, inst[i].part_id))
+        iid = _link_member(members, asm, lambda i: _part_mass(ctx, inst[i].part_id))
         part_id = inst[iid].part_id
         metrics = _metrics(_home(ctx), part_id)
         frames = fem_bridge.Frames(r["xmat"], r["xpos_m"], origins[body["name"]],
@@ -693,6 +694,15 @@ async def _fem(ctx: ToolContext, pid: str, args: FemArgs) -> ToolOutput:
                                              "status": status, "links": rows, "card": card,
                                              "accuracy": card["accuracy"], "stream": "sim"},
                       ok=True, step_kind=StepKind.SIM_RUN)
+
+
+def _link_member(members: list[str], asm, mass_of) -> str:
+    """The instance of a rigid body that carries its moving joints (the thigh, not the servo
+    bolted into it); the heaviest such, else the heaviest instance."""
+    ends = {e for j in getattr(asm, "joints", []) if j.kind != "fixed"
+            for e in (j.a.instance_id, j.b.instance_id)}
+    carriers = [m for m in members if m in ends]
+    return max(carriers or members, key=lambda i: mass_of(i) or 0.0)
 
 
 def _part_mass(ctx, part_id: str) -> float:
