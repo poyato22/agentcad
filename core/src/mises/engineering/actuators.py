@@ -17,6 +17,9 @@ import re
 from dataclasses import asdict, dataclass, field
 
 
+SERVO_REF_STALL_NM = 1.08     # MG996R: the servo class's armature reference
+
+
 @dataclass(frozen=True)
 class Perf:
     id: str
@@ -58,9 +61,15 @@ class Perf:
         return self.idle_current_a + f * (self.stall_current_a - self.idle_current_a)
 
     def armature(self) -> float:
+        """The reflected rotor inertia (kg m2) the dynamics model puts on the joint."""
         if self.rotor_inertia_kgm2 and self.gear_ratio:
             return self.rotor_inertia_kgm2 * self.gear_ratio ** 2
-        return {"servo": 0.002, "bus_servo": 0.004, "stepper": 0.001,
+        if self.type == "servo":
+            # the class default is a standard servo's (MG996R, ~1 N m); a micro servo's motor
+            # is far smaller: scaling with stall torque keeps an SG90 from carrying a standard
+            # servo's rotor (which alone stalled it on a TVC gimbal slew)
+            return 0.002 * max(0.05, min(1.0, self.stall_torque_nm / SERVO_REF_STALL_NM))
+        return {"bus_servo": 0.004, "stepper": 0.001,
                 "bldc_geared": 0.006, "dc_geared": 0.002}.get(self.type, 0.002)
 
     def as_dict(self) -> dict:

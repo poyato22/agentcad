@@ -189,3 +189,17 @@ def test_kinematics_marks_a_loops_passive_joints_and_the_power_tools_skip_them(h
     perfs = _perfs(kin, {})
     assert "fl_hip" in perfs and not passive & set(perfs)
     assert "fr_hip" in _perfs(kin, {"fr_hip": "servo_sg90_micro"})   # named: counted
+
+
+def test_a_loops_passive_joints_are_bare_pins_in_the_model(home):
+    # a TVC gimbal's rings got the ideal-servo armature (0.005 kg m2, 12x the motor) and a
+    # 0.02 N m s damper, which alone stalled its micro servos
+    kf = Frame(origin=[130, 0, -200], axis=[0, 1, 0])
+    ex = export.export(home, None, _quad_c2([Loop(joint_a="fl_shank", joint_b="fr_shank",
+                                                  frame_a=kf, frame_b=kf,
+                                                  drivers=["fl_hip"])]))
+    js = {j["name"]: j for b in ex.model["bodies"] for j in b["joints"]}
+    for name in ("j_fl_knee", "j_fr_hip", "j_fr_knee"):
+        assert js[name]["armature"] == export.PASSIVE_ARMATURE
+        assert js[name]["damping"] == export.PASSIVE_DAMPING
+    assert js["j_fl_hip"]["armature"] > export.PASSIVE_ARMATURE
