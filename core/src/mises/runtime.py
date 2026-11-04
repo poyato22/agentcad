@@ -2254,11 +2254,29 @@ class Runtime:
             if stop is None:
                 raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is not driven here",
                                  hint="it is running in another Mises process")
-            return RunResult(final_text="", messages=[], stop_reason=stop,
+            # its answer is the last turn's reply as stored (agent_wait releases a child's
+            # session before agent_result reads it)
+            text = self._stored_reply(run_id) if stop == "end_turn" else ""
+            return RunResult(final_text=text, messages=[], stop_reason=stop,
                              error=None if stop == "end_turn" else f"run {status}")
         st = self._state(run_id)
         assert st.task is not None
         return await asyncio.shield(st.task)
+
+    def _stored_reply(self, run_id: str) -> str:
+        """The run's last turn reply from its steps: its top-level assistant messages after the
+        last user message, joined like a live Claude Code turn's text."""
+        out: list[str] = []
+        for s in self.store.steps(run_id):
+            if s.kind != StepKind.MESSAGE:
+                continue
+            p = s.payload or {}
+            if p.get("role") == "user":
+                out = []
+            elif (p.get("role") == "assistant" and not p.get("parent_tool_use_id")
+                  and isinstance(p.get("text"), str)):
+                out.append(p["text"])
+        return "".join(out)
 
     def is_live(self, run_id: str) -> bool:
         """True if this process drives the run (internal loop or external)."""

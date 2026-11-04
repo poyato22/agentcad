@@ -127,6 +127,31 @@ async def test_wait_on_a_claude_run_this_process_no_longer_holds(rt, status, sto
     assert res.stop_reason == stop
 
 
+async def test_a_released_claude_runs_answer_is_its_last_stored_reply(rt):
+    """DRONE demo: agent_wait releases each child's session, so the lead's agent_result right
+    after it read an empty final_text and four research sub-agents' findings were lost."""
+    from mises.types import StepKind
+    rid = _claude_run(rt)
+    add = rt.store.append_step
+    add(rid, StepKind.MESSAGE, {"role": "user", "text": "find a VTX"})
+    add(rid, StepKind.MESSAGE, {"role": "assistant", "text": "Checking caddxfpv.com.",
+                                "source": "claude-code", "parent_tool_use_id": None})
+    add(rid, StepKind.MESSAGE, {"role": "assistant", "text": "inner", "source": "claude-code",
+                                "parent_tool_use_id": "toolu_1"})
+    add(rid, StepKind.MESSAGE, {"role": "assistant", "text": "Kit: Walksnail Mini 1S Lite, 8.6 g",
+                                "source": "claude-code", "parent_tool_use_id": None})
+    rt.finish_external_run(rid, "done")
+    res = await rt.wait(rid)
+    assert res.stop_reason == "end_turn"
+    assert res.final_text == "Checking caddxfpv.com.Kit: Walksnail Mini 1S Lite, 8.6 g"
+    # a run that never answered after its last user message still reads empty
+    rid2 = _claude_run(rt)
+    add(rid2, StepKind.MESSAGE, {"role": "assistant", "text": "old", "source": "claude-code"})
+    add(rid2, StepKind.MESSAGE, {"role": "user", "text": "again"})
+    rt.finish_external_run(rid2, "done")
+    assert (await rt.wait(rid2)).final_text == ""
+
+
 async def test_wait_on_unknown_run_is_still_not_found(rt):
     with pytest.raises(MisesError) as ei:
         await rt.wait("nope")
