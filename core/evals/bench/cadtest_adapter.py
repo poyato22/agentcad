@@ -15,7 +15,14 @@ A missing or unreadable STEP fails every cadtest (an invalid sample).
 Runs in its own process with its own CadQuery install, never inside Mises' environment.
 """
 import json
+import signal
 import sys
+
+TEST_TIMEOUT_S = 20
+
+
+def _alarm(*_):
+    raise TimeoutError(f"cadtest exceeded {TEST_TIMEOUT_S} s")
 
 PREAMBLE = """import math
 _check_pass_msg = None
@@ -43,11 +50,15 @@ def main(step, tests_path, out_path):
                             "msg": err, "req": t.get("requirement_id")})
             continue
         e = dict(env)
+        signal.signal(signal.SIGALRM, _alarm)
+        signal.alarm(TEST_TIMEOUT_S)
         try:
             exec(PREAMBLE + (t["cadtest_code"] or ""), e)
+            signal.alarm(0)
             entries.append({"id": t["cadtest_id"], "type": t["cadtest_type"], "pass": True,
                             "req": t.get("requirement_id")})
         except BaseException as ex:  # noqa: BLE001
+            signal.alarm(0)
             entries.append({"id": t["cadtest_id"], "type": t["cadtest_type"], "pass": False,
                             "msg": f"{type(ex).__name__}: {str(ex)[:200]}",
                             "req": t.get("requirement_id")})

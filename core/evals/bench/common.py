@@ -51,18 +51,31 @@ def read_json(path: Path, default=None):
         return default
 
 
+_HELPER = None
+_LAST: dict = {"t": 0.0, "v": None}
+USAGE_EVERY_S = 300.0
+
+
 def weekly_usage() -> dict | None:
     """The account's 7-day / 5-hour utilisation (percent) via the cmux-limit-watcher helper.
-    Read only; None when unavailable. Shared with every other session on the account."""
+    Read only, sampled at most every 5 minutes (the usage API rate-limits); the last sample is
+    reused in between. Shared with every other session on the account."""
+    global _HELPER
+    now = time.time()
+    if _LAST["v"] is not None and now - _LAST["t"] < USAGE_EVERY_S:
+        return _LAST["v"]
     try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("bench_cmuxlimit",
-                                                      USAGE_HELPER / "cmuxlimit.py")
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        d = mod.fetch_usage(force=True) or {}
+        if _HELPER is None:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("bench_cmuxlimit",
+                                                          USAGE_HELPER / "cmuxlimit.py")
+            _HELPER = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(_HELPER)
+        d = _HELPER.fetch_usage() or {}
         sd, fh = d.get("seven_day") or {}, d.get("five_hour") or {}
-        return {"t": time.time(), "seven_day": sd.get("utilization"),
-                "seven_day_resets": sd.get("resets_at"), "five_hour": fh.get("utilization")}
+        v = {"t": now, "seven_day": sd.get("utilization"),
+             "seven_day_resets": sd.get("resets_at"), "five_hour": fh.get("utilization")}
     except Exception as e:  # noqa: BLE001
-        return {"t": time.time(), "error": str(e)}
+        v = {"t": now, "error": str(e)}
+    _LAST.update(t=now, v=v)
+    return v

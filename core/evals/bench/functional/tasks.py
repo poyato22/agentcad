@@ -673,11 +673,12 @@ def chk_cnc(out: Path, c: Checks):
           lambda: _near(G.volume(w), 72000 - 4 * math.pi * 3.3 ** 2 * 12 - (9000 - (4 - math.pi) * 9 * 6), 300))
 
     def radii():
-        small = [cc for cc in G.cylinders(w) if cc.concave and cc.radius < 2.99
-                 and abs(abs(cc.axis[2]) - 1) < 1e-3]
-        big = [cc for cc in G.cylinders(w) if cc.concave and 2.99 <= cc.radius < 3.25
-               and abs(abs(cc.axis[2]) - 1) < 1e-3]
-        return (not small and len(big) >= 4), f"{len(big)} R≥3 pocket corners, {len(small)} smaller"
+        vert = [cc for cc in G.cylinders(w) if cc.concave and abs(abs(cc.axis[2]) - 1) < 1e-3]
+        through = [cc for cc in vert if abs(cc.radius - 3.3) <= 0.05 and cc.length >= 11.9]
+        corners = [cc for cc in vert if not any(cc is t for t in through)]
+        small = [cc for cc in corners if cc.radius < 2.99]
+        return (not small and len(corners) >= 4), \
+            f"{len(corners)} pocket corner arcs, radii {sorted({round(x.radius, 2) for x in corners})}"
     c.add("pocket corner radii ≥ 3 mm", radii)
 
     def top_access():

@@ -108,6 +108,9 @@ def run_task(task: Task, out: Path, cap_s: float, model: str = "sonnet", effort:
                 ev = json.loads(line)
             except ValueError:
                 continue
+            if ev.get("type") == "rate_limit_event":
+                win = ((ev.get("rate_limit_info") or {}).get("unifiedWindows") or {})
+                row["seven_day_util"] = (win.get("seven_day") or {}).get("utilization")
             if ev.get("type") == "result":
                 results.append(ev)
                 if sent < len(messages):
@@ -119,11 +122,14 @@ def run_task(task: Task, out: Path, cap_s: float, model: str = "sonnet", effort:
         if proc.poll() is not None and not buf:
             break
     if proc.poll() is None:
-        os.killpg(proc.pid, signal.SIGTERM)       # our own child's group
         try:
+            os.killpg(proc.pid, signal.SIGTERM)   # our own child's group
             proc.wait(15)
+        except (ProcessLookupError, PermissionError):
+            pass                                  # it exited meanwhile
         except subprocess.TimeoutExpired:
             os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait(30)
     log.close()
     row["timed_out"] = timed_out
     row["usd"] = round(sum(r.get("total_cost_usd") or 0 for r in results), 4)

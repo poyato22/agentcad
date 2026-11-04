@@ -169,15 +169,16 @@ def export_build(core: Core, pid: str, out: Path) -> dict:
     info = {"source": source, "components": names, "n_parts": len(parts)}
     if not shapes:
         return {**info, "exported": False}
-    shape = shapes[0] if len(shapes) == 1 else b3.Compound(children=shapes)
     out.mkdir(parents=True, exist_ok=True)
-    b3.export_step(shape, str(out / "result.step"))
-    b3.export_stl(shape, str(out / "result.stl"))
-    # each component on its own too (the functional checkers read named parts)
+    # each component on its own (the functional checkers read named parts), written before
+    # the compound is made: a shape that became a compound child no longer exports alone
     comp = out / "components"
     comp.mkdir(exist_ok=True)
     for s, n in zip(shapes, names):
         b3.export_step(s, str(comp / f"{_safe(n)}.step"))
+    shape = shapes[0] if len(shapes) == 1 else b3.Compound(children=shapes)
+    b3.export_step(shape, str(out / "result.step"))
+    b3.export_stl(shape, str(out / "result.stl"))
     return {**info, "exported": True}
 
 

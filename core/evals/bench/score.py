@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from .common import HERE, Task, read_json, write_json
@@ -28,15 +29,23 @@ def score_cadbench(task: Task, d: Path) -> dict:
     return {**out, **m}
 
 
+_CQ_LOCK = threading.Lock()   # parallel CadQuery env launches were seen to hang; one at a time
+
+
 def score_cadtestbench(task: Task, d: Path) -> dict:
     step = d / "result.step"
     out = d / "cadtests.json"
     args = ["uv", "run", "--no-project", "--with", "cadquery", "python", "-I",
             str(HERE / "cadtest_adapter.py"), str(step), task.meta["cadtests"], str(out)]
-    p = subprocess.run(args, capture_output=True, text=True, timeout=900, cwd=d)
+    with _CQ_LOCK:
+        try:
+            p = subprocess.run(args, capture_output=True, text=True, timeout=600, cwd=d)
+            err = p.stderr
+        except subprocess.TimeoutExpired:
+            err = "cadtest adapter timed out"
     r = read_json(out)
     if r is None:
-        return {"pass_rate": 0.0, "rs": 0.0, "pr": False, "error": p.stderr[-800:]}
+        return {"pass_rate": 0.0, "rs": 0.0, "pr": False, "error": err[-800:]}
     from . import geometry as g
     valid = step.is_file() and g.validity(step)[0].valid
     return {"pass_rate": r["pass_rate"], "rs": r["rs"], "pr": r["pr"], "passed": r["passed"],

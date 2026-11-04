@@ -36,7 +36,7 @@ class Mesh:
 
 def mesh_step(step: Path, size_frac: float = 1 / 35, min_frac: float = 1 / 300) -> Mesh:
     import gmsh
-    gmsh.initialize(["-noenv"])
+    gmsh.initialize(["-noenv"], interruptible=False)    # no SIGINT handler: runs in threads
     try:
         gmsh.option.setNumber("General.Terminal", 0)
         gmsh.model.add("m")

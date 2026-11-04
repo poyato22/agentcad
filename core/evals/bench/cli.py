@@ -118,7 +118,8 @@ def cmd_score(a) -> int:
             continue
         by_id = {t.id: t for t in load_tasks(suite)}
         dirs = sorted(p for p in (a.runs / suite).glob("*/*") if (p / "run.json").is_file())
-        with cf.ThreadPoolExecutor(a.parallel) as ex:
+        pool = cf.ProcessPoolExecutor if suite == "functional" else cf.ThreadPoolExecutor  # gmsh wants a main thread
+        with pool(a.parallel) as ex:
             futs = {ex.submit(score_dir, by_id[p.parent.name], p, a.force): p for p in dirs
                     if p.parent.name in by_id}
             for fu in cf.as_completed(futs):
@@ -135,6 +136,49 @@ def cmd_tasks(a) -> int:
         ts = load_tasks(suite)
         print(suite, len(ts))
         write_json(CACHE / f"tasks_{suite}.json", [t.to_json() for t in ts])
+    return 0
+
+
+def cmd_show(a) -> int:
+    """Per task and system: headline, cost, time and the failed requirements/tests."""
+    from .report import headline
+    for suite in (a.suite.split(",") if a.suite else ["cadbench", "cadtestbench", "functional"]):
+        for d in sorted((a.runs / suite).glob("*/*")):
+            sc, rn = read_json(d / "score.json"), read_json(d / "run.json")
+            if sc is None or rn is None:
+                continue
+            print(f"{suite}/{d.parent.name}/{d.name}: {headline(suite, sc):.3f} "
+                  f"${rn.get('usd')} {rn.get('seconds')}s calls={rn.get('tool_calls')} "
+                  f"{rn.get('stop') or rn.get('error')}")
+            for q in sc.get("requirements", []):
+                if not q["passed"]:
+                    print(f"     FAIL {q['name']}: {q['detail']}")
+            fails = [t for t in (read_json(d / "cadtests.json") or {}).get("tests", []) if not t["pass"]]
+            for t in fails[:6]:
+                print(f"     FAIL [{t['type']}] {t.get('msg')}")
+    return 0
+
+
+def cmd_reexport(a) -> int:
+    """Re-run only the export of finished Mises builds from their kept homes (no model calls):
+    for harness export fixes. Edit tasks' stage_0 exports cannot be redone this way."""
+    from .mises_runner import Core, export_build
+    for suite in (a.suite.split(",") if a.suite else ["cadbench", "cadtestbench", "functional"]):
+        for d in sorted((a.runs / suite).glob("*/mises")):
+            row = read_json(d / "run.json")
+            if not row or not row.get("home") or (a.ids and d.parent.name not in a.ids.split(",")):
+                continue
+            if not a.all and not row.get("export_error"):
+                continue
+            with Core(Path(row["home"]), d / "core.log") as core:
+                try:
+                    row.pop("export_error", None)
+                    row.update(export_build(core, row["project_id"], d))
+                except Exception as e:  # noqa: BLE001
+                    row["export_error"] = f"{type(e).__name__}: {e}"
+            write_json(d / "run.json", row)
+            (d / "score.json").unlink(missing_ok=True)
+            print(f"{suite}/{d.parent.name}: {row.get('export_error') or row.get('components')}")
     return 0
 
 
@@ -161,12 +205,21 @@ def main(argv=None) -> int:
     s.add_argument("--suite")
     s.add_argument("--force", action="store_true")
     s.add_argument("--parallel", type=int, default=4)
+    x = sub.add_parser("reexport")
+    x.add_argument("--runs", type=Path, required=True)
+    x.add_argument("--suite")
+    x.add_argument("--ids")
+    x.add_argument("--all", action="store_true")
+    w = sub.add_parser("show")
+    w.add_argument("--runs", type=Path, required=True)
+    w.add_argument("--suite")
     p = sub.add_parser("report")
     p.add_argument("--runs", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--label", default="")
     a = ap.parse_args(argv)
-    return {"run": cmd_run, "score": cmd_score, "tasks": cmd_tasks, "report": cmd_report}[a.cmd](a)
+    return {"run": cmd_run, "score": cmd_score, "tasks": cmd_tasks, "report": cmd_report,
+            "show": cmd_show, "reexport": cmd_reexport}[a.cmd](a)
 
 
 if __name__ == "__main__":
