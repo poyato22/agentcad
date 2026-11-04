@@ -484,13 +484,65 @@ async def dyn_reactions(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
 
 # ---- dyn_rom_sweep
 
+EXACT_CLEAR_MM3 = 1.0      # an exact interference this small is touching, not a collision
+EXACT_MAX_POSES = 12
+
+
+async def _confirm_exact(ctx: ToolContext, asm, ex, res: dict, rows: list[dict]) -> str | None:
+    """Re-check each bounding-box hit at its worst pose with the exact B-rep worker (the
+    assembly_check sweep's): a pair whose solids are clear there is a near miss (warn), not a
+    collision. Only pairs whose parts are all built (model.step) are judged. Returns a note."""
+    from ..assembly import motion
+    from ..assembly.geometry import face_resolver, run_geometry
+    from ..assembly.solve import solve, solve_from
+    parts = Path(ctx.workdir) / "parts"
+    inst = {i.id: i for i in asm.instances}
+
+    def built(iids) -> bool:
+        return bool(iids) and all((parts / inst[i].part_id / "model.step").exists()
+                                  for i in iids if i in inst)
+    hits = []
+    for r, c in zip(rows, res.get("collisions") or []):
+        a = list(ex.map["bodies"].get(c["bodies"][0], []))
+        b = list(ex.map["bodies"].get(c["bodies"][1], []))
+        if r.get("status") == "fail" and r.get("pose") and built(a) and built(b):
+            hits.append((r, set(a), set(b)))
+    hits = hits[:EXACT_MAX_POSES]
+    if not hits:
+        return None
+    resolver = face_resolver(parts)
+    cur = {j.id: j.value for j in asm.joints}
+    poses = []
+    for r, _a, _b in hits:
+        moved = motion.with_values(asm, {**cur, **r["pose"]})
+        poses.append(solve_from(moved, cur, resolve_face=resolver).transforms)
+    try:
+        geo = await run_geometry(parts, asm, solve(asm, resolve_face=resolver), poses=poses,
+                                 timeout_s=200)
+    except MisesError as e:
+        return f"exact re-check not run ({e.message}); confirm with assembly_check sweep"
+    cleared = 0
+    for (r, a, b), pos in zip(hits, geo.positions):
+        vol = sum(float(h.get("volume_mm3") or 0.0) for h in pos.get("interferences") or []
+                  if (h["a"] in a and h["b"] in b) or (h["a"] in b and h["b"] in a))
+        r["exact_interference_mm3"] = round(vol, 3)
+        if vol <= EXACT_CLEAR_MM3:
+            r["status"] = "warn"
+            r["reason"] += (f"; exact B-rep at this pose: clear ({vol:.2f} mm3), a "
+                            "bounding-box near miss")
+            cleared += 1
+        else:
+            r["reason"] += f"; exact B-rep at this pose: {vol:.2f} mm3 (a real collision)"
+    return (f"{cleared} of {len(hits)} bounding-box hit(s) cleared by the exact B-rep check"
+            if cleared else None)
+
 @tool("dyn_rom_sweep", safety=SafetyClass.READ, scope_arg="project_id", timeout_s=240,
       description="Range-of-motion collision sweep: thousands of poses across the joints' "
                   "limits (Latin hypercube, MuJoCo), every pair of parts that collides (not a "
                   "part and the part it is jointed to), how deep and at which joint values. "
-                  "Fast and conservative (bounding boxes): confirm a hit with assembly_check "
-                  "sweep (exact) before you redesign. Pairs that already touch at rest are "
-                  "reported apart.")
+                  "The sweep is bounding boxes; each hit is then re-checked with the exact "
+                  "B-rep at its worst pose, and a pair that is clear there is a near miss "
+                  "(warn), not a fail. Pairs that already touch at rest are reported apart.")
 async def dyn_rom_sweep(ctx: ToolContext, args: RomArgs) -> ToolOutput:
     pid = _build(ctx, args.project_id)
     asm, ex = _export(ctx, pid, args)
@@ -505,12 +557,15 @@ async def dyn_rom_sweep(ctx: ToolContext, args: RomArgs) -> ToolOutput:
         if r.get("pose"):
             r["pose"] = {_jid(ex, k): round(export.from_mj(ex.map, k, v), 2)
                          for k, v in r["pose"].items()}
+    exact_note = await _confirm_exact(ctx, asm, ex, res, rows)
     status = checks.overall(rows)
     rest = [" + ".join(names.get(b, b) for b in p) for p in res["rest_contacts"]]
     summary = (f"ROM sweep {status}: {res['poses']} poses over {len(res['joints'])} joints, "
                f"{res['colliding_pairs']} colliding pair(s)")
     if rows and rows[0].get("pair"):
         summary += "; worst " + rows[0]["reason"]
+    if exact_note:
+        summary += f"; {exact_note}"
     card = {"kind": "dyn_rom_sweep", "title": "Range of motion", "status": status,
             "rows": rows, "accuracy": checks.ACCURACY["rom"]}
     rid = run.save_result(_home(ctx), pid, "dyn_rom_sweep", {"summary": summary, "card": card,
@@ -587,6 +642,12 @@ async def _fem(ctx: ToolContext, pid: str, args: FemArgs) -> ToolOutput:
         label = f"{inst[iid].name or iid} @ {_label(traj)} t={r['at_s']:.2f}s"
         try:
             lc = fem_bridge.load_case(r, frames, metrics, label=label)
+        except fem_bridge.NoLoad as e:
+            # an unloaded leaf (the TVC motor in its tube: the dynamics carry no thrust) has
+            # nothing to check in this motion; it must not hold the whole study at not_checked
+            rows.append({"link": inst[iid].name or iid, "instance_id": iid, "part_id": part_id,
+                         "status": "n/a", "reason": f"{e}: unloaded in this motion"})
+            continue
         except ValueError as e:
             rows.append({"link": inst[iid].name or iid, "instance_id": iid, "part_id": part_id,
                          "status": "not_checked", "reason": str(e)})

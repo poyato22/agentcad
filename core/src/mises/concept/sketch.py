@@ -53,6 +53,7 @@ FIGURE_MM = FIGURE_HEIGHT_MM            # one shared figure height (FW-core M-7)
 # notes instead
 FIGURE_MIN_HEIGHT_MM = 600.0
 FIGURE_MIN_EXTENT_MM = 1200.0
+SLENDER_RATIO = 5.0                      # height / footprint that counts as slender
 MASSING_COLOR = (0.88, 0.88, 0.86)
 FIGURE_COLOR = (0.70, 0.72, 0.76)
 GROUND_COLOR = (0.93, 0.93, 0.92)
@@ -120,7 +121,11 @@ def scene_extras(bbox: dict, scale_figure: str = "auto") -> tuple[dict[str, np.n
     hi = np.asarray(bbox["max"], dtype=np.float64)
     size = hi - lo
     extent = float(size.max())
-    want = scale_figure == "on" or (scale_figure == "auto" and (
+    # a slender design shorter than a person (a model rocket, a lamp, a pole) shrinks to a
+    # sliver beside the figure: it reads better framed alone, its size in the notes
+    slender = (float(size[2]) < FIGURE_MM and
+               float(size[2]) > SLENDER_RATIO * max(1.0, float(max(size[0], size[1]))))
+    want = scale_figure == "on" or (scale_figure == "auto" and not slender and (
         float(size[2]) >= FIGURE_MIN_HEIGHT_MM or extent >= FIGURE_MIN_EXTENT_MM))
     meshes: dict[str, np.ndarray] = {}
     gap = max(150.0, 0.15 * extent)

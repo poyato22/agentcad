@@ -44,8 +44,11 @@ def _kin(ctx: ToolContext, pid: str, base: str = "auto"):
 
 
 def _perfs(kin: dict, overrides: dict) -> dict:
+    """The actuated joints: every revolute / slider except the passive ones (loop followers
+    and couplings), unless the caller names an actuator for it."""
     return {j["id"]: act.resolve(overrides.get(j["id"]) or j.get("actuator"))
-            for j in kin["tree"] if j["kind"] in ("revolute", "slider")}
+            for j in kin["tree"] if j["kind"] in ("revolute", "slider")
+            and (not j.get("passive") or j["id"] in overrides)}
 
 
 def _spec_text(ctx: ToolContext, pid: str) -> str:

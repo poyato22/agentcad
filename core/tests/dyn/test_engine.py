@@ -132,6 +132,17 @@ def test_fourbar_loop_closure_follows_freudenstein():
     assert out["joints"][0]["max_tracking_error"] < math.radians(5)
 
 
+def test_fourbar_ideal_torque_follows_the_closed_loop_not_a_torn_one():
+    # the inverse dynamics of a loop mechanism must use poses where the loop is closed: with
+    # only the crank moved the passive joints stayed put and the 'ideal' torque read 2262 N m
+    # against a 0.0045 N m servo (the TVC gimbal demo read 3077 N m on a micro servo)
+    model, rocker, t1 = fourbar_model()
+    out = engine.run({"task": "torque", "model": model, "trajectory": {
+        "kind": "keyframes", "keys": [{"t": 2.0, "q": {"q1": t1 + math.pi / 2}}]}})
+    j = out["joints"][0]
+    assert j["peak_inverse"] < 5 * j["peak_servo"] + 1e-3, (j["peak_inverse"], j["peak_servo"])
+
+
 def test_coupled_joints_follow_their_ratio():
     """A gear coupling (C2 contract) exported as an equality joint polycoef: q2 = -2 q1."""
     small = [[1e-5, 0, 0], [0, 1e-5, 0], [0, 0, 1e-5]]
@@ -177,6 +188,9 @@ def test_rom_sweep_finds_a_self_collision():
     hit = out["collisions"][0]
     assert sorted(hit["bodies"]) == ["base", "link"]
     assert hit["pose"]["j"] < -0.5        # the bar (+y) swings towards +x at a negative angle
+    # counted in poses, never more than were tried (the TVC sweep read "6367 of 2000 poses":
+    # every contact point counted, and the tally restarted at each deeper hit)
+    assert 0 < hit["count"] <= 200
     out = engine.run({"task": "rom", "model": model, "n": 200, "joints": ["j"]})
     assert out["colliding_pairs"] == 1    # deterministic
 

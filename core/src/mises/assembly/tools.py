@@ -170,6 +170,8 @@ class RemoveArgs(BaseModel):
     project_id: str | None = Field(default=None, description="Default: this run's build.")
     instance_id: str | None = None
     joint_id: str | None = Field(default=None, description="A joint id, or a loop id.")
+    mech_group: str | None = Field(default=None, description="A mech_insert group id: every "
+                                   "instance it inserted (and their joints and loops) at once.")
 
 
 @tool("assembly_get", safety=SafetyClass.READ, scope_arg="project_id",
@@ -264,14 +266,27 @@ async def assembly_drive(ctx: ToolContext, args: DriveArgs) -> ToolOutput:
 
 
 @tool("assembly_remove", safety=SafetyClass.LOCAL_MUTATE, scope_arg="project_id",
-      description="Remove one instance (and any joints that used it) or one joint.")
+      description="Remove one instance (and any joints that used it), one joint, or a whole "
+                  "mech_insert group (mech_group).")
 async def assembly_remove(ctx: ToolContext, args: RemoveArgs) -> ToolOutput:
     pid = _resolve_build(ctx, args.project_id)
     store = _store(ctx)
-    if (args.instance_id is None) == (args.joint_id is None):
-        raise MisesError(ErrorCode.INVALID_INPUT, "give exactly one of instance_id or joint_id")
+    if sum(x is not None for x in (args.instance_id, args.joint_id, args.mech_group)) != 1:
+        raise MisesError(ErrorCode.INVALID_INPUT,
+                         "give exactly one of instance_id, joint_id or mech_group")
     try:
-        if args.instance_id is not None:
+        if args.mech_group is not None:
+            rec = store.get_mech(pid, args.mech_group)
+            have = {i.id for i in store.get(pid).instances}
+            gone, dropped = [], 0
+            for iid in rec.get("instances", {}).values():
+                if iid in have:
+                    dropped += len(store.delete_instance(pid, iid) or [])
+                    gone.append(iid)
+            store.delete_mech(pid, args.mech_group)
+            summary = (f"removed mechanism group {args.mech_group}: {len(gone)} instance(s)"
+                       + (f" and {dropped} joint(s)" if dropped else ""))
+        elif args.instance_id is not None:
             dropped = store.delete_instance(pid, args.instance_id)
             summary = (f"removed instance {args.instance_id}"
                        + (f" and {len(dropped)} joint(s)" if dropped else ""))

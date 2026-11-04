@@ -50,27 +50,48 @@ class Frames:
         return self.Ri.T @ (at_export * 1000.0 - self.ti)                       # mm, part
 
 
+class NoLoad(ValueError):
+    """The link carries no load at its peak in this motion: there is nothing to check."""
+
+
 def nearest_face(metrics: dict, point_mm, axis=None, *, avoid: set | None = None) -> dict:
     """The bore at a joint: the cylindrical face whose axis passes nearest the point (and runs
-    along `axis` when given), else the face whose centre is nearest. {face, kind, distance}."""
+    along `axis` when given), else the face whose centre is nearest. {face, kind, distance,
+    pair}: `pair` is the mirror bore across the anchor when the joint is a pin through two
+    bores (a gimbal ring's pivot pins), so supports and loads go on both.
+
+    A cylinder whose sampled normal is not square to the joint axis is not coaxial with it:
+    a ring's own inner / outer wall is centred on every axis through the ring's centre, and
+    picking it put the TVC gimbal ring's support and loads on the same wall."""
     p = np.array(point_mm, dtype=float)
     faces = [f for f in metrics.get("face_list") or [] if f.get("id") not in (avoid or set())]
     best = None
+    cands = []
     if axis is not None:
         ax = np.array(axis, dtype=float)
         ax = ax / max(np.linalg.norm(ax), 1e-12)
         for f in faces:
             if f.get("type") != "cylinder" or f.get("radius") is None:
                 continue
+            n = f.get("normal")
+            if n is not None and abs(float(np.dot(np.array(n, dtype=float), ax))) > 0.25:
+                continue
             c = np.array(f["center"], dtype=float)
             off = c - p
             radial = np.linalg.norm(off - np.dot(off, ax) * ax)
             d = radial + 0.2 * abs(np.dot(off, ax))
             if radial <= max(2.0, 0.6 * float(f["radius"])) and d <= BORE_REACH_MM + float(
-                    f["radius"]) and (best is None or d < best[1]):
-                best = (f, d)
+                    f["radius"]):
+                cands.append((f, d, off))
+                if best is None or d < best[1]:
+                    best = (f, d, off)
     if best is not None:
-        return {"face": best[0]["id"], "kind": "bore", "distance_mm": round(best[1], 2)}
+        f0, d0, off0 = best
+        pair = next((f["id"] for f, d, off in cands if f is not f0
+                     and abs(float(f["radius"]) - float(f0["radius"])) < 0.05
+                     and np.linalg.norm(off + off0) < 1.0 and np.linalg.norm(off0) > 1.0),
+                    None)
+        return {"face": f0["id"], "kind": "bore", "distance_mm": round(d0, 2), "pair": pair}
     near = min(faces, key=lambda f: float(np.linalg.norm(np.array(f["center"]) - p)),
                default=None)
     if near is None:
@@ -94,24 +115,27 @@ def load_case(link: dict, frames: Frames, metrics: dict, *, label: str) -> dict:
     if sup["kind"] != "bore":
         notes.append(f"no bore found at the parent joint: held on the nearest face "
                      f"{sup['face']} ({sup['distance_mm']} mm from the anchor)")
+    held = {sup["face"]} | ({sup["pair"]} if sup.get("pair") else set())
     loads, entries = [], []
     for ch in link.get("children") or []:
         f = np.array(ch["force_n"], dtype=float)
         m = np.array(ch["moment_nm"], dtype=float)
         pa = frames.point(ch["anchor_m"])
         cax = ch.get("axis") or link.get("axis")
-        bore = nearest_face(metrics, pa, frames.vec(cax) if cax else None,
-                            avoid={sup["face"]})
+        bore = nearest_face(metrics, pa, frames.vec(cax) if cax else None, avoid=held)
         fp, mp = frames.vec(f), frames.vec(m)
-        if np.linalg.norm(fp) >= MIN_FORCE_N:
-            loads.append({"kind": "remote_force", "face": bore["face"],
-                          "newtons": round(float(np.linalg.norm(fp)), 4),
-                          "direction": [round(x, 6) for x in _unit(fp)],
-                          "point": [round(float(x), 3) for x in pa]})
-        if np.linalg.norm(mp) * 1000 >= MIN_MOMENT_NMM:
-            loads.append({"kind": "moment", "face": bore["face"],
-                          "n_mm": round(float(np.linalg.norm(mp)) * 1000, 3),
-                          "axis": [round(x, 6) for x in _unit(mp)]})
+        faces = [bore["face"]] + ([bore["pair"]] if bore.get("pair") else [])
+        share = 1.0 / len(faces)                 # a pin through two bores: half on each
+        for face in faces:
+            if np.linalg.norm(fp) >= MIN_FORCE_N:
+                loads.append({"kind": "remote_force", "face": face,
+                              "newtons": round(float(np.linalg.norm(fp)) * share, 4),
+                              "direction": [round(x, 6) for x in _unit(fp)],
+                              "point": [round(float(x), 3) for x in pa]})
+            if np.linalg.norm(mp) * 1000 >= MIN_MOMENT_NMM:
+                loads.append({"kind": "moment", "face": face,
+                              "n_mm": round(float(np.linalg.norm(mp)) * 1000 * share, 3),
+                              "axis": [round(x, 6) for x in _unit(mp)]})
         entries.append({"from": ch["joint"], "face": bore["face"], "face_kind": bore["kind"],
                         "force_n": round(float(np.linalg.norm(fp)), 3),
                         "moment_nm": round(float(np.linalg.norm(mp)), 4)})
@@ -120,7 +144,7 @@ def load_case(link: dict, frames: Frames, metrics: dict, *, label: str) -> dict:
         if np.linalg.norm(fp) < MIN_FORCE_N:
             continue
         pc = frames.point(ct["pos_m"])
-        face = nearest_face(metrics, pc, None, avoid={sup["face"]})
+        face = nearest_face(metrics, pc, None, avoid=held)
         loads.append({"kind": "remote_force", "face": face["face"],
                       "newtons": round(float(np.linalg.norm(fp)), 4),
                       "direction": [round(x, 6) for x in _unit(fp)],
@@ -129,11 +153,11 @@ def load_case(link: dict, frames: Frames, metrics: dict, *, label: str) -> dict:
                         "force_n": round(float(np.linalg.norm(fp)), 3)})
     merged = _merge(loads)
     if not merged:
-        raise ValueError("no load enters this link at its peak (a leaf with no contact)")
+        raise NoLoad("no load enters this link at its peak (a leaf with no contact)")
     if len(merged) > 12:
         merged = sorted(merged, key=lambda x: -(x.get("newtons") or x.get("n_mm", 0) / 100))[:12]
         notes.append("more than 12 loads: the 12 largest kept")
-    case = {"name": label[:60], "supports": [{"kind": "fixed", "face": sup["face"]}],
+    case = {"name": label[:60], "supports": [{"kind": "fixed", "face": x} for x in sorted(held)],
             "loads": merged,
             "note": ("dynamics peak (rigid-body reactions); " + "; ".join(notes))[:300]}
     return {"case": case, "support": sup, "entries": entries, "notes": notes}

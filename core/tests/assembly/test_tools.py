@@ -155,3 +155,23 @@ async def test_check_reports_overconstraint(ctx):
     r = await assembly_check.handler(ctx, ProjectArgs(project_id="p"))
     assert r.data["overconstrained"] == [sorted([aid, bid])]
     assert "over-constrained" in r.summary
+
+
+async def test_remove_a_whole_mech_group_at_once(ctx):
+    store = ctx.services["assembly"]
+    ids = []
+    for name in ("base", "arm", "other"):
+        r = await assembly_add_instance.handler(
+            ctx, AddInstanceArgs(project_id="p", part_id="plate", name=name,
+                                 fixed=(name == "base")))
+        ids.append(r.data["instance"]["id"])
+    await assembly_add_joint.handler(ctx, AddJointArgs(
+        project_id="p", kind="revolute", a=_frame(ids[0]), b=_frame(ids[1])))
+    store.save_mech("p", "g1", {"instances": {"base": ids[0], "arm": ids[1]}})
+    r = await assembly_remove.handler(ctx, RemoveArgs(project_id="p", mech_group="g1"))
+    assert "2 instance(s)" in r.summary
+    asm = store.get("p")
+    assert [i.id for i in asm.instances] == [ids[2]] and not asm.joints
+    assert store.list_mechs("p") == []
+    with pytest.raises(MisesError, match="nothing to remove"):
+        await assembly_remove.handler(ctx, RemoveArgs(project_id="p", mech_group="g1"))

@@ -110,7 +110,7 @@ _LOADED = False
 def _load() -> None:
     global _LOADED
     if not _LOADED:
-        from . import drive, grippers, joints, legs, linkage  # noqa: F401 - register builders
+        from . import drive, grippers, joints, legs, linkage, tvc  # noqa: F401 - register builders
         _LOADED = True
 
 

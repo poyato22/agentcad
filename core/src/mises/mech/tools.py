@@ -45,9 +45,10 @@ class ListArgs(BaseModel):
 
 
 @tool("mech_list", safety=SafetyClass.READ,
-      description="Find mechanisms in the library (43: gear pairs, planetary and cycloidal "
+      description="Find mechanisms in the library (44: gear pairs, planetary and cycloidal "
                   "reducers, belts, screws, rails, shaft supports, motor mounts, linkages, "
-                  "legs, grippers, hinges, ball/universal joints, cams, Geneva...) by what they "
+                  "legs, grippers, hinges, ball/universal joints, a rocket TVC gimbal, cams, "
+                  "Geneva...) by what they "
                   "must do. Returns ranked ids with a summary, motion type, checks and the "
                   "parameter schema of the top hits. Insert one with mech_insert.")
 async def mech_list(ctx: ToolContext, args: ListArgs) -> ToolOutput:

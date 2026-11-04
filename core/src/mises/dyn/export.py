@@ -51,6 +51,11 @@ IDEAL_STIFF_RAD = 0.02
 SERVO_STIFF_M = 0.002       # a linear actuator reaches its force limit at 2 mm of error
 IDEAL_STIFF_M = 0.002       # an ideal slider sags 2 mm under the robot's weight
 IDEAL_ARMATURE = 0.005
+# a joint no actuator drives (a loop follower, a coupled follower, a ball) is a bare pin: no
+# reflected rotor and little friction. Giving it IDEAL_ARMATURE made a TVC gimbal ring carry
+# 12x the motor's inertia and a 0.02 N m s damper, so a micro servo "stalled" on any slew
+PASSIVE_ARMATURE = 1e-5
+PASSIVE_DAMPING = 0.002
 STEP_S = 0.001
 
 
@@ -421,7 +426,11 @@ def export(home: Path, store, asm, *, base: str = "auto", actuators: dict | None
                                  "modelled as an ideal servo (give slider_force_n, or couple "
                                  "it to the revolute that drives it)")
                     perf = None
+                bare = mjt == "ball" or j.id in coupled or j.id in passive
                 arm = perf.armature() if perf else IDEAL_ARMATURE
+                if bare and not (overrides.get(j.id) or joint_actuator(j)):
+                    arm = PASSIVE_ARMATURE
+                    jd["damping"] = PASSIVE_DAMPING
                 jd["armature"] = arm
                 body["joints"].append(jd)
                 jmap[name] = {"joint_id": j.id, "kind": j.kind, "dof": k, "mj_type": mjt,
@@ -565,6 +574,20 @@ def kinematics(home: Path, store, asm, *, base: str = "auto") -> dict:
             and uf.union(j.a.instance_id, j.b.instance_id)]
     resolver = face_resolver(home / "parts")
     notes: list[str] = []
+    # joints no actuator drives: coupled followers and the passive joints of closed loops
+    # (every non-driver joint on a loop's path), so the electronics and power tools do not
+    # count a TVC gimbal's rings and pushrod pins as servos
+    passive: set[str] = {j.id for j in tree if j.coupling}
+    for lp in _loops(asm):
+        ia, ib = _get(lp, "joint_a"), _get(lp, "joint_b")
+        ia = ia if isinstance(ia, str) else _get(ia, "instance_id")
+        ib = ib if isinstance(ib, str) else _get(ib, "instance_id")
+        path = [j for j in _tree_path(tree, ia, ib) if j.kind != "fixed"]
+        drivers = [d if isinstance(d, str) else d.id for d in (_get(lp, "drivers") or [])]
+        if not drivers and path:
+            acted = [j for j in path if joint_actuator(j)]
+            drivers = [(acted or path)[0].id]
+        passive |= {j.id for j in path if j.id not in drivers}
     metrics = {i.part_id: _metrics(home, i.part_id) for i in asm.instances}
     own = {iid: inr.of_part(metrics[i.part_id], _mass_kg(store, home, i.part_id,
                                                          metrics[i.part_id], notes))
@@ -592,7 +615,7 @@ def kinematics(home: Path, store, asm, *, base: str = "auto") -> dict:
                           "b": j.b.instance_id, "anchor": (w[:3, 3] / 1000.0).tolist(),
                           "axis": (w[:3, 2] / max(np.linalg.norm(w[:3, 2]), 1e-12)).tolist(),
                           "value": j.value, "limits": j.limits,
-                          "actuator": joint_actuator(j)})
+                          "actuator": joint_actuator(j), "passive": j.id in passive})
         return rows, jrows
 
     rows, jrows = pose()

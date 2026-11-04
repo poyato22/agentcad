@@ -125,3 +125,11 @@ def test_actuator_table_lookup_and_torque_speed_line():
     assert act.resolve("no_such_thing_xyz") is None
     c = act.candidates(1.5, 0.5, 2.0)
     assert c and all(x.stall_torque_nm * x.peak_margin >= 1.5 for x in c)
+
+
+def test_a_micro_servo_carries_a_micro_servos_rotor():
+    # the TVC demo: an SG90 modelled with a standard servo's 0.002 kg m2 armature could not
+    # slew its own horn; the class default now scales with stall torque below the MG996R
+    sg90, mg996 = act.resolve("servo_sg90_micro"), act.resolve("servo_mg996r_standard")
+    assert mg996.armature() == pytest.approx(0.002)
+    assert sg90.armature() == pytest.approx(0.002 * 0.177 / 1.08, rel=1e-3)

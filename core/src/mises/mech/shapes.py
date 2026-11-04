@@ -35,6 +35,7 @@ __all__ = [
     "rail_carriage", "cam_disc", "follower", "geneva_wheel", "geneva_driver", "ratchet_wheel",
     "pawl", "hinge_leaf", "ball_stud", "ball_socket", "u_yoke", "cross_spider",
     "flexure_hinge", "snap_cantilever", "gripper_jaw", "wheel", "prop_mount", "extrusion",
+    "gimbal_ring",
 ]
 
 TAU = 2 * math.pi
@@ -978,3 +979,40 @@ def extrusion(size: float = 20.0, length: float = 200.0, slots: bool = True):
             e = e - bd.Rot(ry, 0, 0) * bd.Pos(length / 2, 0, size / 2) * bd.Box(
                 length + 2, size * 0.3, size * 0.3)
     return _check(e, "extrusion")
+
+
+def gimbal_ring(id: float = 36.4, od: float = 42.4, height: float = 10.0, pin_d: float = 3.3,
+                pin_angles: Sequence[float] = (), boxes: Sequence[Sequence[float]] = (),
+                holes: Sequence[Sequence[float]] = (), flange_od: float = 0.0,
+                flange_t: float = 3.0, lip_id: float = 0.0, lip_t: float = 2.0):
+    """Gimbal / thrust ring on +Z centred on z = 0 (z = -height/2 .. height/2): a ring of id x od
+    with radial pin bores of pin_d at z = 0 at `pin_angles` (deg from +X), extra solid `boxes`
+    [cx, cy, cz, sx, sy, sz] (pushrod tabs, servo posts), `holes` [x, y, z, ax, ay, az, d, len]
+    (tab pin holes, centred), an optional bottom flange out to flange_od (a centering / thrust
+    ring) and an optional top lip in to lip_id (a motor thrust stop)."""
+    ri, ro, h = _pos(id, "id") / 2, _pos(od, "od") / 2, _pos(height, "height")
+    if ri >= ro:
+        raise ValueError("gimbal_ring: id must be smaller than od")
+    ring = _cyl(ro, h, (0, 0, -h / 2)) - _cyl(ri, h + 2, (0, 0, -h / 2 - 1))
+    if flange_od:
+        if flange_od / 2 <= ro:
+            raise ValueError("gimbal_ring: flange_od must exceed od")
+        ring = ring + (_cyl(flange_od / 2, flange_t, (0, 0, -h / 2))
+                       - _cyl(ri, flange_t + 2, (0, 0, -h / 2 - 1)))
+    if lip_id:
+        if lip_id / 2 >= ri:
+            raise ValueError("gimbal_ring: lip_id must be smaller than id")
+        ring = ring + (_cyl(ri + 0.5, lip_t, (0, 0, h / 2 - lip_t))
+                       - _cyl(lip_id / 2, lip_t + 2, (0, 0, h / 2 - lip_t - 1)))
+    for cx, cy, cz, sx, sy, sz in boxes:
+        ring = ring + bd.Pos(float(cx), float(cy), float(cz)) * bd.Box(
+            _pos(sx, "box"), _pos(sy, "box"), _pos(sz, "box"))
+    for a in pin_angles:
+        ar = math.radians(float(a))
+        ring = ring - _location(_frame((0.0, 0.0, 0.0), (math.cos(ar), math.sin(ar), 0.0))) * \
+            _cyl(pin_d / 2, ro + 2.0)
+    for x, y, z, ax, ay, az, d, ln in holes:
+        ring = ring - _location(_frame((float(x), float(y), float(z)),
+                                       (float(ax), float(ay), float(az)))) * bd.Pos(
+            0, 0, -float(ln) / 2) * _cyl(float(d) / 2, float(ln))
+    return _check(ring, "gimbal_ring")
