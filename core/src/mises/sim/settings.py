@@ -383,9 +383,20 @@ class Excitation(_M):
                               "blades", **_u("%"))
 
 
+class PointMass(_FaceM):
+    """A mass carried by a face but not modelled as a solid (a motor on an arm's mount, a
+    battery on a tray): spread evenly over the face's nodes as CalculiX MASS elements."""
+    face: Face
+    mass_g: float = Field(gt=0, le=1e6, **_u("g"))
+    label: str = Field("", max_length=40, description="what it is, e.g. 'motor 1'")
+
+
 class ModalSettings(_Common):
     supports: list[Support] = Field(default_factory=list, max_length=12, description="empty = "
                                     "free-free (the first six modes are rigid-body)")
+    point_masses: list[PointMass] = Field(default_factory=list, max_length=24, description=(
+        "masses the part carries (motors, battery, electronics) on its faces; they lower the "
+        "frequencies, often a lot: a bare frame overstates its first mode"))
     n_modes: int = Field(6, ge=1, le=30)
     band_hz: tuple[float, float] | None = Field(None, description="excitation band [lo, hi]",
                                                 **_u("Hz"))
