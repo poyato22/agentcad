@@ -52,7 +52,10 @@ def _rank(seed: int, key: str) -> str:
     return hashlib.sha256(f"{seed}:{key}".encode()).hexdigest()
 
 
-def fetch_cadbench(per_family: int = 20, seed: int = 0, cache: Path = CACHE) -> list[Task]:
+def fetch_cadbench(per_family: int = 20, seed: int = 0, cache: Path = CACHE,
+                   split: str = "dev") -> list[Task]:
+    """split "dev": the first picks of the seed-pinned ranking (the set tuned on); "test": the
+    next ones in the same ranking, disjoint by construction (held out, never tuned on)."""
     import pyarrow.parquet as pq
 
     raw, root = cache / "cadbench_raw", cache / "cadbench"
@@ -65,7 +68,8 @@ def fetch_cadbench(per_family: int = 20, seed: int = 0, cache: Path = CACHE) -> 
             pf = pq.ParquetFile(path)
             ids = pf.read(columns=["file_id", "label"]).to_pylist()
             ids = [r for r in ids if (r["label"] or "") == label]
-            pick = sorted(ids, key=lambda r: _rank(seed, r["file_id"]))[:quota]
+            ranked = sorted(ids, key=lambda r: _rank(seed, r["file_id"]))
+            pick = ranked[:quota] if split == "dev" else ranked[quota:2 * quota]
             want = {r["file_id"] for r in pick}
             for batch in pf.iter_batches(columns=["file_id", "label", "stl", "step",
                                                   "singleview_image"], batch_size=16):
@@ -79,7 +83,8 @@ def fetch_cadbench(per_family: int = 20, seed: int = 0, cache: Path = CACHE) -> 
                         (d / "gt.step").write_bytes(r["step"])
                     img = r["singleview_image"]["bytes"]
                     (d / "view.png").write_bytes(_to_png(img))
-                    tasks.append(Task("cadbench", f"{fam}-{_safe(r['file_id'])}",
+                    tasks.append(Task("cadbench" if split == "dev" else "cadbench_test",
+                                      f"{fam}-{_safe(r['file_id'])}",
                                       CADBENCH_PROMPT, [str(d / "view.png")],
                                       {"family": fam, "label": label or "mcb",
                                        "file_id": r["file_id"], "gt_stl": str(d / "gt.stl")}))
@@ -120,7 +125,8 @@ def neutral_prompt(prompt: str) -> str:
 
 
 def fetch_cadtestbench(n: int = 50, seed: int = 0, partition: str = "detailed",
-                       cache: Path = CACHE) -> list[Task]:
+                       cache: Path = CACHE, split: str = "dev") -> list[Task]:
+    """split "dev": the first n of the seed-pinned ranking; "test": the next n (disjoint)."""
     import pyarrow.parquet as pq
 
     root = cache / "cadtestbench"
@@ -134,13 +140,14 @@ def fetch_cadtestbench(n: int = 50, seed: int = 0, partition: str = "detailed",
         by_id.setdefault(t["sample_id"], []).append(
             {k: t.get(k) for k in ("cadtest_id", "cadtest_code", "cadtest_type",
                                    "cadtest_description", "requirement_id")})
-    pick = sorted(samples, key=lambda s: _rank(seed, s["sample_id"]))[:n]
+    ranked = sorted(samples, key=lambda s: _rank(seed, s["sample_id"]))
+    pick = ranked[:n] if split == "dev" else ranked[n:2 * n]
     out = []
     for s in sorted(pick, key=lambda s: s["sample_id"]):
         d = root / "tasks" / s["sample_id"]
         d.mkdir(parents=True, exist_ok=True)
         (d / "cadtests.json").write_text(json.dumps(by_id.get(s["sample_id"], []), indent=1))
-        out.append(Task("cadtestbench", s["sample_id"],
+        out.append(Task("cadtestbench" if split == "dev" else "cadtestbench_test", s["sample_id"],
                         neutral_prompt(s["prompt"]) + "\n\n" + UNITS_NOTE, [],
                         {"partition": partition, "original_prompt": s["prompt"],
                          "cadtests": str(d / "cadtests.json"),

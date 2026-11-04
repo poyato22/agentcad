@@ -44,11 +44,22 @@ def mesh_step(step: Path, size_frac: float = 1 / 35, min_frac: float = 1 / 300) 
         gmsh.model.occ.synchronize()
         xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(-1, -1)
         diag = math.dist((xmin, ymin, zmin), (xmax, ymax, zmax))
-        gmsh.option.setNumber("Mesh.MeshSizeMax", diag * size_frac)
-        gmsh.option.setNumber("Mesh.MeshSizeMin", diag * min_frac)
+        # thin walls need elements about as small as the wall (or curved tets invert)
+        hmax = diag * size_frac
+        try:
+            import build123d as b3
+            from . import geom as _g
+            t = _g.wall_thickness_samples(b3.import_step(str(step)), 300)
+            if len(t):
+                hmax = min(hmax, max(2.0 * float(np.percentile(t, 10)), diag / 150))
+        except Exception:  # noqa: BLE001 - fall back to the size from the bounding box
+            pass
+        gmsh.option.setNumber("Mesh.MeshSizeMax", hmax)
+        gmsh.option.setNumber("Mesh.MeshSizeMin", min(diag * min_frac, hmax / 2))
         gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 10)
         gmsh.option.setNumber("Mesh.ElementOrder", 2)
-        gmsh.option.setNumber("Mesh.HighOrderOptimize", 0)
+        gmsh.option.setNumber("Mesh.Optimize", 1)
+        gmsh.option.setNumber("Mesh.HighOrderOptimize", 1)
         gmsh.model.mesh.generate(3)
         tags, coords, _ = gmsh.model.mesh.getNodes()
         etypes, _, enodes = gmsh.model.mesh.getElements(3)
@@ -191,3 +202,90 @@ def torque_forces(coords: np.ndarray, mask: np.ndarray, centre, axis, torque: fl
     if r2 > 0:
         f[mask] = t[mask] * (torque / r2)
     return f
+
+
+# ---------------------------------------------------------------------------- modal / buckling
+def _deck_head(m: Mesh, fmask: np.ndarray, E: float, nu: float, rho: float | None):
+    used = np.unique(m.elems)
+    tag_ix = {t: i for i, t in enumerate(m.tags)}
+    lines = ["*HEADING", "mises-bench check", "*NODE, NSET=NALL"]
+    for t in used:
+        x, y, z = m.nodes[tag_ix[t]]
+        lines.append(f"{t}, {x:.9g}, {y:.9g}, {z:.9g}")
+    lines.append("*ELEMENT, TYPE=C3D10, ELSET=EALL")
+    for i, e in enumerate(m.elems, 1):
+        lines.append(f"{i}, " + ", ".join(str(int(v)) for v in e))
+    usedset = set(used.tolist())
+    fixed_tags = [int(t) for t, f in zip(m.tags, fmask) if f and t in usedset]
+    if len(fixed_tags) < 3:
+        raise RuntimeError(f"bad BC selection: {len(fixed_tags)} fixed nodes")
+    lines.append("*NSET, NSET=NFIX")
+    lines += [", ".join(map(str, fixed_tags[i:i + 12])) for i in range(0, len(fixed_tags), 12)]
+    lines += ["*MATERIAL, NAME=MAT", "*ELASTIC", f"{E:.9g}, {nu:.6g}"]
+    if rho is not None:
+        lines += ["*DENSITY", f"{rho:.9g}"]            # tonne/mm^3 (g/cm^3 x 1e-9)
+    lines += ["*SOLID SECTION, ELSET=EALL, MATERIAL=MAT", "*BOUNDARY", "NFIX, 1, 3"]
+    return lines, usedset
+
+
+def _run(work: Path, lines: list[str]) -> str:
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "job.inp").write_text("\n".join(lines) + "\n")
+    p = subprocess.run([CCX, "-i", "job"], cwd=work, capture_output=True, text=True, timeout=1800)
+    dat = work / "job.dat"
+    if not dat.is_file():
+        raise RuntimeError(f"ccx failed: {p.stdout[-800:]}")
+    return dat.read_text()
+
+
+def modal(step: Path, work: Path, *, E: float, nu: float, rho_g_cm3: float,
+          fixed: Callable[[np.ndarray], np.ndarray], n: int = 3) -> list[float]:
+    """The first n natural frequencies (Hz) with the fixed nodes clamped."""
+    m = mesh_step(step)
+    lines, _ = _deck_head(m, fixed(m.nodes), E, nu, rho_g_cm3 * 1e-9)
+    lines += ["*STEP", "*FREQUENCY", f"{n}", "*END STEP"]
+    text = _run(work, lines)
+    freqs, on = [], False
+    for ln in text.splitlines():
+        if "E I G E N V A L U E   O U T P U T" in ln:
+            on = True
+            continue
+        if on:
+            parts = ln.split()
+            if len(parts) >= 4 and parts[0].isdigit():
+                freqs.append(float(parts[3]))
+            elif freqs and not parts:
+                break
+    if not freqs:
+        raise RuntimeError("no eigenvalues in the ccx output")
+    return freqs[:n]
+
+
+def buckle(step: Path, work: Path, *, E: float, nu: float,
+           fixed: Callable[[np.ndarray], np.ndarray],
+           loads: Callable[[np.ndarray, np.ndarray], np.ndarray]) -> float:
+    """The first linear buckling factor (load multiplier) of the given load case."""
+    m = mesh_step(step)
+    fmask = fixed(m.nodes)
+    forces = loads(m.nodes, ~fmask)
+    lines, usedset = _deck_head(m, fmask, E, nu, None)
+    lines += ["*STEP", "*BUCKLE", "2", "*CLOAD"]
+    for t, f in zip(m.tags, forces):
+        if t in usedset:
+            for k in range(3):
+                if f[k] != 0:
+                    lines.append(f"{int(t)}, {k + 1}, {f[k]:.9g}")
+    lines += ["*END STEP"]
+    text = _run(work, lines)
+    facs, on = [], False
+    for ln in text.splitlines():
+        if "B U C K L I N G   F A C T O R   O U T P U T" in ln:
+            on = True
+            continue
+        if on:
+            parts = ln.split()
+            if len(parts) >= 2 and parts[0].isdigit():
+                facs.append(float(parts[1]))
+    if not facs:
+        raise RuntimeError("no buckling factor in the ccx output")
+    return min(f for f in facs if f > 0)

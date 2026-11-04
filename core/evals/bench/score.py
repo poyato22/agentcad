@@ -61,8 +61,18 @@ def score_functional(task: Task, d: Path) -> dict:
     return r
 
 
+def score_physics(task: Task, d: Path) -> dict:
+    from .physics import tasks as pt
+    r = pt.score(task.id, d)
+    from . import geometry as g
+    r["valid"] = (d / "result.step").is_file() and g.validity(d / "result.step")[0].valid
+    return r
+
+
 SCORERS = {"cadbench": score_cadbench, "cadtestbench": score_cadtestbench,
-           "functional": score_functional}
+           "functional": score_functional, "cadbench_test": score_cadbench,
+           "cadtestbench_test": score_cadtestbench, "physics_dev": score_physics,
+           "physics_test": score_physics, "physics": score_physics}
 
 
 def score_dir(task: Task, d: Path, force: bool = False) -> dict:

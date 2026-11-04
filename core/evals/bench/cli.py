@@ -26,7 +26,10 @@ from pathlib import Path
 
 from .common import CACHE, Task, read_json, weekly_usage, write_json
 
-CAPS = {"cadbench": 1200, "cadtestbench": 1200, "functional": 1800}
+CAPS = {"cadbench": 1200, "cadtestbench": 1200, "functional": 1800, "cadbench_test": 1200,
+        "cadtestbench_test": 1200, "physics": 1800, "physics_dev": 1800, "physics_test": 1800}
+ALL_SUITES = ["cadbench", "cadtestbench", "functional", "cadbench_test", "cadtestbench_test",
+              "physics_dev", "physics_test"]
 
 
 def load_tasks(suite: str) -> list[Task]:
@@ -36,6 +39,17 @@ def load_tasks(suite: str) -> list[Task]:
     if suite == "cadtestbench":
         from .datasets import fetch_cadtestbench
         return fetch_cadtestbench()
+    if suite == "cadbench_test":
+        from .datasets import fetch_cadbench
+        return fetch_cadbench(split="test")
+    if suite == "cadtestbench_test":
+        from .datasets import fetch_cadtestbench
+        return fetch_cadtestbench(split="test")
+    if suite in ("physics", "physics_dev", "physics_test"):
+        from .physics.tasks import TASKS
+        keep = {"physics": None, "physics_dev": "dev", "physics_test": "test"}[suite]
+        return [Task(suite, t.id, t.prompt, [], {"category": t.category, "split": t.split})
+                for t in TASKS if keep is None or t.split == keep]
     if suite == "functional":
         from .functional.tasks import TASKS
         return [Task("functional", t.id, t.prompt, [],
@@ -114,12 +128,13 @@ def cmd_run(a) -> int:
 
 def cmd_score(a) -> int:
     from .score import score_dir
-    for suite in (a.suite.split(",") if a.suite else ["cadbench", "cadtestbench", "functional"]):
+    for suite in (a.suite.split(",") if a.suite else ALL_SUITES):
         if not (a.runs / suite).is_dir():
             continue
         by_id = {t.id: t for t in load_tasks(suite)}
         dirs = sorted(p for p in (a.runs / suite).glob("*/*") if (p / "run.json").is_file())
-        pool = cf.ProcessPoolExecutor if suite == "functional" else cf.ThreadPoolExecutor  # gmsh wants a main thread
+        pool = (cf.ProcessPoolExecutor if suite.startswith(("functional", "physics"))
+                else cf.ThreadPoolExecutor)  # gmsh wants a main thread
         with pool(a.parallel) as ex:
             futs = {ex.submit(score_dir, by_id[p.parent.name], p, a.force): p for p in dirs
                     if p.parent.name in by_id}
@@ -143,7 +158,7 @@ def cmd_tasks(a) -> int:
 def cmd_show(a) -> int:
     """Per task and system: headline, cost, time and the failed requirements/tests."""
     from .report import headline
-    for suite in (a.suite.split(",") if a.suite else ["cadbench", "cadtestbench", "functional"]):
+    for suite in (a.suite.split(",") if a.suite else ALL_SUITES):
         for d in sorted((a.runs / suite).glob("*/*")):
             sc, rn = read_json(d / "score.json"), read_json(d / "run.json")
             if sc is None or rn is None:
@@ -164,7 +179,7 @@ def cmd_reexport(a) -> int:
     """Re-run only the export of finished Mises builds from their kept homes (no model calls):
     for harness export fixes. Edit tasks' stage_0 exports cannot be redone this way."""
     from .mises_runner import Core, export_build
-    for suite in (a.suite.split(",") if a.suite else ["cadbench", "cadtestbench", "functional"]):
+    for suite in (a.suite.split(",") if a.suite else ALL_SUITES):
         for d in sorted((a.runs / suite).glob("*/mises")):
             row = read_json(d / "run.json")
             if not row or not row.get("home") or (a.ids and d.parent.name not in a.ids.split(",")):
