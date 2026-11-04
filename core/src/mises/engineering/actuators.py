@@ -165,6 +165,13 @@ def resolve(ref) -> Perf | None:
         if ref is None:
             return None
     s = str(ref)
+    # a reduced actuator's own id ("<id>@2", what resolve() names it below) keeps its ratio
+    base, at, r_txt = s.rpartition("@")
+    if at and base and ratio is None:
+        try:
+            ratio, s = float(r_txt), base
+        except ValueError:
+            pass
     # the curated table first (its own ids and aliases), then C2's catalog perf rows
     hit = _BY_KEY.get(s) or _BY_KEY.get(_norm(s)) or _from_catalog(s)
     if hit is None:
