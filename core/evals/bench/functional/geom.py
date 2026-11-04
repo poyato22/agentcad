@@ -232,7 +232,7 @@ def wall_thickness_samples(shape, n: int = 300, seed: int = 0) -> np.ndarray:
         q, d = p - nn * 1e-4, -nn
         inter.Perform(gp_Lin(gp_Pnt(*q), gp_Dir(*d)), 1e-5, 1e6)
         ws = [inter.WParameter(k) for k in range(1, inter.NbPnt() + 1)] if inter.IsDone() else []
-        ws = [x for x in ws if x > 1e-3]
+        ws = [x for x in ws if x > 0.05]     # nearer hits are the start face itself (tessellation)
         if ws:
             out.append(min(ws))
     return np.array(out)

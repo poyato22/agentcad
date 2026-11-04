@@ -51,7 +51,7 @@ def mesh_step(step: Path, size_frac: float = 1 / 35, min_frac: float = 1 / 300) 
             from . import geom as _g
             t = _g.wall_thickness_samples(b3.import_step(str(step)), 300)
             if len(t):
-                hmax = min(hmax, max(2.0 * float(np.percentile(t, 10)), diag / 150))
+                hmax = min(hmax, max(2.0 * float(np.percentile(t, 25)), diag / 120))
         except Exception:  # noqa: BLE001 - fall back to the size from the bounding box
             pass
         gmsh.option.setNumber("Mesh.MeshSizeMax", hmax)
