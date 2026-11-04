@@ -43,3 +43,4 @@ async def test_box_hits_are_confirmed_on_the_exact_geometry(ctx, monkeypatch, ex
     assert seen["instances"] == set(a_ids) | set(b_ids)       # only the two bodies' parts
     assert row["exact_mm3"] == exact_mm3 and row["status"] == status
     assert ("exact geometry" in row["reason"]) and out.data["status"] == status
+    assert "exact geometry" in out.summary

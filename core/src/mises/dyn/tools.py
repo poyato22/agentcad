@@ -553,8 +553,13 @@ async def dyn_rom_sweep(ctx: ToolContext, args: RomArgs) -> ToolOutput:
     rest = [" + ".join(names.get(b, b) for b in p) for p in res["rest_contacts"]]
     summary = (f"ROM sweep {status}: {res['poses']} poses over {len(res['joints'])} joints, "
                f"{res['colliding_pairs']} colliding pair(s)")
-    if rows and rows[0].get("pair"):
-        summary += "; worst " + rows[0]["reason"]
+    lead = next((r for r in rows if r.get("pair") and r["status"] == "fail"), None) or \
+        next((r for r in rows if r.get("pair")), None)
+    if lead is not None:
+        cleared = sum(1 for r in rows if r.get("exact_mm3") == 0)
+        summary += ("; worst " + lead["reason"] +
+                    (f" ({cleared} box hit(s) cleared on the exact geometry)" if cleared and
+                     lead["status"] == "fail" else ""))
     card = {"kind": "dyn_rom_sweep", "title": "Range of motion", "status": status,
             "rows": rows, "accuracy": checks.ACCURACY["rom"]}
     rid = run.save_result(_home(ctx), pid, "dyn_rom_sweep", {"summary": summary, "card": card,
