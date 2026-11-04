@@ -143,6 +143,17 @@ def store(home: Path, project_id: str, images: list[tuple[str, str]]
     return blocks, refs
 
 
+def attached_note(refs: list[dict]) -> str:
+    """The line appended to a message that carries images, naming their ids so the agent can
+    check a model against one (reference_photo_check accepts them). Empty without images."""
+    if not refs:
+        return ""
+    ids = ", ".join(r["id"] for r in refs)
+    return (f"\n\n[Attached image ids: {ids}. When an image shows the object to model, verify "
+            "your model against it with reference_photo_check (reference_image_id = the id, "
+            "view = the viewpoint it shows) before you finish.]")
+
+
 def forget_build(home: Path, project_id: str) -> int:
     """Remove a purged build's chat images (fix round 1). Only files this module writes, in
     the build's own directory; returns how many went."""

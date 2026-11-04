@@ -54,3 +54,50 @@ def test_tool_is_registered_read_only():
     reg = ToolRegistry()
     register_reference_tools(reg)
     assert reg.get("reference_photo_check").safety.value == "read"
+
+
+# ---- bench fix: an image attached in the chat is checkable like a reference photo
+def _png_b64():
+    import base64
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 48), (255, 255, 255)).save(buf, "PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+class _Store:
+    def __init__(self, project_id):
+        self.project_id = project_id
+
+    def get_run(self, run_id):
+        return type("Run", (), {"project_id": self.project_id})()
+
+
+def _ctx(home, project_id):
+    rt = type("RT", (), {"home": home})()
+    return type("Ctx", (), {"services": {"runtime": rt}, "store": _Store(project_id),
+                            "run_id": "r1"})()
+
+
+def test_a_chat_attached_image_of_the_build_is_read_as_the_photo(tmp_path):
+    from mises import chat_images
+    from mises.photo_check import photo_bytes
+    _blocks, refs = chat_images.store(tmp_path, "p1", [("image/png", _png_b64())])
+    raw = photo_bytes(_ctx(tmp_path, "p1"), refs[0]["id"])
+    assert raw[:4] == b"\x89PNG"
+
+
+def test_a_chat_image_of_another_build_is_not_found(tmp_path):
+    import pytest
+    from mises import chat_images
+    from mises.photo_check import photo_bytes
+    from mises.types import MisesError
+    _blocks, refs = chat_images.store(tmp_path, "p1", [("image/png", _png_b64())])
+    with pytest.raises(MisesError):
+        photo_bytes(_ctx(tmp_path, "p2"), refs[0]["id"])
+
+
+def test_chat_message_names_its_image_ids_for_the_photo_check():
+    from mises.chat_images import attached_note
+    note = attached_note([{"id": "a" * 24}, {"id": "b" * 24}])
+    assert "a" * 24 in note and "b" * 24 in note and "reference_photo_check" in note
+    assert attached_note([]) == ""

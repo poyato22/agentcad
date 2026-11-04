@@ -496,8 +496,12 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         prof = load_profile(runtime.home)
         log = {"text": body.text, "edits": body.edits} if body.edits else None
         images, log = _chat_images(runtime, pid, body.images, body.text, log)
-        out = await _lead.submit(runtime, _edited_prompt(runtime, body.text, body.edits),
-                                 project_id=pid, route_text=body.text if body.edits else None,
+        # the agent reads the attached images' ids so it can check its model against them
+        from .. import chat_images as _ci
+        note = _ci.attached_note((log or {}).get("images") or []) if images else ""
+        out = await _lead.submit(runtime, _edited_prompt(runtime, body.text, body.edits) + note,
+                                 project_id=pid,
+                                 route_text=body.text if (body.edits or note) else None,
                                  default_agent=prof.default_agent, images=images, log=log)
         return {**out, "routed": out["routed"].model_dump()}
 
