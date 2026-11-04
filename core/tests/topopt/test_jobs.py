@@ -373,3 +373,11 @@ async def test_topopt_on_a_material_without_sim_data_is_refused(tmp_path, fake, 
     with pytest.raises(MisesError) as e:
         await tools.topopt_run.handler(ctx, TopoptRunArgs(**BASE))
     assert "PVA has no simulation data" in e.value.message
+
+
+def test_the_element_cap_fits_the_memory_budget():
+    """DOG demo: at the old 160k-element cap every hip-bracket variant used 4.2-4.6 GB and was
+    stopped at the 4096 MB budget. The cap leaves 15 % headroom on the measured footprint."""
+    need = jobs.BASE_MB + jobs.MAX_ELEMENTS * jobs.KB_PER_ELEMENT / 1024
+    assert need <= 0.85 * jobs.MEMORY_MB
+    assert jobs.MAX_ELEMENTS >= 2 * jobs.TARGET_ELEMENTS
