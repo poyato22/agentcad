@@ -2,6 +2,7 @@
 // The exported GLB is metres and Y-up; the scene is mm and Z-up (CAD frame). No textures are ever loaded.
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 /** Dark-theme defaults; the live colors come from the --mesh-face / --mesh-edge tokens (meshColors). */
 export const FACE_COLOR = "#2a2a2a";
@@ -20,6 +21,57 @@ export function meshColors(): MeshColors {
     edge = s.getPropertyValue("--mesh-edge").trim();
   }
   return { face: face || FACE_COLOR, edge: edge || EDGE_COLOR };
+}
+
+/** Over this many face meshes a part is drawn merged (see mergeFaceMeshes). */
+export const MERGE_FACES_OVER = 64;
+
+/** A part's GLB has one mesh (and one edge set) per B-rep face. A topology-optimized body has
+ *  thousands of tiny faces, so the assembly made thousands of draw calls per part and orbited at
+ *  ~10 fps. Over MERGE_FACES_OVER faces, every face mesh under `root` becomes one mesh and every
+ *  edge set one LineSegments, in `root`'s frame: the same triangles, edges and look. Picking is
+ *  geometric (pick.ts) and needs no per-face meshes. */
+export function mergeFaceMeshes(root: THREE.Object3D): void {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((o) => { if (o instanceof THREE.Mesh && !(o instanceof THREE.LineSegments)) meshes.push(o); });
+  if (meshes.length <= MERGE_FACES_OVER) return;
+  root.updateMatrixWorld(true);
+  const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const faces: THREE.BufferGeometry[] = [];
+  const lines: THREE.BufferGeometry[] = [];
+  let lineMat: THREE.Material | null = null;
+  const m = new THREE.Matrix4();
+  for (const mesh of meshes) {
+    m.multiplyMatrices(toRoot, mesh.matrixWorld);
+    const g = (mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone());
+    for (const name of Object.keys(g.attributes)) if (name !== "position" && name !== "normal") g.deleteAttribute(name);
+    if (!g.getAttribute("normal")) g.computeVertexNormals();
+    g.applyMatrix4(m);
+    faces.push(g);
+    for (const c of mesh.children) {
+      if (!(c instanceof THREE.LineSegments)) continue;
+      const lg = new THREE.BufferGeometry().setAttribute("position", c.geometry.getAttribute("position").clone());
+      lg.applyMatrix4(new THREE.Matrix4().multiplyMatrices(m, c.matrix));
+      lines.push(lg);
+      lineMat ??= c.material as THREE.Material;
+    }
+  }
+  const material = meshes[0].material;
+  const merged = new THREE.Mesh(mergeGeometries(faces), material);
+  for (const g of faces) g.dispose();
+  if (lines.length && lineMat) {
+    const edges = new THREE.LineSegments(mergeGeometries(lines), lineMat);
+    edges.userData["edges"] = true;
+    merged.add(edges);
+    for (const g of lines) g.dispose();
+  }
+  for (const mesh of meshes) {
+    mesh.removeFromParent();
+    mesh.geometry.dispose();
+    for (const c of mesh.children) if (c instanceof THREE.LineSegments) { c.geometry.dispose(); if (c.material !== lineMat) (c.material as THREE.Material).dispose(); }
+    if (mesh.material !== material) (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((x) => x.dispose());
+  }
+  root.add(merged);
 }
 
 /** glTF units are metres (build123d exports them that way); the scene is in mm. */
@@ -60,6 +112,7 @@ export async function loadPart(bytes: ArrayBuffer): Promise<PartScene> {
     edges.userData["edges"] = true;
     mesh.add(edges);
   }
+  mergeFaceMeshes(source);
   object.updateMatrixWorld(true);
   const bbox = new THREE.Box3().setFromObject(object);
   let disposed = false;
