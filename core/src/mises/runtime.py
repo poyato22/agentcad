@@ -322,6 +322,9 @@ class Runtime:
         # Claude Code runs this process drives; the MCP endpoint (url, MCP-only token) of the
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
+        # the last turn's answer of a released Claude Code session (agent_wait released it,
+        # agent_result reads it next); bounded, the steps are the fallback
+        self._released_text: dict[str, str] = {}
         self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
         # P11 F3: run id -> notes for the model, sent with its next Mises tool result (a call
         # of a tool Claude Code does not have: the real names it likely meant)
@@ -1775,6 +1778,10 @@ class Runtime:
         if st is None or (st.task is not None and not st.task.done()):
             return
         del self._claude[run_id]
+        if st.result is not None and st.result.final_text:
+            if len(self._released_text) > 500:
+                self._released_text.clear()
+            self._released_text[run_id] = st.result.final_text
         if st.session is not None:
             try:
                 await st.session.close()
@@ -2235,6 +2242,22 @@ class Runtime:
                                                           user_log=log))
         st.task.add_done_callback(functools.partial(self._slotted_done, run_id))
 
+    def _last_turn_text(self, run_id: str) -> str:
+        """A Claude Code run's last turn's answer from its stored steps: its own (not a nested
+        Task's) assistant messages since the last user message, as the session joins them."""
+        try:
+            steps = self.store.steps(run_id, kinds=[StepKind.MESSAGE])
+        except Exception:  # noqa: BLE001 - no answer is better than a failed wait
+            return ""
+        out: list[str] = []
+        for s in steps:
+            p = s.payload or {}
+            if p.get("role") == "user":
+                out = []
+            elif p.get("role") == "assistant" and not p.get("parent_tool_use_id"):
+                out.append(str(p.get("text") or ""))
+        return "".join(out)
+
     async def wait(self, run_id: str) -> RunResult:
         cst = self._claude.get(run_id)
         if cst is not None:
@@ -2254,7 +2277,9 @@ class Runtime:
             if stop is None:
                 raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is not driven here",
                                  hint="it is running in another Mises process")
-            return RunResult(final_text="", messages=[], stop_reason=stop,
+            text = (self._released_text.get(run_id) or self._last_turn_text(run_id)
+                    if stop == "end_turn" else "")
+            return RunResult(final_text=text, messages=[], stop_reason=stop,
                              error=None if stop == "end_turn" else f"run {status}")
         st = self._state(run_id)
         assert st.task is not None
