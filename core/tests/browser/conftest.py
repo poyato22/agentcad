@@ -63,6 +63,13 @@ def public_dns():
     return resolve
 
 
+@pytest.fixture(autouse=True)
+def _no_retry_wait(monkeypatch):
+    """Retries of a transient failure happen at once in tests (no real back-off sleep)."""
+    from mises.catalog import importer
+    monkeypatch.setattr(importer, "RETRY_WAIT_S", 0.0)
+
+
 class Env:
     """A Gate with the browser, BOM and catalog tools and just enough of a Runtime."""
 

@@ -38,14 +38,18 @@ import httpx
 from ..types import ErrorCode, MisesError
 
 MAX_BYTES = 2 * 1024 * 1024
-TIMEOUT_S = 10.0
+TIMEOUT_S = 20.0
 MAX_REDIRECTS = 5
+RETRY_WAIT_S = 1.5          # one retry of a dropped connection, a DNS hiccup or a 429/50x
+RETRY_WAIT_MAX_S = 6.0      # a longer Retry-After is capped (the second answer is final)
+_RETRY_STATUSES = {429, 502, 503, 504}
 RAW_TEXT_MAX = 20_000
 SPECS_MAX = 100
 USER_AGENT = "Mises-parts-directory/0.1"
 _REDIRECTS = {301, 302, 303, 307, 308}
 _TYPES = ("text/html", "application/xhtml+xml", "application/json", "application/ld+json",
-          "text/plain")
+          "text/plain", "text/markdown", "text/x-markdown", "text/csv", "application/xml",
+          "text/xml")
 _NUMERIC_HOST_RE = re.compile(r"(0x[0-9a-f]*|\d+)(\.(0x[0-9a-f]*|\d+))*\.?")
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")
 _NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
@@ -53,6 +57,8 @@ _V4COMPAT = ipaddress.ip_network("::/96")
 
 Resolver = Callable[[str], Awaitable[list[str]]]
 RedirectCheck = Callable[[str], bool]
+RedirectGuard = Callable[[str], "str | None"]   # full URL -> why it is refused, or None
+_sleep = asyncio.sleep
 
 
 def _bad(msg: str, hint: str | None = None) -> MisesError:
@@ -134,8 +140,11 @@ async def _vetted_ip(host: str, resolve: Resolver) -> str:
     try:
         ips = await resolve(host)
     except OSError:
-        raise MisesError(ErrorCode.TRANSIENT, "could not resolve the page's host",
-                         hint="check the link and the network") from None
+        err = MisesError(ErrorCode.TRANSIENT, f"could not resolve {host} (the domain may not"
+                         " exist any more, or the network is down)",
+                         hint="find the site's current address with web_search")
+        err.fetch_retry = True
+        raise err from None
     if not ips or any(_ip_blocked(ip) for ip in ips):
         raise _bad(f"{host} resolves to a private or local address; not fetched")
     v4 = [ip for ip in ips if ":" not in ip]
@@ -147,6 +156,7 @@ class Page:
                  body: bytes | None = None):
         self.url, self.final_url, self.content_type, self.text = url, final_url, content_type, text
         self.body = body
+        self.partial = False           # only the first max_bytes of a bigger page were read
 
     @property
     def domain(self) -> str:
@@ -161,30 +171,55 @@ async def fetch(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
                 types: tuple[str, ...] = _TYPES, max_bytes: int = MAX_BYTES,
                 user_agent: str = USER_AGENT, accept: str | None = None,
                 redirect_ok: RedirectCheck | None = None,
-                extra_headers: dict[str, str] | None = None) -> Page:
+                extra_headers: dict[str, str] | None = None,
+                redirect_guard: RedirectGuard | None = None, partial_ok: bool = False,
+                timeout_s: float | None = None) -> Page:
     """GET one page with every check in the module docstring. `types`, `max_bytes`,
     `user_agent` and `accept` tune it for other callers (the agent browser, its image proxy);
-    `redirect_ok(host)` may refuse a redirect to another site (it is asked after the target
-    passed check_url, before anything is sent there)."""
+    `redirect_ok(host)` may refuse a redirect to another site and `redirect_guard(url)` may
+    refuse one by its full URL (returning why); both are asked after the target passed
+    check_url, before anything is sent there. `partial_ok` keeps the first `max_bytes` of a
+    bigger text page (`page.partial`) instead of refusing it; a PDF is never cut.
+
+    A dropped connection, a DNS failure or a 429/502/503/504 answer is retried once, after
+    RETRY_WAIT_S (or the answer's Retry-After, at most RETRY_WAIT_MAX_S); a timeout is not."""
     start = check_url(url, strip_query=strip_query)
-    opts = _Opts(types, max_bytes, user_agent, accept, redirect_ok, extra_headers)
+    opts = _Opts(types, max_bytes, user_agent, accept, redirect_ok, extra_headers,
+                 redirect_guard, partial_ok)
+    limit = timeout_s or TIMEOUT_S
+    for attempt in (0, 1):
+        try:
+            async with asyncio.timeout(limit):
+                return await _fetch(start, transport, resolve, opts)
+        except TimeoutError:
+            raise MisesError(ErrorCode.TRANSIENT, f"the page took longer than {limit:g} s",
+                             hint="try again, or another page") from None
+        except httpx.InvalidURL:
+            raise _bad("not a valid URL") from None
+        except MisesError as e:
+            if attempt or not getattr(e, "fetch_retry", False):
+                raise
+            await _sleep(_retry_wait(getattr(e, "retry_after", None)))
+    raise AssertionError("unreachable")
+
+
+def _retry_wait(retry_after: str | None) -> float:
     try:
-        async with asyncio.timeout(TIMEOUT_S):
-            return await _fetch(start, transport, resolve, opts)
-    except TimeoutError:
-        raise MisesError(ErrorCode.TRANSIENT, f"the page took longer than {TIMEOUT_S:g} s",
-                         hint="try again, or another page") from None
-    except httpx.InvalidURL:
-        raise _bad("not a valid URL") from None
+        wait = float(retry_after) if retry_after else RETRY_WAIT_S
+    except ValueError:
+        wait = RETRY_WAIT_S
+    return max(0.0, min(wait, RETRY_WAIT_MAX_S))
 
 
 class _Opts:
     def __init__(self, types=_TYPES, max_bytes=MAX_BYTES, user_agent=USER_AGENT, accept=None,
-                 redirect_ok=None, extra_headers=None):
+                 redirect_ok=None, extra_headers=None, redirect_guard=None, partial_ok=False):
         self.extra_headers = dict(extra_headers or {})
         self.types, self.max_bytes, self.user_agent = types, max_bytes, user_agent
         self.accept = accept or "text/html,application/json;q=0.9,*/*;q=0.1"
         self.redirect_ok = redirect_ok
+        self.redirect_guard = redirect_guard
+        self.partial_ok = partial_ok
 
 
 def _cap_text(n: int) -> str:
@@ -240,37 +275,54 @@ async def _fetch(start: str, transport, resolve: Resolver, opts: _Opts | None = 
                             why = e.message if isinstance(e, MisesError) else "not a valid URL"
                             raise _bad(f"the page redirects somewhere not allowed: {why}",
                                        "only https pages on public hosts are fetched") from None
-                        if opts.redirect_ok is not None:
-                            to = (urlsplit(url).hostname or "").lower()
-                            if not opts.redirect_ok(to):
-                                raise _bad(f"the page redirects to another site ({to})",
-                                           "open that link directly so the user can approve"
-                                           " the site")
+                        to = (urlsplit(url).hostname or "").lower()
+                        if opts.redirect_ok is not None and not opts.redirect_ok(to):
+                            raise _bad(f"the page redirects to another site ({to})",
+                                       "open that link directly so the user can approve"
+                                       " the site")
+                        why = opts.redirect_guard(url) if opts.redirect_guard else None
+                        if why:
+                            raise _bad(f"the page redirects to {to}, which Mises won't open"
+                                       f" ({why})", "open the site's plain page instead")
                         continue
                     if not resp.is_success:
-                        err = MisesError(ErrorCode.TOOL_FAILED,
-                                         f"the page answered HTTP {resp.status_code}")
-                        err.upstream_status = resp.status_code
+                        status = resp.status_code
+                        err = MisesError(ErrorCode.TOOL_FAILED, f"the page answered HTTP {status}",
+                                         hint="the link may be wrong: find the real page with"
+                                              " web_search" if status in (404, 410) else None)
+                        err.upstream_status = status
+                        err.fetch_retry = status in _RETRY_STATUSES
+                        err.retry_after = resp.headers.get("Retry-After")
                         raise err
                     ctype = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
                     if ctype and ctype not in opts.types:
                         raise _bad(f"not a web page ({ctype})", "link to the product page")
                     cap = opts.max_bytes
+                    cut = opts.partial_ok and ctype != "application/pdf"
                     declared = resp.headers.get("Content-Length")
-                    if declared and declared.isdigit() and int(declared) > cap:
+                    if declared and declared.isdigit() and int(declared) > cap and not cut:
                         raise _bad(f"page larger than {_cap_text(cap)}; not read")
                     body = bytearray()
+                    partial = False
                     async for chunk in resp.aiter_bytes():
                         body += chunk
                         if len(body) > cap:
-                            raise _bad(f"page larger than {_cap_text(cap)}; not read")
+                            if not cut:
+                                raise _bad(f"page larger than {_cap_text(cap)}; not read")
+                            del body[cap:]
+                            partial = True
+                            break
                     raw = bytes(body)
                     text = raw.decode(resp.encoding or "utf-8", errors="replace")
-                    return Page(start, url, ctype, text, raw)
+                    page = Page(start, url, ctype, text, raw)
+                    page.partial = partial
+                    return page
             except httpx.HTTPError:
                 # one message for refused, unreachable, TLS and protocol failures alike
-                raise MisesError(ErrorCode.TRANSIENT, "could not connect to the page",
-                                 hint="check the link") from None
+                err = MisesError(ErrorCode.TRANSIENT, "could not connect to the page",
+                                 hint="try again later, or another page")
+                err.fetch_retry = True
+                raise err from None
     raise MisesError(ErrorCode.TOOL_FAILED, "redirect loop")
 
 
@@ -734,9 +786,12 @@ def item_id_for(url: str) -> str:
 
 async def import_url(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
                      resolve: Resolver = _system_resolve, strip_query: bool = False,
-                     redirect_ok: RedirectCheck | None = None) -> dict:
+                     redirect_ok: RedirectCheck | None = None,
+                     redirect_guard: RedirectGuard | None = None) -> dict:
+    """A catalog item from the page (the first MAX_BYTES of a bigger one)."""
     return extract(await fetch(url, transport=transport, resolve=resolve,
-                               strip_query=strip_query, redirect_ok=redirect_ok))
+                               strip_query=strip_query, redirect_ok=redirect_ok,
+                               redirect_guard=redirect_guard, partial_ok=True))
 
 
 # ---- untrusted data for agents

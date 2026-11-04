@@ -49,3 +49,10 @@ def public_dns():
     async def resolve(host: str) -> list[str]:
         return ["93.184.216.34"]
     return resolve
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_wait(monkeypatch):
+    """Retries of a transient failure happen at once in tests (no real back-off sleep)."""
+    from mises.catalog import importer
+    monkeypatch.setattr(importer, "RETRY_WAIT_S", 0.0)
