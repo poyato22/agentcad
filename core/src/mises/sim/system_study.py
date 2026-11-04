@@ -440,6 +440,10 @@ async def _walk(ctx, pid: str, s: WalkSettings, rec: dict, asm) -> dict:
         status = ("fail" if touched or tilt > MAX_TILT_FAIL_DEG else
                   "warn" if tilt > MAX_TILT_WARN_DEG else "pass")
         why = (f"{', '.join(touched[:3])} touched the floor: it falls" if touched else
+               f"the body tilts up to {tilt:.1f} deg (over {MAX_TILT_FAIL_DEG:g} deg: it is "
+               "falling over)" if status == "fail" else
+               f"the body tilts up to {tilt:.1f} deg (over {MAX_TILT_WARN_DEG:g} deg: a hard "
+               "wobble)" if status == "warn" else
                f"the body stays within {tilt:.1f} deg of level and its CoM drops at most "
                f"{drop:.0f} mm")
         checks.append(_check("stability: during the gait", status, why, round(tilt, 1), "deg",
