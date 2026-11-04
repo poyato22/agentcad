@@ -473,3 +473,12 @@ def test_lead_prompt_and_tools_carry_the_concept_stage():
     for t in ("pitch_options", "concept_sketch", "concept_status"):
         assert t in LEAD_TOOLS
     assert "Concept first" in LEAD_PROMPT and "Never parts first" in LEAD_PROMPT
+
+
+def test_a_slender_design_shorter_than_a_person_gets_no_scale_figure():
+    from mises.concept import sketch as sk
+    rocket = {"min": [-60.0, -60.0, 0.0], "max": [60.0, 60.0, 810.0]}   # fins span 120 mm
+    assert sk.scene_extras(rocket)[1]["figure"] is False
+    assert sk.scene_extras(rocket, "on")[1]["figure"] is True
+    chair = {"min": [-250.0, -250.0, 0.0], "max": [250.0, 250.0, 900.0]}
+    assert sk.scene_extras(chair)[1]["figure"] is True
