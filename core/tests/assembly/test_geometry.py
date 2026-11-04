@@ -102,6 +102,32 @@ async def test_glb_has_one_node_per_instance(tmp_path):
     assert gltf["nodes"][1]["matrix"][12] == pytest.approx(20.0)
 
 
+def test_sweep_measures_only_what_moves_and_prunes_far_pairs(monkeypatch):
+    """DOG demo: an 8-step knee sweep of a 40-instance dog timed out (240 s): every pose took
+    OCCT distances of all ~800 pairs. Pairs at the same relative pose as an earlier pose reuse
+    it, and a pair whose boxes are farther apart than the closest pair so far is not measured.
+    The answers are unchanged."""
+    import build123d as b3
+    from mises.cad import worker
+
+    calls = []
+    real = b3.Shape.distance_to
+
+    def counted(self, other):
+        calls.append(1)
+        return real(self, other)
+    monkeypatch.setattr(b3.Shape, "distance_to", counted)
+    box = b3.Box(10, 10, 10)
+    loaded = [("a", box, _shift_x(0.0), "a"), ("b", box, _shift_x(13.0), "b"),
+              ("far", box, _shift_x(500.0), "far"), ("m", box, _shift_x(40.0), "m")]
+    poses = [{"m": _shift_x(x)} for x in (40.0, 30.0, 20.0, 15.0)]   # m moves toward b
+    out = worker._sweep_positions(loaded, poses, 0.01, b3.Location)
+    assert [p["min_clearance_mm"] for p in out] == pytest.approx([3.0, 3.0, 0.0, 0.0])
+    assert out[0]["closest"] == ["a", "b"]
+    assert out[3]["interferences"][0]["volume_mm3"] == pytest.approx(800, rel=0.02)
+    assert len(calls) <= 6          # all pairs every pose would be 6 x 4 = 24
+
+
 async def test_resolve_face_reads_metrics(tmp_path):
     parts = await _build_box(tmp_path)
     origin, normal = resolve_face(parts, "cube", "f0")
