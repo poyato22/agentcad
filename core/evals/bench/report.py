@@ -17,7 +17,27 @@ from .common import read_json, write_json
 
 SYSTEMS = ("mises", "baseline")
 SUITE_TITLES = {"cadbench": "CADBench (image→part)", "cadtestbench": "CADTestBench (text→part)",
-                "functional": "Mises-Functional (engineering)"}
+                "functional": "Mises-Functional (engineering)",
+                "cadbench_test": "CADBench, held-out (image→part)",
+                "cadtestbench_test": "CADTestBench, held-out (text→part)",
+                "physics_dev": "Mises-Physics, dev", "physics_test": "Mises-Physics, held-out"}
+METRIC = {"cadbench": "volume IoU", "cadtestbench": "CADTest pass rate",
+          "functional": "requirements passed", "physics": "requirements passed"}
+
+
+def family(suite: str) -> str:
+    return suite.split("_")[0]
+
+
+def bootstrap_ci(diffs: list[float], n: int = 4000, seed: int = 0) -> tuple[float, float]:
+    """95% percentile bootstrap CI of the mean of paired differences."""
+    import random
+    if not diffs:
+        return (0.0, 0.0)
+    rng = random.Random(seed)
+    k = len(diffs)
+    means = sorted(sum(diffs[rng.randrange(k)] for _ in range(k)) / k for _ in range(n))
+    return (means[int(0.025 * n)], means[int(0.975 * n) - 1])
 
 
 def _mean(xs):
@@ -53,6 +73,7 @@ def collect(runs: Path) -> dict:
 
 
 def headline(suite: str, sc: dict) -> float:
+    suite = family(suite)
     if suite == "cadbench":
         return float(sc.get("iou") or 0.0)
     if suite == "cadtestbench":
@@ -62,17 +83,20 @@ def headline(suite: str, sc: dict) -> float:
 
 def summarise(suite: str, rows: dict) -> dict:
     out = {"n": len(rows)}
+    fam = family(suite)
     for s in SYSTEMS:
         sc = [r[s]["score"] for r in rows.values()]
         rn = [r[s]["run"] for r in rows.values()]
         d = {"headline": _mean([headline(suite, x) for x in sc]),
              "valid_rate": _mean([1.0 if x.get("valid") else 0.0 for x in sc]),
              "median_seconds": _median([x.get("seconds") for x in rn]),
+             "median_agent_seconds": _median([x.get("agent_seconds") or x.get("seconds")
+                                              for x in rn]),
              "mean_usd": _mean([x.get("usd") for x in rn]),
              "total_usd": sum(x.get("usd") or 0 for x in rn),
              "timeouts": sum(1 for x in rn if x.get("timed_out")),
              "errors": sum(1 for x in rn if x.get("error"))}
-        if suite == "cadbench":
+        if fam == "cadbench":
             d["iou"] = d["headline"]
             d["f1"] = _mean([x.get("f1") or 0.0 for x in sc])
             d["chamfer_valid"] = _mean([x.get("chamfer") for x in sc if x.get("valid")])
@@ -80,7 +104,7 @@ def summarise(suite: str, rows: dict) -> dict:
             for tid, r in rows.items():
                 fams.setdefault(tid.split("-")[0], []).append(headline(suite, r[s]["score"]))
             d["by_family"] = {k: _mean(v) for k, v in sorted(fams.items())}
-        elif suite == "cadtestbench":
+        elif fam == "cadtestbench":
             d["pass_rate"] = d["headline"]
             d["rs"] = _mean([x.get("rs") or 0.0 for x in sc])
             d["pr"] = _mean([1.0 if x.get("pr") else 0.0 for x in sc])
@@ -99,17 +123,31 @@ def summarise(suite: str, rows: dict) -> dict:
                 cats.setdefault(r[s]["score"].get("category", "?"), []).append(
                     headline(suite, r[s]["score"]))
             d["by_category"] = {k: _mean(v) for k, v in sorted(cats.items())}
+            if fam == "physics":
+                d["metrics"] = {tid: r[s]["score"].get("metrics") for tid, r in rows.items()}
         out[s] = d
     wins = sum(1 for r in rows.values()
                if headline(suite, r["mises"]["score"]) > headline(suite, r["baseline"]["score"]) + 1e-9)
     losses = sum(1 for r in rows.values()
                  if headline(suite, r["baseline"]["score"]) > headline(suite, r["mises"]["score"]) + 1e-9)
+    diffs = [headline(suite, r["mises"]["score"]) - headline(suite, r["baseline"]["score"])
+             for r in rows.values()]
+    lo, hi = bootstrap_ci(diffs)
     out["paired"] = {"mises_better": wins, "baseline_better": losses,
-                     "ties": len(rows) - wins - losses}
+                     "ties": len(rows) - wins - losses,
+                     "mean_diff": _mean(diffs), "ci95_mean_diff": [lo, hi]}
+    if fam in ("cadtestbench", "functional", "physics"):
+        key = "pr" if fam == "cadtestbench" else "strict"
+        out["paired"]["strict_mises_only"] = sum(1 for r in rows.values() if r["mises"]["score"].get(key)
+                                                 and not r["baseline"]["score"].get(key))
+        out["paired"]["strict_baseline_only"] = sum(1 for r in rows.values()
+                                                    if r["baseline"]["score"].get(key)
+                                                    and not r["mises"]["score"].get(key))
     return out
 
 
-def chart(summary: dict, path: Path, model: str, date: str, label: str = "") -> None:
+def chart(summary: dict, path: Path, model: str, date: str, label: str = "",
+          only: list[str] | None = None, title: str | None = None) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -117,9 +155,7 @@ def chart(summary: dict, path: Path, model: str, date: str, label: str = "") -> 
 
     bg, ink, muted, grid = "#1a1a19", "#f0efec", "#c3c2b7", "#3a3a37"
     col = {"mises": "#3987e5", "baseline": "#d95926"}
-    suites = [s for s in SUITE_TITLES if s in summary and summary[s]["n"]]
-    metric_name = {"cadbench": "volume IoU", "cadtestbench": "CADTest pass rate",
-                   "functional": "requirements passed"}
+    suites = [s for s in (only or SUITE_TITLES) if s in summary and summary[s]["n"]]
     fig, ax = plt.subplots(figsize=(16, 9), dpi=120)
     fig.patch.set_facecolor(bg)
     ax.set_facecolor(bg)
@@ -134,8 +170,8 @@ def chart(summary: dict, path: Path, model: str, date: str, label: str = "") -> 
             ax.text(x, -0.035, "Mises" if sysname == "mises" else "Baseline", ha="center",
                     va="top", color=muted, fontsize=14)
     ax.set_xticks(range(len(suites)))
-    ax.set_xticklabels([f"{SUITE_TITLES[s]}\n{metric_name[s]} · n = {summary[s]['n']}"
-                        for s in suites], color=ink, fontsize=15)
+    ax.set_xticklabels([f"{SUITE_TITLES[s]}\n{METRIC[family(s)]} · n = {summary[s]['n']}"
+                        for s in suites], color=ink, fontsize=13 if len(suites) > 3 else 15)
     ax.tick_params(axis="x", length=0, pad=34)
     ax.set_ylim(0, 1.08)
     ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
@@ -144,7 +180,7 @@ def chart(summary: dict, path: Path, model: str, date: str, label: str = "") -> 
     ax.grid(axis="y", color=grid, linewidth=1, zorder=0)
     for sp in ax.spines.values():
         sp.set_visible(False)
-    fig.text(0.06, 0.93, "Mises vs the same model with a plain build123d tool", color=ink,
+    fig.text(0.06, 0.93, title or "Mises vs the same model with a plain build123d tool", color=ink,
              fontsize=26, fontweight="bold")
     fig.text(0.06, 0.885, f"{model} · Think: High · one attempt per task · {date}"
              + (f" · {label}" if label else ""), color=muted, fontsize=15)
@@ -164,45 +200,34 @@ def _num(v, nd=1):
     return "–" if v is None else f"{v:.{nd}f}"
 
 
-def build_report(runs: Path, out: Path, label: str = "") -> dict:
-    out.mkdir(parents=True, exist_ok=True)
-    data = collect(runs)
-    summary = {s: summarise(s, rows) for s, rows in data.items() if rows}
-    model = None
-    for rows in data.values():
-        for r in rows.values():
-            model = model or r["mises"]["run"].get("model")
-    date = dt.date.today().isoformat()
-    per_task = {s: {tid: {k: {"headline": headline(s, v[k]["score"]),
-                              "seconds": v[k]["run"].get("seconds"), "usd": v[k]["run"].get("usd"),
-                              "valid": v[k]["score"].get("valid"),
-                              "stop": v[k]["run"].get("stop")} for k in SYSTEMS}
-                    for tid, v in rows.items()} for s, rows in data.items()}
-    doc = {"date": date, "model": model, "label": label, "summary": summary, "tasks": per_task}
-    write_json(out / "benchmarks.json", doc)
-    chart(summary, out / "benchmarks.png", model or "?", date, label)
-    lines = [f"# Mises CAD benchmarks ({date})", "",
-             f"Model: `{model}` for both systems, Think: High, one build per task. "
-             "Invalid or missing outputs score 0. Only tasks run by both systems are compared.", ""]
-    lines += ["| Suite | n | Metric | Mises | Baseline | Mises better / worse / tie |",
-              "|---|---|---|---|---|---|"]
+HELD_OUT = ["cadbench_test", "cadtestbench_test", "physics_test", "functional"]
+
+
+def tables(summary: dict) -> list[str]:
+    lines = ["| Suite | n | Metric | Mises | Baseline | Mises − baseline (95% CI) | Mises better / worse / tie |",
+             "|---|---|---|---|---|---|---|"]
     for s, sm in summary.items():
         p = sm["paired"]
-        lines.append(f"| {SUITE_TITLES[s]} | {sm['n']} | headline | {_pct(sm['mises']['headline'])} "
-                     f"| {_pct(sm['baseline']['headline'])} | {p['mises_better']} / "
-                     f"{p['baseline_better']} / {p['ties']} |")
+        ci = p.get("ci95_mean_diff") or [0, 0]
+        lines.append(f"| {SUITE_TITLES[s]} | {sm['n']} | {METRIC[family(s)]} | "
+                     f"{_pct(sm['mises']['headline'])} | {_pct(sm['baseline']['headline'])} | "
+                     f"{100 * p['mean_diff']:+.1f} pts ({100 * ci[0]:+.1f} to {100 * ci[1]:+.1f}) | "
+                     f"{p['mises_better']} / {p['baseline_better']} / {p['ties']} |")
     for s, sm in summary.items():
-        lines += ["", f"## {SUITE_TITLES[s]} (n = {sm['n']})", "", "| | Mises | Baseline |", "|---|---|---|"]
+        fam = family(s)
+        lines += ["", f"### {SUITE_TITLES[s]} (n = {sm['n']})", "", "| | Mises | Baseline |",
+                  "|---|---|---|"]
         keys = [("valid_rate", "valid output", _pct)]
-        if s == "cadbench":
+        if fam == "cadbench":
             keys += [("iou", "volume IoU", _pct), ("f1", "F1 @ 1% bbox", _pct),
                      ("chamfer_valid", "Chamfer (unit box, valid only)", lambda v: _num(v, 4))]
-        elif s == "cadtestbench":
+        elif fam == "cadtestbench":
             keys += [("pass_rate", "CADTest pass rate", _pct), ("rs", "requirement satisfaction", _pct),
                      ("pr", "all tests pass", _pct)]
         else:
             keys += [("req_pass", "mean requirement pass", _pct), ("strict", "strict pass", _pct)]
-        keys += [("median_seconds", "median wall time (s)", lambda v: _num(v, 0)),
+        keys += [("median_agent_seconds", "median agent time (s)", lambda v: _num(v, 0)),
+                 ("median_seconds", "median wall time incl. harness (s)", lambda v: _num(v, 0)),
                  ("mean_usd", "mean cost per task (USD, list price)", lambda v: _num(v, 3)),
                  ("timeouts", "time-cap hits", lambda v: str(v)), ("errors", "harness errors", str)]
         for k, name, f in keys:
@@ -212,6 +237,44 @@ def build_report(runs: Path, out: Path, label: str = "") -> dict:
                 for k in sm["mises"][sub]:
                     lines.append(f"| {sub.split('_')[1]}: {k} | {_pct(sm['mises'][sub].get(k))} "
                                  f"| {_pct(sm['baseline'][sub].get(k))} |")
+        if "metrics" in sm["mises"]:
+            lines += ["", "| task | Mises | Baseline |", "|---|---|---|"]
+            for tid in sm["mises"]["metrics"]:
+                fm = lambda d: ", ".join(f"{k} {v}" for k, v in (d or {}).items())  # noqa: E731
+                lines.append(f"| {tid} | {fm(sm['mises']['metrics'][tid])} | "
+                             f"{fm(sm['baseline']['metrics'].get(tid))} |")
+    return lines
+
+
+def build_report(runs: Path, out: Path, label: str = "", history: dict | None = None,
+                 preamble: str = "") -> dict:
+    out.mkdir(parents=True, exist_ok=True)
+    data = collect(runs)
+    summary = {s: summarise(s, rows) for s, rows in data.items() if rows}
+    model = None
+    for rows in data.values():
+        for r in rows.values():
+            model = model or r["mises"]["run"].get("model")
+    date = dt.date.today().isoformat()
+    per_task = {s: {tid: {k: {"headline": headline(s, v[k]["score"]),
+                              "seconds": v[k]["run"].get("seconds"),
+                              "agent_seconds": v[k]["run"].get("agent_seconds"),
+                              "usd": v[k]["run"].get("usd"),
+                              "valid": v[k]["score"].get("valid"),
+                              "stop": v[k]["run"].get("stop")} for k in SYSTEMS}
+                    for tid, v in rows.items()} for s, rows in data.items()}
+    doc = {"date": date, "model": model, "label": label, "summary": summary, "tasks": per_task}
+    if history:
+        doc["history"] = history
+    write_json(out / "benchmarks.json", doc)
+    held = [s for s in HELD_OUT if s in summary]
+    chart(summary, out / "benchmarks.png", model or "?", date, label, only=held or None,
+          title="Mises vs the same model with a plain build123d tool (held-out tasks)" if held else None)
+    lines = [f"# Mises CAD benchmarks ({date})", "", preamble] if preamble else \
+        [f"# Mises CAD benchmarks ({date})", ""]
+    lines += [f"Model: `{model}` for both systems, Think: High, one build per task. Invalid or "
+              "missing outputs score 0. Only tasks run by both systems are compared (paired).", ""]
+    lines += tables(summary)
     (out / "benchmarks.md").write_text("\n".join(lines) + "\n")
     return doc
 
