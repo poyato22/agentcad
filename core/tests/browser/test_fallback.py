@@ -67,4 +67,4 @@ async def test_a_site_that_is_simply_down_does_not_fall_back(env, web):
     web.pages[PRODUCT] = boom
     with pytest.raises(Exception):
         await env.call("web_open", {"url": PRODUCT})
-    assert len(web.requests) == 1
+    assert len(web.requests) == 2          # the dropped connection was retried once

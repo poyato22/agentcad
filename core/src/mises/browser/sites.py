@@ -8,7 +8,9 @@ block automated access (Amazon, AliExpress and McMaster-Carr often do): web_sear
 
 P11 F5: web_search may name ANY site by its domain (e.g. `thrustcurve.org`), and a suggested
 site without a search page of its own: those are searched through a site-restricted web search
-(`site_search`, DuckDuckGo's HTML page; only links on that site are kept). A site that is not
+(`site_search`, through browser.websearch's engines; only links on that site are kept). A
+query that names no site always gets a general web search, plus the shops whose categories its
+words point at. A site that is not
 suggested goes through the Plan 10 exfil guard like web_open (an odd-looking domain or a fetch
 past the per-turn caps asks the user first; the query must be plain words).
 """
@@ -43,8 +45,7 @@ KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 # the web search a site without its own search page is searched through (`site:` restricted)
-SITE_SEARCH = "https://html.duckduckgo.com/html/?q=site%3A{domain}+{q}"
-SITE_SEARCH_HOST = "html.duckduckgo.com"
+SITE_SEARCH_HOST = "web"      # `via` of a site searched through the general web search
 _DOMAIN_RE = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 
 
@@ -107,9 +108,9 @@ def as_domain(text: str) -> str | None:
 
 
 def site_search(site: dict) -> dict:
-    """`site` searched through SITE_SEARCH: its pages found by a `site:` web search."""
-    tpl = SITE_SEARCH.replace("{domain}", site["domain"])
-    return {**site, "search_url": tpl, "via": SITE_SEARCH_HOST}
+    """`site` searched through the web: its pages found by a `site:` web search
+    (browser.websearch, engine by engine)."""
+    return {**site, "search_url": None, "via": SITE_SEARCH_HOST}
 
 
 def any_site(domain: str) -> dict:
@@ -143,7 +144,8 @@ def pick_sites(sites: list[dict], query: str, wanted: list[str] | None = None,
     site, through `site_search` when it has no search page of its own; any other domain as
     `any_site` (P11 F5); KeyError for a name that is neither. Else the sites whose categories
     the query's words point at, best match first, then the list's own order (a matching site
-    without a search page through `site_search`); with no match, the first searchable sites."""
+    without a search page through `site_search`); with no match, only the user's own
+    searchable sites (web_search's general web search covers every query)."""
     searchable = [s for s in sites if s.get("search_url")]
     if wanted:
         out = []
@@ -169,7 +171,7 @@ def pick_sites(sites: list[dict], query: str, wanted: list[str] | None = None,
     scored = [(len(cats & set(s.get("categories") or [])), i, s)
               for i, s in enumerate(searchable)]
     hits = [t for t in scored if t[0] > 0]
-    if not hits:
-        return searchable[:limit]
+    if not hits:            # the general web search answers it, with the user's own shops
+        return [s for s in searchable if not s.get("suggested")][:limit]
     hits.sort(key=lambda t: (-t[0], t[1]))
     return [t[2] for t in hits[:limit]]

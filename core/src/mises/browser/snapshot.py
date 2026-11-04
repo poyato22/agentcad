@@ -105,6 +105,7 @@ class PageParser(_Collector):
             return
         link, self._link = self._link, None
         if len(self.links) < LINKS_MAX:
+            link["parts"] = [t for t in (_squash(x) for x in link["text"]) if t]
             link["text"] = _squash("".join(link["text"]))
             link["end"] = len(self.text)
             self.links.append(link)

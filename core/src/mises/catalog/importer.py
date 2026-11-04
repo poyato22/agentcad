@@ -173,21 +173,24 @@ async def fetch(url: str, *, transport: httpx.AsyncBaseTransport | None = None,
                 redirect_ok: RedirectCheck | None = None,
                 extra_headers: dict[str, str] | None = None,
                 redirect_guard: RedirectGuard | None = None, partial_ok: bool = False,
-                timeout_s: float | None = None) -> Page:
+                timeout_s: float | None = None, retry: bool = True,
+                pdf_max_bytes: int | None = None) -> Page:
     """GET one page with every check in the module docstring. `types`, `max_bytes`,
     `user_agent` and `accept` tune it for other callers (the agent browser, its image proxy);
     `redirect_ok(host)` may refuse a redirect to another site and `redirect_guard(url)` may
     refuse one by its full URL (returning why); both are asked after the target passed
     check_url, before anything is sent there. `partial_ok` keeps the first `max_bytes` of a
-    bigger text page (`page.partial`) instead of refusing it; a PDF is never cut.
+    bigger text page (`page.partial`) instead of refusing it; a PDF is never cut (it may be
+    up to `pdf_max_bytes` when given).
 
-    A dropped connection, a DNS failure or a 429/502/503/504 answer is retried once, after
-    RETRY_WAIT_S (or the answer's Retry-After, at most RETRY_WAIT_MAX_S); a timeout is not."""
+    A dropped connection, a DNS failure or a 429/502/503/504 answer is retried once (unless
+    `retry` is False), after RETRY_WAIT_S (or the answer's Retry-After, at most
+    RETRY_WAIT_MAX_S); a timeout is not."""
     start = check_url(url, strip_query=strip_query)
     opts = _Opts(types, max_bytes, user_agent, accept, redirect_ok, extra_headers,
-                 redirect_guard, partial_ok)
+                 redirect_guard, partial_ok, pdf_max_bytes)
     limit = timeout_s or TIMEOUT_S
-    for attempt in (0, 1):
+    for attempt in (0, 1) if retry else (1,):
         try:
             async with asyncio.timeout(limit):
                 return await _fetch(start, transport, resolve, opts)
@@ -213,13 +216,15 @@ def _retry_wait(retry_after: str | None) -> float:
 
 class _Opts:
     def __init__(self, types=_TYPES, max_bytes=MAX_BYTES, user_agent=USER_AGENT, accept=None,
-                 redirect_ok=None, extra_headers=None, redirect_guard=None, partial_ok=False):
+                 redirect_ok=None, extra_headers=None, redirect_guard=None, partial_ok=False,
+                 pdf_max_bytes=None):
         self.extra_headers = dict(extra_headers or {})
         self.types, self.max_bytes, self.user_agent = types, max_bytes, user_agent
         self.accept = accept or "text/html,application/json;q=0.9,*/*;q=0.1"
         self.redirect_ok = redirect_ok
         self.redirect_guard = redirect_guard
         self.partial_ok = partial_ok
+        self.pdf_max_bytes = pdf_max_bytes
 
 
 def _cap_text(n: int) -> str:
@@ -298,6 +303,8 @@ async def _fetch(start: str, transport, resolve: Resolver, opts: _Opts | None = 
                     if ctype and ctype not in opts.types:
                         raise _bad(f"not a web page ({ctype})", "link to the product page")
                     cap = opts.max_bytes
+                    if ctype == "application/pdf" and opts.pdf_max_bytes:
+                        cap = opts.pdf_max_bytes
                     cut = opts.partial_ok and ctype != "application/pdf"
                     declared = resp.headers.get("Content-Length")
                     if declared and declared.isdigit() and int(declared) > cap and not cut:
