@@ -572,6 +572,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
                                f"{args.part_id} from script{note}")
         placed = await _auto_place(ctx, args.part_id, d) if args.place and not existed else None
     return ToolOutput(summary=_summary(args.part_id, res.metrics) + note
+                      + _unit_note(ctx, res.metrics)
                       + (f"; placed in the assembly as {placed['instance']['name']}"
                          if placed else ""),
                       data={"part_id": args.part_id, "vars": res.vars, "version": version,
@@ -827,6 +828,17 @@ def _with_mass(ctx, part_id: str, metrics: dict) -> dict:
     from .. import mass as _mass
     return _mass.with_part_mass(metrics, getattr(ctx, "store", None), Path(ctx.workdir),
                                 part_id) or metrics
+
+
+def _unit_note(ctx, m: dict) -> str:
+    """A unit-slip warning when the new part's sizes are a unit factor of the numbers in the
+    run's request (mises.unit_guard). Best effort: no run row, no note."""
+    try:
+        from ..unit_guard import note
+        task = ctx.store.get_run(ctx.run_id).task
+        return note(task or "", list(m["bbox"]["size"]))
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _summary(part_id: str, m: dict) -> str:
