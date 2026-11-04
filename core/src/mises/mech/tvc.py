@@ -265,8 +265,11 @@ def tvc_gimbal(p: dict):
     p_rod_l = p_z - p_tab_z
     if corner > R - tol + 1e-6:
         raise ValueError(f"the servos need an airframe ID over {2 * (corner + tol):.0f} mm "
-                         f"(have {p['airframe_id']:g}) in the {layout} layout; try "
-                         "servo_layout inboard, a smaller horn_r or a larger airframe")
+                         f"(have {p['airframe_id']:g}) in the {layout} layout; "
+                         + ("try servo_layout inboard, a smaller horn_r or a larger airframe"
+                            if layout == "outboard" else
+                            "a larger airframe ID (a thinner printed wall, or a 2.6 in "
+                            "BT-80 tube at 65.6 mm ID) or a smaller servo"))
 
     k.part("mount", "gimbal_ring", "thrust ring + servo mount", mat, id=2 * m_ri, od=2 * m_ro,
            height=ring_h, pin_d=bore, pin_angles=[0.0, 180.0], flange_od=2 * R,
