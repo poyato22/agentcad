@@ -94,6 +94,10 @@ TABLE: tuple[Perf, ...] = (
          _RPM(0.222), 2.7, 0.18, 55, (45.2, 24.7, 35),
          source="Waveshare ST3215 page [V]: 30 kg.cm @12 V, 0.222 s/60 deg; rated ~1/3 "
                 "stall [2]", aliases=("st3215",)),
+    Perf("servo_sts3250", "Feetech STS3250 bus servo (12 V, 50 kg.cm)", "bus_servo", 12.0,
+         4.9033, 1.5691, _RPM(0.133), 4.2, 0.28, 74.5, (45.22, 24.72, 35),
+         source="Feetech ST-3250-C001 page [V]: 50 kg.cm peak stall, 16 kg.cm rated @12 V, "
+                "0.133 s/60 deg", aliases=("sts3250", "st3250", "feetech_sts3250")),
     Perf("dynamixel_xl430_w250", "Dynamixel XL430-W250-T", "bus_servo", 11.1, 1.4, 0.5, 57,
          1.3, 0.05, 57.2, (28.5, 46.5, 34), source="ROBOTIS e-manual [V]",
          aliases=("xl430", "xl430_w250")),
@@ -171,10 +175,18 @@ def set_item_lookup(fn: Callable[[str], dict | None] | None) -> None:
     _item_lookup = fn
 
 
-def _spec(it: dict, *keys: str):
-    for s in it.get("specs") or []:
+def _spec(it: dict, *keys: str, contains: tuple[str, ...] = (), without: tuple[str, ...] = ()):
+    """The first spec whose key is one of `keys`, else whose key contains every word of one
+    `contains` entry ("stall_torque" finds peak_stall_torque) and none of `without`."""
+    specs = it.get("specs") or []
+    for s in specs:
         if str(s.get("key", "")).lower() in keys:
             return s
+    for want in contains:
+        for s in specs:
+            k = str(s.get("key", "")).lower()
+            if all(w in k for w in want.split()) and not any(w in k for w in without):
+                return s
     return None
 
 
@@ -206,14 +218,16 @@ def _perf_from_item(it: dict) -> Perf | None:
         for k, p in _BY_KEY.items():
             if len(k) >= 5 and re.search(rf"(^|_){re.escape(k)}(_|$)", n):
                 return p
-    tq = _spec(it, "torque", "stall_torque", "holding_torque")
+    tq = _spec(it, "torque", "stall_torque", "holding_torque", "max_torque",
+               contains=("stall torque", "peak torque", "max torque"), without=("rated",))
     raw = str((tq or {}).get("value") or "")
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(kg\.?\s*[·.]?\s*cm|kgf\.?cm|n\.?\s*[·.]?\s*m|nm)", raw,
-                  re.I)
-    if not m:
+    stall = _torque_nm(raw)
+    if stall is None:
         return None
-    stall = float(m.group(1)) * (0.0980665 if m.group(2).lower().startswith("kg") else 1.0)
-    sp = str((_spec(it, "no_load_speed", "speed") or {}).get("value") or "")
+    rated = _torque_nm(str((_spec(it, "rated_torque", contains=("rated torque",)) or {})
+                           .get("value") or ""))
+    sp = str((_spec(it, "no_load_speed", "speed", contains=("no load speed", "speed"))
+              or {}).get("value") or "")
     rpm_m = re.search(r"(\d+(?:\.\d+)?)\s*rpm", sp, re.I)
     sec_m = re.search(r"(\d+(?:\.\d+)?)\s*s(?:ec)?\s*/\s*60", sp, re.I)
     rpm = float(rpm_m.group(1)) if rpm_m else (_RPM(float(sec_m.group(1))) if sec_m else None)
@@ -225,12 +239,24 @@ def _perf_from_item(it: dict) -> Perf | None:
         float((it.get("dims") or {}).get("mass_g") or 0.0)
     return Perf(id=str(it.get("id")), name=str(it.get("name") or it.get("id"))[:80],
                 type="servo", voltage_v=float(volt.group(1)) if volt else 0.0,
-                stall_torque_nm=round(stall, 4), rated_torque_nm=round(stall / 3, 4),
+                stall_torque_nm=round(stall, 4),
+                rated_torque_nm=round(rated if rated else stall / 3, 4),
                 no_load_rpm=round(rpm, 2),
-                stall_current_a=_num(_spec(it, "locked_rotor_current", "stall_current"), amps)
-                or 1.0,
-                idle_current_a=_num(_spec(it, "no_load_current", "idle_current"), amps) or 0.01,
-                mass_g=mass, source="catalog import (vendor specs; rated ~1/3 stall [2])")
+                stall_current_a=_num(_spec(it, "locked_rotor_current", "stall_current",
+                                           contains=("stall current", "locked current")),
+                                     amps) or 1.0,
+                idle_current_a=_num(_spec(it, "no_load_current", "idle_current",
+                                          contains=("no load current",)), amps) or 0.01,
+                mass_g=mass, source="catalog import (vendor specs" +
+                ("" if rated else "; rated ~1/3 stall [2]") + ")")
+
+
+def _torque_nm(raw: str) -> float | None:
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(kg\.?\s*[·.]?\s*cm|kgf\.?cm|n\.?\s*[·.]?\s*m|nm)", raw,
+                  re.I)
+    if not m:
+        return None
+    return float(m.group(1)) * (0.0980665 if m.group(2).lower().startswith("kg") else 1.0)
 
 
 def _from_user_catalog(item_id: str) -> Perf | None:

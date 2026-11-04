@@ -1,6 +1,8 @@
 """DOG demo: a joint driven through an external reduction (a 2:1 belt after the servo) must be
 checked against the reduced actuator. dyn_torque's actuator map keeps the reduced perf's id
 ("<id>@2"); resolving that id again dropped the reduction, so a fixed drivetrain still failed."""
+import pytest
+
 from mises.dyn import checks
 from mises.engineering import actuators as act
 
@@ -68,6 +70,28 @@ def test_a_free_base_servo_that_kept_up_is_sized_on_what_it_drew():
     assert lag["peak_nm"] == 3.0 and lag["status"] == "fail"
     fixed = checks.torque_row({**j, "free_base": False}, perf)
     assert fixed["peak_nm"] == 3.0
+
+
+def test_a_feetech_page_with_its_own_spec_names_resolves(monkeypatch):
+    """DOG demo: the imported STS3250 page names its specs peak_stall_torque, rated_torque,
+    stall_current, runnig_current_at_no_load: the lead could not simulate the upgrade."""
+    item = {"id": "url_f", "category": "motor",
+            "name": "12V 50KG Magnetic Encoder Double Shaft TTL Servo",
+            "specs": [{"key": "model", "value": "ST-3250-C001", "unit": None},
+                      {"key": "weight", "value": "74.5± 1g", "unit": None},
+                      {"key": "communication_speed", "value": "38400bps ~ 1 Mbps"},
+                      {"key": "no_load_speed", "value": "0.133sec/60°@12V", "unit": None},
+                      {"key": "runnig_current_at_no_load", "value": "280mA@12V"},
+                      {"key": "peak_stall_torque", "value": "50kg.cm@12V", "unit": None},
+                      {"key": "rated_torque", "value": "16kg.cm@12V", "unit": None},
+                      {"key": "stall_current", "value": "4.2A@12V", "unit": None}]}
+    monkeypatch.setattr(act, "_item_lookup", {"url_f": item}.get)
+    p = act.resolve("url_f")
+    assert p.stall_torque_nm == round(50 * 0.0980665, 4)
+    assert p.rated_torque_nm == round(16 * 0.0980665, 4)
+    assert round(p.no_load_rpm) == 75 and p.voltage_v == 12
+    assert p.stall_current_a == 4.2 and p.idle_current_a == pytest.approx(0.28)
+    assert p.mass_g == 74.5
 
 
 def test_torque_rows_check_against_the_reduced_actuator():
