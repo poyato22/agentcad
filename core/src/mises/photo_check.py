@@ -60,28 +60,7 @@ def compare_masks(render: np.ndarray, photo: np.ndarray) -> dict:
     Image.fromarray(img, "RGB").save(buf, "PNG")
     err = abs(ra - pa) / pa if pa else None
     return {"iou": round(iou, 4), "render_aspect": round(ra, 4), "photo_aspect": round(pa, 4),
-            "aspect_error": None if err is None else round(err, 4), "png": buf.getvalue(),
-            "extra_at": _where(r & ~p, union), "missing_at": _where(p & ~r, union)}
-
-
-_ROWS, _COLS = ("top", "middle", "bottom"), ("left", "centre", "right")
-
-
-def _where(diff: np.ndarray, union: int, share: float = 0.4, floor: float = 0.02) -> list[str]:
-    """Where in the image (thirds, image directions) a mismatch is concentrated: the row and
-    column bands holding at least `share` of it, when it is at least `floor` of the
-    silhouettes' union."""
-    total = int(diff.sum())
-    if union == 0 or total < floor * union:
-        return []
-    n = diff.shape[0]
-    out = []
-    for names, axis in ((_ROWS, 1), (_COLS, 0)):
-        bands = [diff[k * n // 3:(k + 1) * n // 3, :] if axis == 1 else
-                 diff[:, k * n // 3:(k + 1) * n // 3] for k in range(3)]
-        out += [nm for nm, b in zip(names, bands)
-                if b.sum() >= share * total and nm not in ("middle", "centre")]
-    return out
+            "aspect_error": None if err is None else round(err, 4), "png": buf.getvalue()}
 
 
 def photo_bytes(ctx: ToolContext, image_id: str) -> bytes:
@@ -146,14 +125,6 @@ async def reference_photo_check(ctx: ToolContext, args: PhotoCheckArgs) -> ToolO
         wider = res["render_aspect"] > res["photo_aspect"]
         hint = (f" The model's outline is {'wider' if wider else 'taller'} than the photo's by"
                 f" {res['aspect_error']:.0%}: check the overall proportions first.")
-    if not ok:
-        if res.get("extra_at"):
-            hint += f" Extra model material (red) is mostly at the {', '.join(res['extra_at'])}."
-        if res.get("missing_at"):
-            hint += (f" Material the photo shows but the model lacks (blue) is mostly at the "
-                     f"{', '.join(res['missing_at'])}.")
-        hint += (" Fix the largest mismatch and check again; keep going until it is within"
-                 " tolerance, or say why the photo cannot be matched.")
     return ToolOutput(
         summary=(f"Outline {verdict} the photo ({args.view} view): aligned IoU {res['iou']:.2f}"
                  f" (tolerance {args.tolerance:.2f}).{hint} Overlay: grey both, red only the"
