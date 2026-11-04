@@ -413,3 +413,11 @@ def test_a_split_result_says_how_to_join_it():
                  hint="keep the load face inside the design space")
     assert "dropped" in jobs.verify_hint(e, rep)
     assert jobs.verify_hint(e, {"islands_dropped_pct": 0.0}) == e.hint
+
+
+def test_the_element_cap_fits_the_memory_budget():
+    """DOG demo: at the old 160k-element cap every hip-bracket variant used 4.2-4.6 GB and was
+    stopped at the 4096 MB budget. The cap leaves 15 % headroom on the measured footprint."""
+    need = jobs.BASE_MB + jobs.MAX_ELEMENTS * jobs.KB_PER_ELEMENT / 1024
+    assert need <= 0.85 * jobs.MEMORY_MB
+    assert jobs.MAX_ELEMENTS > jobs.TARGET_ELEMENTS

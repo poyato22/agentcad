@@ -150,6 +150,10 @@ async def test_interference_and_glb(rt):
         jlen = struct.unpack("<I", data[12:16])[0]
         gltf = json.loads(data[20:20 + jlen])
         assert len(gltf["nodes"]) == 2
+        # the whole build as one STEP (DOG demo: only single parts could be exported)
+        step = client.get("/projects/p/assembly.step", headers=AUTH)
+        assert step.status_code == 200 and b"ISO-10303-21" in step.content[:200]
+        assert "p_assembly.step" in step.headers["content-disposition"]
 
 
 def test_traversing_part_id_rejected_by_route(client):

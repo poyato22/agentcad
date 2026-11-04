@@ -274,4 +274,21 @@ def build_assembly_router(runtime: Runtime) -> APIRouter:
             raise MisesError(ErrorCode.NOT_FOUND, "assembly has no renderable geometry")
         return Response(real.read_bytes(), media_type="model/gltf-binary", headers=headers)
 
+    @router.get("/projects/{project_id}/assembly.step")
+    async def assembly_step(project_id: str):
+        """The whole build as one STEP (every built part at its solved pose), cached by the
+        same key as the GLB."""
+        asm, res = _solved(project_id)
+        out = Path(runtime.home) / "assembly_cache" / _glb_key(asm, res)
+        cached = out / "assembly.step"
+        if not cached.is_file():
+            geo = await run_geometry(parts_root(), asm, res, want="step", out_dir=out,
+                                     timeout_s=240)
+            cached = geo.step_path
+        real = _contained(Path(runtime.home), cached) if cached is not None else None
+        if real is None or not real.is_file():
+            raise MisesError(ErrorCode.NOT_FOUND, "assembly has no exportable geometry")
+        return Response(real.read_bytes(), media_type="application/step", headers={
+            "Content-Disposition": f'attachment; filename="{project_id}_assembly.step"'})
+
     return router

@@ -86,6 +86,85 @@ def test_tilt_test_of_a_tall_box_tips_near_its_static_angle():
     assert tip is not None and abs(tip - out["static_tip_angle_deg"]) <= 5.0
 
 
+def test_a_motion_reports_body_tilt_and_non_foot_floor_contacts():
+    """DOG demo: during a trot only two feet are down, so the CoP sits ON the support line and
+    its 'margin' is 0 by construction: the walk study failed every trot ("tips mid-step").
+    What shows a robot falling is its body: the tilt, the CoM drop and parts that are not feet
+    touching the floor."""
+    out = engine.run({"task": "torque", "model": box_model(),
+                      "trajectory": {"kind": "hold", "duration_s": 0.3}})
+    st = out["stability"]
+    assert st["max_tilt_deg"] == pytest.approx(0.0, abs=0.5)
+    assert st["non_foot_floor_contacts"] == [] and st["com_drop_m"] < 0.002
+    belly = box_model()
+    belly["bodies"][0]["geoms"][0]["foot"] = False
+    st = engine.run({"task": "torque", "model": belly,
+                     "trajectory": {"kind": "hold", "duration_s": 0.3}})["stability"]
+    assert st["non_foot_floor_contacts"] == ["box"]
+
+
+def test_the_actuator_demand_is_band_limited_but_the_impact_is_kept():
+    """DOG demo: a slow trot's knee 'needed' 3.0 N m from a few-ms foot-strike spike while the
+    servo tracked within 1 deg drawing 1.2 N m. A servo's loop cannot follow (or be asked for)
+    a 4 ms spike: the gears and structure take it. Sizing reads the inverse dynamics
+    band-limited at the servo's bandwidth (a 20 ms mean); the raw impact peak is reported."""
+    n = 200
+    arr = np.ones((n, 1))               # a 1 N m plateau (0.4 s at 2 ms samples)
+    arr[100:102, 0] = 10.0               # a 4 ms spike of 10 N m
+    demand, impact = engine._inverse_bands(arr)
+    assert impact[:, 0].max() == pytest.approx(1 + 18 / 5)    # the 10 ms mean: the strike
+    assert demand[:, 0].max() == pytest.approx(1 + 18 / 10)   # the 20 ms mean: half of it
+    assert demand[50, 0] == pytest.approx(1.0)
+
+
+def test_a_lower_leg_touches_the_floor_only_through_its_foot():
+    """DOG demo: a diagonal shank's collision box (its part's bounding box) reached the floor
+    behind the foot, so the gait and the FEM hand-off saw a 15 N 'contact' 110 mm from the
+    foot. In the dynamics a body with a foot touches the floor only through the foot; the
+    range-of-motion sweep (self-collision) still uses every box."""
+    from mises.dyn import mjmodel
+    model = box_model()
+    model["bodies"][0]["geoms"].append({"name": "shin", "size": [0.1, 0.01, 0.01],
+                                        "pos": [0, 0, 0]})
+    m, _ = mjmodel.compile_model(model, "dyn")
+    shin, foot = m.geom("shin"), m.geom("b")
+    assert shin.conaffinity[0] == 0 and shin.contype[0] == 0
+    assert foot.conaffinity[0] != 0
+    r, _ = mjmodel.compile_model(model, "rom")
+    assert r.geom("shin").conaffinity[0] != 0
+
+
+def test_the_fem_load_snapshot_skips_a_one_sample_contact_spike():
+    """DOG demo: 'check part stresses' loaded a thigh with 45 N (3.2 body weights) taken from
+    one 2 ms sample of a foot strike. The load case is the snapshot nearest the peak of the
+    10 ms mean (the same band as the joint 'impact'), not the single-sample spike."""
+    mags = [10.0] * 40
+    mags[20] = 45.0                        # one 2 ms contact-solver spike
+    mags[28:33] = [17.0, 18.0, 19.0, 18.0, 17.0]   # a real 10 ms load peak
+    k = engine._representative_peak(mags)
+    assert mags[k] < 20.0 and 28 <= k <= 32
+
+
+def test_a_foot_strike_does_not_count_as_the_servo_saturating():
+    """DOG demo: every trot joint read 100 % of stall because the stiff PD servo answers a foot
+    strike within a few ms by hitting its force limit. The motor's demand is the same 20 ms
+    band as the inverse dynamics; the raw peak stays in `peak_impact`."""
+    model = box_model(0.06, 0.06, 0.06, mass=1.0)
+    model["bodies"][0]["pos"] = [0, 0, 0.08]          # dropped 50 mm onto the floor
+    model["bodies"].append(
+        {"name": "arm", "parent": "box", "pos": [0.03, 0, 0], "mass": 0.6,
+         "com": [0.05, 0, 0], "inertia": _box_inertia(0.2, 0.1, 0.02, 0.02),
+         "joints": [{"name": "j", "type": "hinge", "axis": [0, 1, 0], "armature": 0.004}],
+         "geoms": [{"name": "ga", "size": [0.05, 0.01, 0.01], "pos": [0.05, 0, 0]}]})
+    model["actuators"] = [{"name": "a", "joint": "j", "kp": 39.2, "kv": 0.792,
+                           "forcerange": [-1.96, 1.96]}]
+    j = engine.run({"task": "torque", "model": model,
+                    "trajectory": {"kind": "hold", "duration_s": 0.6, "settle_s": 0.0}}
+                   )["joints"][0]
+    assert j["peak_impact"] > 1.85 and j["peak_impact"] >= j["peak_servo"]   # nearly saturated
+    assert j["peak_servo"] < 1.96 * 0.9               # the strike is not the motor's demand
+
+
 def fourbar_model(a=0.04, b=0.12, c=0.08, dd=0.10):
     """Spike fourbar: crank a, coupler b, rocker c, ground d in the XZ plane, closed by an
     equality connect at the coupler tip."""
@@ -220,3 +299,25 @@ def test_swinging_link_inverse_dynamics_matches_closed_form():
         assert tau == pytest.approx(want, rel=0.01, abs=2e-3), t
         checked += 1
     assert checked > 50
+
+
+def test_a_servo_tracks_a_fast_move_without_fighting_its_own_damping():
+    """DOG demo: the position-servo model damped ABSOLUTE joint speed (kv qdot), so at 70 rpm a
+    2 N m servo spent 5.8 N m on damping alone: every trot saturated with 15-25 deg of lag.
+    A real servo's loop tracks the moving setpoint, so the damping acts on the speed error
+    (velocity feed-forward). A light link swung 1 rad in 0.25 s (peak ~60 rpm) by a 2 N m
+    servo needs well under 1 N m: it must track within a few degrees, unsaturated."""
+    model = {"timestep": 0.001, "floor": None, "bodies": [
+        {"name": "link", "parent": None, "pos": [0, 0, 0], "mass": 0.1, "com": [0.05, 0, 0],
+         "inertia": [[1e-5, 0, 0], [0, 1e-4, 0], [0, 0, 1e-4]],
+         "joints": [{"name": "j", "type": "hinge", "axis": [0, 0, 1], "armature": 0.004,
+                     "damping": 0.0}],
+         "geoms": [{"name": "g", "size": [0.05, 0.01, 0.01], "pos": [0.05, 0, 0]}]}],
+        "actuators": [{"name": "a", "joint": "j", "kp": 39.2, "kv": 0.792,
+                       "forcerange": [-1.96, 1.96]}]}
+    out = engine.run({"task": "torque", "model": model, "trajectory": {
+        "kind": "keyframes", "keys": [{"t": 0.25, "q": {"j": 1.0}}, {"t": 0.5, "q": {"j": 0.0}}]}})
+    j = out["joints"][0]
+    assert j["peak_speed"] > 5.0                        # it really moved fast (~60 rpm)
+    assert math.degrees(j["max_tracking_error"]) < 4.0
+    assert j["peak_servo"] < 1.2

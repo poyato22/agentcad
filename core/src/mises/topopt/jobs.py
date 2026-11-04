@@ -45,7 +45,10 @@ RECORD = "record.json"
 WORKER_MODULE = "mises.topopt.worker"
 TARGET_ELEMENTS = 50_000
 MAX_FILTER_VOXELS = 6.0
-MAX_ELEMENTS = 160_000
+#: a variant's peak memory, measured (DOG demo: 160k elements used 4.2-4.6 GB and every
+#: variant was stopped at the 4096 MB budget; 110k still reached 4.1 GB): ~1 GB + ~30 kB/element
+BASE_MB, KB_PER_ELEMENT = 1000.0, 30.0
+MAX_ELEMENTS = 80_000
 LOW_VF = 0.15
 MAX_PARALLEL = 3
 VARIANT_TIMEOUT_S = 3600.0

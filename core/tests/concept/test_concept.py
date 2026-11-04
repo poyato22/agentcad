@@ -462,6 +462,26 @@ def test_approve_and_skip_open_the_gate_and_tell_the_lead(home):
         assert r.json()["concept"]["status"] == "skipped"
 
 
+def test_approval_drops_the_concept_messages_still_queued_for_the_lead(home):
+    """DOG demo: the user picked a pitch and marked sketch v1 while the lead was busy; it
+    approved v3 later, and the lead, on reading the stale "Chose Whippet" after finishing the
+    build, started re-sketching. An approval supersedes queued picks and sketch marks."""
+    from mises.concept import service
+    from mises.orchestrator import lead as lead_mod
+    rt = Runtime(home, provider_resolver=lambda ref: (Capture(), "m"))
+    lid = rt.create_external_run("engineer", provider="ui", model="m", task="dog")
+    rt.lead_queues[lid] = [
+        {"message_id": "msg_a", "text": "t", "shown": "Chose Whippet",
+         "log": {"text": "Chose Whippet", "concept_choice": {"pitch_id": "p", "label": "W"}}},
+        {"message_id": "msg_b", "text": "t", "shown": "Sketch feedback v1",
+         "log": {"text": "Sketch feedback v1", "concept_feedback": {"sketch_id": "s"}}},
+        {"message_id": "msg_c", "text": "and make it orange", "shown": "and make it orange",
+         "log": None}]
+    dropped = service.drop_superseded(rt, lid)
+    assert dropped == ["msg_a", "msg_b"]
+    assert [m["message_id"] for m in lead_mod.queued_messages(rt, lid)] == ["msg_c"]
+
+
 def test_choose_a_pitch_option_or_a_mix(home):
     prov = Capture()
     rt = Runtime(home, provider_resolver=lambda ref: (prov, "m"))

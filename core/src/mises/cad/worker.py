@@ -1126,6 +1126,101 @@ def _assembly_interference(items, threshold: float) -> list:
     return out
 
 
+def _rel_key(ma, mb) -> tuple:
+    """A pair's relative pose (b in a's frame), rounded: the same key means the same answer."""
+    rel = _mul(_inv_rigid(_rigid(ma)), _rigid(mb))
+    return tuple(round(rel[r][c], 6) for r in range(3) for c in range(4))
+
+
+def _box_gap(a, b) -> float:
+    """A lower bound of two shapes' distance: the gap between their world boxes."""
+    (alo, ahi), (blo, bhi) = a, b
+    return math.sqrt(sum(max(0.0, blo[k] - ahi[k], alo[k] - bhi[k]) ** 2 for k in range(3)))
+
+
+def _sweep_positions(loaded, poses: list[dict], threshold: float, location) -> list[dict]:
+    """Every sweep position (interference + the closest pair), sharing the work across poses:
+    a pair at a relative pose already measured reuses that answer (a one-joint sweep moves few
+    pairs), and the distances are taken nearest boxes first, stopping once a box gap is no
+    closer than the closest pair found. Same results as _sweep_pose per pose (DOG demo: an
+    8-step knee sweep of 40 instances timed out at 240 s measuring all ~800 pairs per pose)."""
+    from build123d import Location as _Loc
+
+    common_memo: dict = {}
+    dist_memo: dict = {}
+    out = []
+    for pose in poses:
+        items = [(name, shape, pose.get(name, m)) for name, shape, m, _i in loaded]
+        boxes = [_world_box(s, m) for _n, s, m in items]
+        hits, overlap, pairs = [], set(), []
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                (na, sa, ma), (nb, sb, mb) = items[i], items[j]
+                key = (i, j, _rel_key(ma, mb))
+                gap = _box_gap(boxes[i], boxes[j])
+                pairs.append((gap, i, j, key))
+                if gap > 0.0:
+                    continue
+                if key not in common_memo:
+                    try:
+                        rel = _mul(_inv_rigid(_rigid(ma)), _rigid(mb))
+                        common = sa & sb.moved(_Loc(_trsf(rel)))
+                        vol = float(getattr(common, "volume", 0.0) or 0.0)
+                    except Exception:  # noqa: BLE001 - as _assembly_interference
+                        common, vol = None, 0.0
+                    box = None
+                    if vol > threshold and common is not None:
+                        try:
+                            box = _world_box(common, _rigid(ma))
+                        except Exception:  # noqa: BLE001
+                            box = None
+                    common_memo[key] = (vol, box, _rigid(ma))
+                vol, box, ra_then = common_memo[key]
+                if vol > threshold:
+                    hit = {"a": na, "b": nb, "volume_mm3": round(vol, 4)}
+                    if box is not None:
+                        # the memo's box is in the world of the pose that measured it: move it
+                        # by this pose's change of a's placement
+                        shift = _mul(_rigid(ma), _inv_rigid(ra_then))
+                        lo, hi = box
+                        pts = [_apply(shift, [lo[0] if k & 1 else hi[0], lo[1] if k & 2 else hi[1],
+                                              lo[2] if k & 4 else hi[2]]) for k in range(8)]
+                        lo = [min(p[a] for p in pts) for a in range(3)]
+                        hi = [max(p[a] for p in pts) for a in range(3)]
+                        hit["bbox"] = {"min": [round(v, 3) for v in lo],
+                                       "max": [round(v, 3) for v in hi]}
+                        hit["center"] = [round((lo[k] + hi[k]) / 2, 3) for k in range(3)]
+                    hits.append(hit)
+                    overlap.add((i, j))
+        best = None
+        for gap, i, j, key in sorted(pairs, key=lambda p: p[0]):
+            if best is not None and gap >= best[0]:
+                break
+            if (i, j) in overlap:
+                d = 0.0
+            elif key in dist_memo:
+                d = dist_memo[key]
+            else:
+                (_na, sa, ma), (_nb, sb, mb) = items[i], items[j]
+                try:
+                    rel = _mul(_inv_rigid(_rigid(ma)), _rigid(mb))
+                    d = float(sa.distance_to(sb.moved(_Loc(_trsf(rel)))))
+                except Exception:  # noqa: BLE001 - an unmeasurable pair is skipped
+                    dist_memo[key] = None
+                    continue
+                dist_memo[key] = d
+            if d is None:
+                continue
+            if best is None or d < best[0]:
+                best = (d, items[i][0], items[j][0])
+            if best[0] == 0.0:
+                break
+        out.append({"interferences": hits,
+                    "min_clearance_mm": None if best is None else round(best[0], 4),
+                    "closest": None if best is None else [best[1], best[2]]})
+    return out
+
+
 def _sweep_pose(loaded, pose: dict, threshold: float, location) -> dict:
     """One sweep position: pairwise interference, and the smallest clearance between any pair
     (0 where they overlap) with that pair's names."""
@@ -1256,11 +1351,18 @@ def _assembly(job_path: Path, nonce: str) -> None:
     if want == "sweep":
         # Plan 7 R19: one worker for a whole joint sweep; each STEP is read once. Every pose
         # maps instance name -> transform (missing names keep their job transform).
-        result["positions"] = [_sweep_pose(loaded, pose, threshold, Location)
-                               for pose in job.get("poses") or []]
+        result["positions"] = _sweep_positions(loaded, job.get("poses") or [], threshold,
+                                               Location)
 
     if want in ("both", "interference"):
         result["interferences"] = _assembly_interference(loaded, threshold)
+
+    if want == "step":
+        # the whole assembly as one STEP: every instance's solids at its solved world pose
+        placed = [shape.moved(Location(_trsf(m))) for _name, shape, m, _iid in loaded]
+        b3.export_step(b3.Compound(placed), str(out_dir / "new_assembly.step"))
+        os.replace(out_dir / "new_assembly.step", out_dir / "assembly.step")
+        result["step"] = "assembly.step"
 
     if want in ("both", "glb"):
         items = []

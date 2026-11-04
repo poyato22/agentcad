@@ -171,6 +171,14 @@ def note_source_read(run_id: str | None, d: Path, version: int) -> None:
     _source_seen[_seen_key(run_id, d)] = int(version)
 
 
+def _carry_source_read(ctx: ToolContext, d: Path, version: int) -> None:
+    """A vars-only rebuild leaves part.py as it was: a run that had read the source at the
+    version just before still knows it."""
+    key = _seen_key(getattr(ctx, "run_id", None), d)
+    if _source_seen.get(key) == version - 1:
+        _source_seen[key] = version
+
+
 def _guard(ctx: ToolContext, part_id: str, d: Path, base_version: int | None) -> ToolOutput | None:
     """Merge-style edits. None when the edit may proceed, else the conflict result. Call under
     the part lock."""
@@ -645,6 +653,7 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
         new_vars = res.vars
         version = _finish_edit(ctx, args.part_id, d,
                                "set " + ", ".join(f"{k}={args.vars[k]}" for k in args.vars))
+        _carry_source_read(ctx, d, version)
     m = _with_mass(ctx, args.part_id, res.metrics)
     # the mass delta is geometry only: the previous volume at the CURRENT material's density
     # (a material change since the last build must not show up as a geometry change)

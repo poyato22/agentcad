@@ -192,6 +192,36 @@ async def test_release_waits_for_nothing_mid_turn(rt):
     task.cancel()
 
 
+async def test_a_released_child_keeps_its_final_answer(rt):
+    """DOG demo: agent_wait released the designers' sessions, then agent_result read "" for
+    all three (their reports were lost). The released run's answer is its last turn's text."""
+    from mises.agent.loop import RunResult
+    rid = _claude_run(rt)
+    rt._claude[rid] = _ClaudeRun(session=_FakeSession(),
+                                 result=RunResult(final_text="10 parts built", messages=[],
+                                                  stop_reason="end_turn"))
+    rt.store.update_run(rid, status="done")
+    await rt.release_claude_session(rid)
+    res = await rt.wait(rid)
+    assert res.stop_reason == "end_turn" and res.final_text == "10 parts built"
+
+
+async def test_a_child_released_by_another_process_reads_its_answer_from_the_steps(rt):
+    from mises.types import StepKind
+    rid = _claude_run(rt)
+    rt.store.append_step(rid, StepKind.MESSAGE, {"role": "user", "text": "build legs"})
+    rt.store.append_step(rid, StepKind.MESSAGE, {"role": "assistant", "text": "early. "})
+    rt.store.append_step(rid, StepKind.MESSAGE, {"role": "user", "text": "now covers"})
+    rt.store.append_step(rid, StepKind.MESSAGE, {"role": "assistant", "text": "Covers done. ",
+                                                 "parent_tool_use_id": None})
+    rt.store.append_step(rid, StepKind.MESSAGE, {"role": "assistant", "text": "sub-agent chatter",
+                                                 "parent_tool_use_id": "toolu_1"})
+    rt.store.append_step(rid, StepKind.MESSAGE, {"role": "assistant", "text": "All valid."})
+    rt.store.update_run(rid, status="done")
+    res = await rt.wait(rid)
+    assert res.final_text == "Covers done. All valid."
+
+
 def test_runtime_has_the_ttl_constant():
     assert 0 < runtime_mod.CLAUDE_STATUS_TTL_S <= 10
     assert Runtime.release_claude_session

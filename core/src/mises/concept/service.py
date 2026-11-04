@@ -125,6 +125,19 @@ async def submit_feedback(rt: Runtime, sketch_id: str, body: FeedbackIn) -> dict
             "text": line, "images": len(attach)}
 
 
+SUPERSEDED_BY_APPROVAL = ("concept_choice", "concept_feedback")
+
+
+def drop_superseded(rt: Runtime, lead_id: str) -> list[str]:
+    """Drop the lead's queued pitch picks and sketch marks: an approval (or skip) settles the
+    concept, so delivering them afterwards only restarts the sketching (DOG demo). Returns the
+    dropped message ids."""
+    from ..orchestrator import lead as lead_mod
+    stale = [m["message_id"] for m in rt.lead_queues.get(lead_id) or []
+             if any(k in (m.get("log") or {}) for k in SUPERSEDED_BY_APPROVAL)]
+    return [mid for mid in stale if lead_mod.cancel_queued(rt, lead_id, mid)]
+
+
 async def approve(rt: Runtime, project_id: str, sketch_id: str | None) -> dict:
     store = _store(rt)
     sketch = store.get_sketch(sketch_id) if sketch_id else store.latest_sketch(project_id)
@@ -134,6 +147,8 @@ async def approve(rt: Runtime, project_id: str, sketch_id: str | None) -> dict:
         raise MisesError(ErrorCode.OUT_OF_SCOPE, "that sketch belongs to another build")
     rec = store.update(project_id, status="approved", approved_sketch_id=sketch["sketch_id"])
     lead = _lead(rt, project_id)
+    if lead is not None:
+        drop_superseded(rt, lead.id)
     publish_record(rt.events, lead.id if lead else None, rec)
     sent = None
     if lead is not None:
@@ -152,6 +167,8 @@ async def skip(rt: Runtime, project_id: str) -> dict:
     store = _store(rt)
     rec = store.update(project_id, status="skipped")
     lead = _lead(rt, project_id)
+    if lead is not None:
+        drop_superseded(rt, lead.id)
     publish_record(rt.events, lead.id if lead else None, rec)
     sent = None
     if lead is not None:

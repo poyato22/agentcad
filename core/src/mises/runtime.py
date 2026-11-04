@@ -73,6 +73,7 @@ from . import sketch as sketch_mod
 from .types import (Block, Caps, ErrorCode, ImageBlock, Message, MisesError, SafetyClass,
                     StepKind, TextBlock)
 from .ui_tools import register_ui_tools
+from .output_tools import register_output_tools
 
 log = logging.getLogger(__name__)
 
@@ -232,6 +233,7 @@ class Runtime:
         register_sim_tools(self.registry)
         register_onshape_tools(self.registry)
         register_ui_tools(self.registry)
+        register_output_tools(self.registry)
         register_print_tools(self.registry)
         register_engineering_tools(self.registry)
         register_orchestrator_tools(self.registry)
@@ -266,6 +268,9 @@ class Runtime:
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
+        # URL-imported actuators (a vendor servo page) resolve for dynamics and sizing too
+        from .engineering import actuators as _act
+        _act.set_item_lookup(self.catalog.existing)
         # the agent browser's snapshots and part cards, and the builds' parts lists (U4c)
         self.snapshots = SnapshotStore(self.store)
         self.part_cards = CardStore(self.store)
@@ -322,6 +327,9 @@ class Runtime:
         # Claude Code runs this process drives; the MCP endpoint (url, MCP-only token) of the
         # server serving this runtime, set by serve()/serve_async(); an optional starter for it
         self._claude: dict[str, _ClaudeRun] = {}
+        # the last turn's answer of a released Claude Code session (agent_wait released it,
+        # agent_result reads it next); bounded, the steps are the fallback
+        self._released_text: dict[str, str] = {}
         self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
         # P11 F3: run id -> notes for the model, sent with its next Mises tool result (a call
         # of a tool Claude Code does not have: the real names it likely meant)
@@ -1787,6 +1795,10 @@ class Runtime:
         if st is None or (st.task is not None and not st.task.done()):
             return
         del self._claude[run_id]
+        if st.result is not None and st.result.final_text:
+            if len(self._released_text) > 500:
+                self._released_text.clear()
+            self._released_text[run_id] = st.result.final_text
         if st.session is not None:
             try:
                 await st.session.close()
@@ -2268,7 +2280,8 @@ class Runtime:
                                  hint="it is running in another Mises process")
             # its answer is the last turn's reply as stored (agent_wait releases a child's
             # session before agent_result reads it)
-            text = self._stored_reply(run_id) if stop == "end_turn" else ""
+            text = ((self._released_text.get(run_id) or self._stored_reply(run_id))
+                    if stop == "end_turn" else "")
             return RunResult(final_text=text, messages=[], stop_reason=stop,
                              error=None if stop == "end_turn" else f"run {status}")
         st = self._state(run_id)

@@ -20,6 +20,8 @@ except ImportError:                      # pragma: no cover - the worker injects
     mjmodel = trajmod = None             # type: ignore[assignment]
 
 SAMPLE_S = 0.002          # recorded every 2 ms
+INVERSE_FILTER_SAMPLES = 5  # free-base inverse dynamics: a 10 ms moving average (impacts)
+ACTUATOR_BAND_SAMPLES = 10  # ... and the actuator's demand: a 20 ms mean (servo bandwidth)
 SERIES_POINTS = 240       # points per chart series
 PENETRATION_TOL_M = 0.0005
 # MuJoCo enums as plain ints: numpy ints from the model arrays never compare equal to them
@@ -134,21 +136,32 @@ def _penetrations(m, d, skip: set, tol: float) -> list[dict]:
 
 # ---------------------------------------------------------------- simulate a plan
 
-def _simulate(m, d, plan, record_reactions: bool, floor_id: int):
-    """Track the plan with the position actuators. Returns per-sample records."""
+def _simulate(m, d, plan, record_reactions: bool, floor_id: int,
+              foot_geoms: frozenset = frozenset()):
+    """Track the plan with the position actuators. Returns per-sample records. `foot_geoms`:
+    the geom ids flagged as feet (any other floor contact is the body touching down)."""
     names = [m.actuator(a).name for a in range(m.nu)]
     jnames = trajmod.actuated(m)
     every = max(1, int(round(SAMPLE_S / m.opt.timestep)))
     steps = int(round(plan.duration_s / m.opt.timestep))
     rec = {"t": [], "qpos": [], "qvel": [], "qacc": [], "force": [], "err": [], "cop": [],
-           "support": [],
-           "com": [], "react": [], "contacts": [], "xmat": [], "xpos": [], "subcom": []}
+           "support": [], "com": [], "react": [], "contacts": [], "xmat": [], "xpos": [],
+           "subcom": [], "tilt": [], "touch": []}
+    root_body = m.body_rootid[1] if m.nbody > 1 else 0
     jq = [int(m.joint(j).qposadr[0]) for j in jnames]
+    # a position actuator is kp (q* - q) - kv qdot; a servo's own loop tracks the moving
+    # setpoint, so its damping acts on the speed ERROR: ctrl = q* + (kv / kp) qdot* gives
+    # kp (q* - q) + kv (qdot* - qdot). Without it a 2 N m servo spent all its torque damping a
+    # fast swing (DOG demo: every trot saturated with 15-25 deg of lag).
+    ff = [(-float(m.actuator_biasprm[a, 2]) / float(m.actuator_gainprm[a, 0])
+           if m.actuator_gainprm[a, 0] > 0 and m.actuator_biasprm[a, 1] < 0 else 0.0)
+          for a in range(len(jnames))]
     for i in range(steps + 1):
         t = i * m.opt.timestep
         tg = plan.at(t)
+        rate = plan.rate_at(t) if any(ff) else None
         for a, j in enumerate(jnames):
-            d.ctrl[a] = tg[j]
+            d.ctrl[a] = tg[j] + (ff[a] * rate[j] if rate is not None else 0.0)
         if i % every == 0:
             mujoco.mj_forward(m, d)
             rec["t"].append(t)
@@ -160,6 +173,11 @@ def _simulate(m, d, plan, record_reactions: bool, floor_id: int):
             root = m.body_rootid[1] if m.nbody > 1 else 0
             rec["com"].append(d.subtree_com[root].copy())
             cons = _robot_floor_contacts(m, d, floor_id) if floor_id >= 0 else []
+            # the body's tilt (its z axis from vertical) and the floor contacts of geoms that
+            # are not feet: what a fall looks like (the CoP cannot show it, see below)
+            zx = float(np.clip(d.xmat[root_body][8], -1.0, 1.0))
+            rec["tilt"].append(math.degrees(math.acos(zx)))
+            rec["touch"].append({c["geom"] for c in cons if c["geom"] not in foot_geoms})
             fz = sum(max(c["force"][2], 0.0) for c in cons)
             if fz > 1e-6:
                 cop = sum(c["pos"][:2] * max(c["force"][2], 0.0) for c in cons) / fz
@@ -245,12 +263,23 @@ def _inverse(m, rec, active, plan, jnames, free: bool):
         d2.qacc[:] = (v2 - v1) / dt
         mujoco.mj_inverse(m, d2)
         out.append([d2.qfrc_inverse[k] for k in dofs])
-    arr = np.array(out)
-    # the finite-difference noise of contacts: a 5-sample moving average
-    if len(arr) > 5:
-        k = np.ones(5) / 5
-        arr = np.vstack([np.convolve(arr[:, c], k, mode="same") for c in range(arr.shape[1])]).T
-    return arr
+    return np.array(out)
+
+
+def _mean_filter(arr: np.ndarray, n: int) -> np.ndarray:
+    if len(arr) <= n or arr.ndim != 2 or not arr.shape[1]:
+        return arr
+    k = np.ones(n) / n
+    return np.vstack([np.convolve(arr[:, c], k, mode="same") for c in range(arr.shape[1])]).T
+
+
+def _inverse_bands(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """A free base's inverse dynamics (finite-difference accelerations) as (actuator demand,
+    impact): the demand is band-limited to what a servo's loop can follow (a 20 ms mean, ~25 Hz
+    to its first null); foot-strike spikes shorter than that load the gears and structure, not
+    the motor, and stay in the impact series (the 10 ms mean that only removes the
+    differencing noise)."""
+    return (_mean_filter(arr, ACTUATOR_BAND_SAMPLES), _mean_filter(arr, INVERSE_FILTER_SAMPLES))
 
 
 def task_torque(job: dict) -> dict:
@@ -261,16 +290,26 @@ def task_torque(job: dict) -> dict:
     plan = trajmod.plan(m, model, job.get("trajectory") or {"kind": "hold"})
     plan_s = time.perf_counter() - t0
     t0 = time.perf_counter()
-    names, jnames, rec = _simulate(m, d, plan, bool(job.get("reactions")), _floor_id(m))
+    # a lower leg's own box may graze the floor beside its foot: only bodies without a foot
+    # (the trunk, hips, thighs) touching down is a fall
+    foot_bodies = {b["name"] for b in model["bodies"]
+                   if any(g.get("foot") for g in b.get("geoms", []))}
+    feet = frozenset(m.geom(g["name"]).id for b in model["bodies"] for g in b.get("geoms", [])
+                     if b["name"] in foot_bodies)
+    names, jnames, rec = _simulate(m, d, plan, bool(job.get("reactions")), _floor_id(m), feet)
     sim_s = time.perf_counter() - t0
     if any(not np.all(np.isfinite(q)) for q in rec["qpos"]):
         raise RuntimeError("the simulation went unstable (NaN): check masses, inertias and "
                            "joint frames")
     ts = np.array(rec["t"])
     active = ts >= plan.start_s - 1e-9
-    F = np.array(rec["force"])
+    F_raw = np.array(rec["force"])
+    # the stiff PD answers a foot strike within ms by hitting its force limit; the motor's
+    # demand is the same servo band as the inverse dynamics (the raw peak is the impact)
+    F = _mean_filter(F_raw, ACTUATOR_BAND_SAMPLES) if free else F_raw
     V = np.array(rec["qvel"])
     inv = _inverse(m, rec, active, plan, jnames, free)
+    inv, impact = _inverse_bands(inv) if free else (inv, inv)
     joints = []
     for a, j in enumerate(jnames):
         dof = int(m.joint(j).dofadr[0])
@@ -281,6 +320,8 @@ def task_torque(job: dict) -> dict:
             "peak_servo": _r(np.max(np.abs(f)) if len(f) else 0.0),
             "rms_servo": _r(np.sqrt(np.mean(f ** 2)) if len(f) else 0.0),
             "peak_inverse": _r(np.max(np.abs(iv)) if len(iv) else 0.0),
+            "peak_impact": _r(max(np.max(np.abs(impact[active, a])),
+                                  np.max(np.abs(F_raw[active, a]))) if len(iv) else 0.0),
             "rms_inverse": _r(np.sqrt(np.mean(iv ** 2)) if len(iv) else 0.0),
             "peak_speed": _r(np.max(np.abs(w)) if len(w) else 0.0),
             "rms_speed": _r(np.sqrt(np.mean(w ** 2)) if len(w) else 0.0),
@@ -289,6 +330,9 @@ def task_torque(job: dict) -> dict:
             # (speed, torque) operating points for the torque-speed check
             "points": _r(_thin([[abs(float(x)), abs(float(y))] for x, y in
                                 zip(w, np.maximum(np.abs(f), np.abs(iv)))], 160), 5),
+            # ... and the servo's own (what it drew), for a servo that kept up
+            "points_servo": _r(_thin([[abs(float(x)), abs(float(y))] for x, y in
+                                      zip(w, np.abs(f))], 160), 5),
             "series": {"t": _r(_thin(ts[active].tolist())),
                        "servo": _r(_thin(f.tolist())), "inverse": _r(_thin(iv.tolist())),
                        "target": _r(_thin([plan.at(t)[j] for t in ts[active]]))}})
@@ -298,32 +342,71 @@ def task_torque(job: dict) -> dict:
            "realtime_x": _r(plan.duration_s / max(sim_s, 1e-9), 1),
            "total_mass_kg": _r(sum(m.body_mass))}
     if free:
-        out["stability"] = _trajectory_stability(rec, active, model)
+        out["stability"] = _trajectory_stability(rec, active, model, m)
         # H4: how far the body travelled over the motion (a gait's forward progress)
         idx = [k for k, ok in enumerate(active) if ok]
         if idx and rec.get("com"):
             a, b = np.array(rec["com"][idx[0]]), np.array(rec["com"][idx[-1]])
             out["com_travel_m"] = _r(float(np.hypot(*(b - a)[:2])))
+            # the gait's real speed at full stride (between the ramp-in and the ramp-out)
+            tj = job.get("trajectory") or {}
+            if tj.get("kind") in ("trot", "walk"):
+                period = float(tj.get("period_s") or (1.2 if tj["kind"] == "walk" else 0.6))
+                cycles = int(tj.get("cycles", 3))
+                t0, t1 = plan.start_s + period / 2, plan.start_s + period * cycles - period / 2
+                ks = [k for k in idx if t0 <= rec["t"][k] <= t1]
+                if len(ks) > 1 and t1 > t0:
+                    pa, pb = np.array(rec["com"][ks[0]]), np.array(rec["com"][ks[-1]])
+                    out["com_speed_mps"] = _r(float(np.hypot(*(pb - pa)[:2])) /
+                                              (rec["t"][ks[-1]] - rec["t"][ks[0]]), 4)
     if job.get("reactions"):
         out["reactions"] = _reactions(m, rec, active)
     return out
 
 
-def _trajectory_stability(rec, active, model) -> dict:
+def _trajectory_stability(rec, active, model, m=None) -> dict:
+    """The CoP's margin inside the contacts' hull (a quasi-static gait's measure: the CoP is a
+    positive-weighted mean of the contact points, so it is never outside, and with two feet
+    down, a trot, it is 0 by construction), plus what shows a fall in any gait: the body's
+    largest tilt, how far the CoM dropped below where the motion started, and the parts that
+    are not feet that touched the floor."""
+    idx = [k for k, ok in enumerate(active) if ok]
+    tilts = [rec["tilt"][k] for k in idx] if rec.get("tilt") else []
+    touched = sorted({m.body(int(m.geom_bodyid[g])).name.removeprefix("b_")
+                      for k in idx for g in rec["touch"][k]}) if m is not None and \
+        rec.get("touch") else []
+    com_z = [c[2] for c in rec["com"]]
+    z0 = com_z[idx[0]] if idx else (com_z[0] if com_z else 0.0)
+    body = {"max_tilt_deg": _r(max(tilts) if tilts else 0.0, 2),
+            "com_drop_m": _r(max(0.0, z0 - min(com_z[k] for k in idx)) if idx else 0.0),
+            "non_foot_floor_contacts": touched}
     margins = []
-    for k, ok in enumerate(active):
-        if not ok or rec["cop"][k] is None:
+    for k in idx:
+        if rec["cop"][k] is None:
             continue
         margin, _ = _hull_margin(rec["support"][k], rec["cop"][k])
         margins.append((rec["t"][k], margin))
     if not margins:
-        return {"min_cop_margin_m": None, "note": "no floor contact during the motion"}
+        return {"min_cop_margin_m": None, "note": "no floor contact during the motion", **body}
     t_min, mmin = min(margins, key=lambda x: x[1])
-    com_z = [c[2] for c in rec["com"]]
     return {"min_cop_margin_m": _r(mmin), "at_s": _r(t_min, 4),
-            "com_z_range_m": _r([min(com_z), max(com_z)]),
+            "com_z_range_m": _r([min(com_z), max(com_z)]), **body,
             "series": {"t": _r(_thin([x[0] for x in margins])),
                        "margin": _r(_thin([x[1] for x in margins]))}}
+
+
+def _representative_peak(mags: list[float], n: int = INVERSE_FILTER_SAMPLES) -> int:
+    """The sample for a link's peak-load snapshot: at the peak of the n-sample mean (the joint
+    'impact' band), the sample in that window closest to the mean. The snapshot stays one
+    consistent instant (its child reactions and contacts balance), and a single-sample
+    contact-solver spike is not taken for the load."""
+    a = np.asarray(mags, dtype=float)
+    if len(a) <= n:
+        return int(np.argmax(a))
+    sm = np.convolve(a, np.ones(n) / n, mode="same")
+    c = int(np.argmax(sm))
+    lo, hi = max(0, c - n // 2), min(len(a), c + n // 2 + 1)
+    return lo + int(np.argmin(np.abs(a[lo:hi] - sm[c])))
 
 
 def _reactions(m, rec, active) -> list[dict]:
@@ -350,7 +433,7 @@ def _reactions(m, rec, active) -> list[dict]:
             vecs.append((force, moment, xa))
         if not mags:
             continue
-        kk = int(np.argmax(mags))
+        kk = _representative_peak(mags)
         k = idx[kk]
         force, moment, xa = vecs[kk]
         axis = _axis(m, rec, k, jid, b)

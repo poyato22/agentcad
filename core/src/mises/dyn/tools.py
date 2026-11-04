@@ -392,6 +392,8 @@ async def dyn_torque(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
             "card": card, "accuracy": card["accuracy"], "stream": "sim"}
     if res.get("com_travel_m") is not None:
         data["com_travel_mm"] = round(res["com_travel_m"] * 1000, 1)
+    if res.get("com_speed_mps") is not None:
+        data["com_speed_mps"] = res["com_speed_mps"]
     return ToolOutput(summary=summary, data=data, warnings=ex.notes, step_kind=StepKind.SIM_RUN)
 
 
@@ -516,8 +518,11 @@ async def _confirm_exact(ctx: ToolContext, asm, ex, res: dict, rows: list[dict])
     for r, _a, _b in hits:
         moved = motion.with_values(asm, {**cur, **r["pose"]})
         poses.append(solve_from(moved, cur, resolve_face=resolver).transforms)
+    # only the hit pairs' parts: the whole assembly (organic topopt brackets) timed out (DOG)
+    keep = set().union(*(a | b for _r, a, b in hits))
+    sub = asm.model_copy(update={"instances": [i for i in asm.instances if i.id in keep]})
     try:
-        geo = await run_geometry(parts, asm, solve(asm, resolve_face=resolver), poses=poses,
+        geo = await run_geometry(parts, sub, solve(asm, resolve_face=resolver), poses=poses,
                                  timeout_s=200)
     except MisesError as e:
         return f"exact re-check not run ({e.message}); confirm with assembly_check sweep"
@@ -562,8 +567,10 @@ async def dyn_rom_sweep(ctx: ToolContext, args: RomArgs) -> ToolOutput:
     rest = [" + ".join(names.get(b, b) for b in p) for p in res["rest_contacts"]]
     summary = (f"ROM sweep {status}: {res['poses']} poses over {len(res['joints'])} joints, "
                f"{res['colliding_pairs']} colliding pair(s)")
-    if rows and rows[0].get("pair"):
-        summary += "; worst " + rows[0]["reason"]
+    lead = next((r for r in rows if r.get("pair") and r["status"] == "fail"), None) or \
+        next((r for r in rows if r.get("pair")), None)
+    if lead is not None:
+        summary += "; worst " + lead["reason"]
     if exact_note:
         summary += f"; {exact_note}"
     card = {"kind": "dyn_rom_sweep", "title": "Range of motion", "status": status,
@@ -632,9 +639,10 @@ async def _fem(ctx: ToolContext, pid: str, args: FemArgs) -> ToolOutput:
     from .export import _metrics
     for r in chosen:
         members = ex.map["bodies"].get(r["body"], [])
-        # the link's main part: the heaviest instance of the body
+        # the link's structural member: the instance carrying its moving joints (a servo or
+        # a cover bolted to it can outweigh it), the heaviest of those
         body = next(b for b in ex.model["bodies"] if b["name"] == r["body"])
-        iid = max(members, key=lambda i: _part_mass(ctx, inst[i].part_id))
+        iid = _link_member(members, asm, lambda i: _part_mass(ctx, inst[i].part_id))
         part_id = inst[iid].part_id
         metrics = _metrics(_home(ctx), part_id)
         frames = fem_bridge.Frames(r["xmat"], r["xpos_m"], origins[body["name"]],
@@ -705,6 +713,15 @@ async def _fem(ctx: ToolContext, pid: str, args: FemArgs) -> ToolOutput:
                                              "status": status, "links": rows, "card": card,
                                              "accuracy": card["accuracy"], "stream": "sim"},
                       ok=True, step_kind=StepKind.SIM_RUN)
+
+
+def _link_member(members: list[str], asm, mass_of) -> str:
+    """The instance of a rigid body that carries its moving joints (the thigh, not the servo
+    bolted into it); the heaviest such, else the heaviest instance."""
+    ends = {e for j in getattr(asm, "joints", []) if j.kind != "fixed"
+            for e in (j.a.instance_id, j.b.instance_id)}
+    carriers = [m for m in members if m in ends]
+    return max(carriers or members, key=lambda i: mass_of(i) or 0.0)
 
 
 def _part_mass(ctx, part_id: str) -> float:
