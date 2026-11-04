@@ -72,3 +72,16 @@ def test_a_part_clear_of_everything_still_floats():
     rep = health(insts, {i.id: i.transform for i in insts}, {"box": BOX}, joints=[])
     assert [f["instance"] for f in rep["floating"]] == ["loose"]
     assert "joint or contact" in " ".join(warnings_from(rep))
+
+
+
+def test_a_long_stack_of_touching_parts_has_no_strays():
+    # the TVC rocket: a dozen small gimbal parts at the tail, then bays stacked up to a nose
+    # 600 mm away; each stacked part touches the next, so none of them is stray
+    insts = [_inst(f"g{k}", 0.5 * k) for k in range(12)]
+    for k, x in enumerate((10, 20, 30, 40, 50, 60)):
+        insts.append(_inst(f"bay{k}", x))
+    insts.append(_inst("lost", 400))
+    tf = {i.id: i.transform for i in insts}
+    rep = health(insts, tf, {"box": BOX}, joints=[])
+    assert [s["instance"] for s in rep["stray"]] == ["lost"]

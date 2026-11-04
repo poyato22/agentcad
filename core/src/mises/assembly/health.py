@@ -6,7 +6,8 @@ and replaces them with the real interference volumes.
 
 A health report is {ok, overlaps, stray, floating, extents, summary}:
 - overlaps: pairs whose world AABBs intersect by more than a tolerance (likely collisions);
-- stray:   instances whose centre is far outside the cluster (a part left beside the model);
+- stray:   instances whose centre is far outside the cluster and that touch no other part
+  (a part left beside the model);
 - floating: instances with no joint or contact connecting them to the rest (nothing holds
   them in place); two parts whose boxes touch (within CONTACT_GAP_MM) count as in contact, so a
   static assembly of parts that only rest on each other is not floating (FWC M9);
@@ -110,6 +111,9 @@ def health(instances: list, transforms: dict[str, list[list[float]]],
                 overlaps.append({"a": names.get(a, a), "b": names.get(b, b),
                                  "a_id": a, "b_id": b, "volume_mm3": round(vol, 3)})
 
+    contacts = [(a, b) for i, a in enumerate(ids) for b in ids[i + 1:]
+                if _touch(boxes[a], boxes[b], contact_gap_mm)]
+    touching = {x for pair in contacts for x in pair}
     stray = []
     if len(centers) >= 3:
         cluster = [statistics.median(c[a] for c in centers.values()) for a in range(3)]
@@ -117,12 +121,12 @@ def health(instances: list, transforms: dict[str, list[list[float]]],
         spacing = statistics.median([d for d in dists.values() if d > 0] or [0.0])
         if spacing > 0:
             for i, d in dists.items():
-                if d > stray_k * spacing:
+                # far from the median but touching a neighbour is a long assembly (a rocket's
+                # nose 600 mm above a gimbal-heavy tail), not a part left beside the model
+                if d > stray_k * spacing and i not in touching:
                     stray.append({"instance": names.get(i, i), "instance_id": i,
                                   "distance_mm": round(d, 2)})
 
-    contacts = [(a, b) for i, a in enumerate(ids) for b in ids[i + 1:]
-                if _touch(boxes[a], boxes[b], contact_gap_mm)]
     grounded = _grounded_component([i.id for i in instances], joints or [], contacts)
     floating = [{"instance": names.get(i.id, i.id), "instance_id": i.id}
                 for i in instances[1:] if i.id not in grounded]
