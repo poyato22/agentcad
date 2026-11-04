@@ -7,7 +7,7 @@
 // images pasted (⌘V), dropped here or picked with 📎 ride along (attachments.ts), shown as
 // thumbnails above the box; a drawing-like one offers "Make a part from this drawing".
 import type { JSX } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { CoreError } from "../../../api/client";
 import type { AgentRun } from "../../../api/types";
 import { registerShortcut } from "../../../lib/keys";
@@ -48,6 +48,9 @@ function describeError(e: unknown): string {
   if (e instanceof CoreError) return startErrorText(e);
   return e instanceof Error ? e.message : String(e);
 }
+
+/** The composer grows with its text up to this many lines, then scrolls. */
+const MAX_ROWS = 5;
 
 export function CommandLine(): JSX.Element {
   const [value, setValue] = useState("");
@@ -256,6 +259,19 @@ export function CommandLine(): JSX.Element {
   }
 
   const rows = Math.min(5, Math.max(1, value.split("\n").length));
+  // A long prompt wraps without newlines: `rows` alone kept one line and cut the first line off.
+  // Fit the box to its content, up to MAX_ROWS lines, then scroll.
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const content = el.scrollHeight;
+    if (!content) { el.style.height = ""; return; }
+    const lh = parseFloat(getComputedStyle(el).lineHeight) || 20;
+    const max = lh * MAX_ROWS + 8;
+    el.style.height = `${Math.min(content, max)}px`;
+    el.style.overflowY = content > max ? "auto" : "hidden";
+  }, [value]);
   const shownLabel = shown ? runLabel(shown, allRuns) : "";
   return (
     <div class={`cmd${dragging ? " is-dropping" : ""}`} data-command-line

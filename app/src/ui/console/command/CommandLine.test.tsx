@@ -350,3 +350,19 @@ describe("CommandLine", () => {
     expect(document.activeElement).toBe(box());
   });
 });
+
+describe("composer height", () => {
+  it("grows with a long prompt that wraps (no newlines), up to five lines, so no line is cut off", () => {
+    render(<CommandLine />);
+    const el = box();
+    // jsdom has no layout: say how tall the wrapped text is (two lines of 20 px, 4 px padding)
+    let content = 48;
+    Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => content });
+    fireEvent.input(el, { target: { value: "Design a 1.6 kg quadruped robot dog that can trot at 0.5 m/s. Belt-driven knees, printable, under $400." } });
+    expect(el.style.height).toBe("48px");
+    content = 400;                                  // a very long message: capped, then it scrolls
+    fireEvent.input(el, { target: { value: "x".repeat(2000) } });
+    expect(parseFloat(el.style.height)).toBeLessThan(400);
+    expect(el.style.overflowY).toBe("auto");
+  });
+});
