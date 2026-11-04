@@ -712,3 +712,24 @@ async def test_small_steps_do_not_add_up_to_a_failure(tmp_path):
     # a jump bigger than the post's own size still fails loudly
     r = await mirror_part_set_vars.handler(agent, SetVarsArgs(part_id="bracket", vars={"h": 40.0}))
     assert not r.ok and "mises-op 0 hole" in r.summary
+
+
+async def test_an_agents_own_writes_count_as_reading_the_source(ctx):
+    """DOG demo: a designer created thigh_left, read it, replaced its script (v2), then its next
+    replacement was refused ("changed since you read the source at version 1") although only
+    its own write had changed it. The script a run just wrote (or created) is a source read."""
+    await mk(ctx)                                           # created: this run wrote v1
+    taller = BOX.replace('v["height"])', 'v["height"]*2)')
+    r = await mirror_part_set_source.handler(ctx, SetSourceArgs(part_id="bracket", source=taller))
+    assert r.ok and r.data["version"] == 2, r.summary
+    r = await mirror_part_set_source.handler(ctx, SetSourceArgs(part_id="bracket", source=BOX))
+    assert r.ok and r.data["version"] == 3, r.summary
+    r = await mirror_part_set_vars.handler(ctx, SetVarsArgs(part_id="bracket", vars={"length": 50}))
+    assert r.ok and r.data["version"] == 4
+    r = await mirror_part_set_source.handler(ctx, SetSourceArgs(part_id="bracket", source=taller))
+    assert r.ok and r.data["version"] == 5, r.summary       # vars only: the source it wrote
+    # someone else's change still needs a fresh read
+    d = ctx.workdir / "parts" / "bracket"
+    edits.write_version(d, 6)
+    c = await mirror_part_set_source.handler(ctx, SetSourceArgs(part_id="bracket", source=BOX))
+    assert not c.ok and c.data["conflict"]

@@ -171,6 +171,23 @@ def note_source_read(run_id: str | None, d: Path, version: int) -> None:
     _source_seen[_seen_key(run_id, d)] = int(version)
 
 
+def _note_own_source(ctx: ToolContext, d: Path, version: int) -> None:
+    """An agent's successful whole-script write (create, set_source) is a source read at the
+    version it made: the script is its own, and any feature ops kept with it were in the source
+    _guard_source made it read first. Without this its next replacement was refused although
+    nothing but its own write had changed the part (DOG demo, thigh_left)."""
+    if _editor(ctx) != "user":
+        note_source_read(getattr(ctx, "run_id", None), d, version)
+
+
+def _carry_source_read(ctx: ToolContext, d: Path, version: int) -> None:
+    """A vars-only rebuild leaves part.py as it was: a run that had read the source at the
+    version just before still knows it."""
+    key = _seen_key(getattr(ctx, "run_id", None), d)
+    if _source_seen.get(key) == version - 1:
+        _source_seen[key] = version
+
+
 def _guard(ctx: ToolContext, part_id: str, d: Path, base_version: int | None) -> ToolOutput | None:
     """Merge-style edits. None when the edit may proceed, else the conflict result. Call under
     the part lock."""
@@ -570,6 +587,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
         note = _ops_note(kept, dropped)
         version = _finish_edit(ctx, args.part_id, d, f"{'rebuilt' if existed else 'created'} "
                                f"{args.part_id} from script{note}")
+        _note_own_source(ctx, d, version)
         placed = await _auto_place(ctx, args.part_id, d) if args.place and not existed else None
     return ToolOutput(summary=_summary(args.part_id, res.metrics) + note
                       + (f"; placed in the assembly as {placed['instance']['name']}"
@@ -636,6 +654,7 @@ async def mirror_part_set_vars(ctx: ToolContext, args: SetVarsArgs) -> ToolOutpu
         new_vars = res.vars
         version = _finish_edit(ctx, args.part_id, d,
                                "set " + ", ".join(f"{k}={args.vars[k]}" for k in args.vars))
+        _carry_source_read(ctx, d, version)
     m = _with_mass(ctx, args.part_id, res.metrics)
     # the mass delta is geometry only: the previous volume at the CURRENT material's density
     # (a material change since the last build must not show up as a geometry change)
@@ -767,6 +786,7 @@ async def mirror_part_set_source(ctx: ToolContext, args: SetSourceArgs) -> ToolO
         _accept(d, res)
         note = _ops_note(kept, dropped)
         version = _finish_edit(ctx, args.part_id, d, f"edited {args.part_id} source{note}")
+        _note_own_source(ctx, d, version)
     return ToolOutput(summary=f"{_summary(args.part_id, res.metrics)}; version {version}{note}",
                       data={"part_id": args.part_id, "vars": res.vars, "version": version,
                             **_inline(res.metrics)}, step_kind=StepKind.DIFF)
