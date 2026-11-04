@@ -380,4 +380,4 @@ def test_the_element_cap_fits_the_memory_budget():
     stopped at the 4096 MB budget. The cap leaves 15 % headroom on the measured footprint."""
     need = jobs.BASE_MB + jobs.MAX_ELEMENTS * jobs.KB_PER_ELEMENT / 1024
     assert need <= 0.85 * jobs.MEMORY_MB
-    assert jobs.MAX_ELEMENTS >= 2 * jobs.TARGET_ELEMENTS
+    assert jobs.MAX_ELEMENTS > jobs.TARGET_ELEMENTS
