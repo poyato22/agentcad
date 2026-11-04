@@ -20,6 +20,7 @@ except ImportError:                      # pragma: no cover - the worker injects
     mjmodel = trajmod = None             # type: ignore[assignment]
 
 SAMPLE_S = 0.002          # recorded every 2 ms
+INVERSE_FILTER_SAMPLES = 5  # free-base inverse dynamics: a 10 ms moving average
 SERIES_POINTS = 240       # points per chart series
 PENETRATION_TOL_M = 0.0005
 # MuJoCo enums as plain ints: numpy ints from the model arrays never compare equal to them
@@ -134,20 +135,32 @@ def _penetrations(m, d, skip: set, tol: float) -> list[dict]:
 
 # ---------------------------------------------------------------- simulate a plan
 
-def _simulate(m, d, plan, record_reactions: bool, floor_id: int):
-    """Track the plan with the position actuators. Returns per-sample records."""
+def _simulate(m, d, plan, record_reactions: bool, floor_id: int,
+              foot_geoms: frozenset = frozenset()):
+    """Track the plan with the position actuators. Returns per-sample records. `foot_geoms`:
+    the geom ids flagged as feet (any other floor contact is the body touching down)."""
     names = [m.actuator(a).name for a in range(m.nu)]
     jnames = trajmod.actuated(m)
     every = max(1, int(round(SAMPLE_S / m.opt.timestep)))
     steps = int(round(plan.duration_s / m.opt.timestep))
     rec = {"t": [], "qpos": [], "qvel": [], "force": [], "err": [], "cop": [], "support": [],
-           "com": [], "react": [], "contacts": [], "xmat": [], "xpos": [], "subcom": []}
+           "com": [], "react": [], "contacts": [], "xmat": [], "xpos": [], "subcom": [],
+           "tilt": [], "touch": []}
+    root_body = m.body_rootid[1] if m.nbody > 1 else 0
     jq = [int(m.joint(j).qposadr[0]) for j in jnames]
+    # a position actuator is kp (q* - q) - kv qdot; a servo's own loop tracks the moving
+    # setpoint, so its damping acts on the speed ERROR: ctrl = q* + (kv / kp) qdot* gives
+    # kp (q* - q) + kv (qdot* - qdot). Without it a 2 N m servo spent all its torque damping a
+    # fast swing (DOG demo: every trot saturated with 15-25 deg of lag).
+    ff = [(-float(m.actuator_biasprm[a, 2]) / float(m.actuator_gainprm[a, 0])
+           if m.actuator_gainprm[a, 0] > 0 and m.actuator_biasprm[a, 1] < 0 else 0.0)
+          for a in range(len(jnames))]
     for i in range(steps + 1):
         t = i * m.opt.timestep
         tg = plan.at(t)
+        rate = plan.rate_at(t) if any(ff) else None
         for a, j in enumerate(jnames):
-            d.ctrl[a] = tg[j]
+            d.ctrl[a] = tg[j] + (ff[a] * rate[j] if rate is not None else 0.0)
         if i % every == 0:
             mujoco.mj_forward(m, d)
             rec["t"].append(t)
@@ -158,6 +171,11 @@ def _simulate(m, d, plan, record_reactions: bool, floor_id: int):
             root = m.body_rootid[1] if m.nbody > 1 else 0
             rec["com"].append(d.subtree_com[root].copy())
             cons = _robot_floor_contacts(m, d, floor_id) if floor_id >= 0 else []
+            # the body's tilt (its z axis from vertical) and the floor contacts of geoms that
+            # are not feet: what a fall looks like (the CoP cannot show it, see below)
+            zx = float(np.clip(d.xmat[root_body][8], -1.0, 1.0))
+            rec["tilt"].append(math.degrees(math.acos(zx)))
+            rec["touch"].append({c["geom"] for c in cons if c["geom"] not in foot_geoms})
             fz = sum(max(c["force"][2], 0.0) for c in cons)
             if fz > 1e-6:
                 cop = sum(c["pos"][:2] * max(c["force"][2], 0.0) for c in cons) / fz
@@ -232,8 +250,9 @@ def _inverse(m, rec, active, plan, jnames, free: bool):
         out.append([d2.qfrc_inverse[k] for k in dofs])
     arr = np.array(out)
     # the finite-difference noise of contacts: a 5-sample moving average
-    if len(arr) > 5:
-        k = np.ones(5) / 5
+    n = INVERSE_FILTER_SAMPLES
+    if len(arr) > n and arr.ndim == 2 and arr.shape[1]:
+        k = np.ones(n) / n
         arr = np.vstack([np.convolve(arr[:, c], k, mode="same") for c in range(arr.shape[1])]).T
     return arr
 
@@ -246,7 +265,13 @@ def task_torque(job: dict) -> dict:
     plan = trajmod.plan(m, model, job.get("trajectory") or {"kind": "hold"})
     plan_s = time.perf_counter() - t0
     t0 = time.perf_counter()
-    names, jnames, rec = _simulate(m, d, plan, bool(job.get("reactions")), _floor_id(m))
+    # a lower leg's own box may graze the floor beside its foot: only bodies without a foot
+    # (the trunk, hips, thighs) touching down is a fall
+    foot_bodies = {b["name"] for b in model["bodies"]
+                   if any(g.get("foot") for g in b.get("geoms", []))}
+    feet = frozenset(m.geom(g["name"]).id for b in model["bodies"] for g in b.get("geoms", [])
+                     if b["name"] in foot_bodies)
+    names, jnames, rec = _simulate(m, d, plan, bool(job.get("reactions")), _floor_id(m), feet)
     sim_s = time.perf_counter() - t0
     if any(not np.all(np.isfinite(q)) for q in rec["qpos"]):
         raise RuntimeError("the simulation went unstable (NaN): check masses, inertias and "
@@ -283,7 +308,7 @@ def task_torque(job: dict) -> dict:
            "realtime_x": _r(plan.duration_s / max(sim_s, 1e-9), 1),
            "total_mass_kg": _r(sum(m.body_mass))}
     if free:
-        out["stability"] = _trajectory_stability(rec, active, model)
+        out["stability"] = _trajectory_stability(rec, active, model, m)
         # H4: how far the body travelled over the motion (a gait's forward progress)
         idx = [k for k, ok in enumerate(active) if ok]
         if idx and rec.get("com"):
@@ -294,19 +319,33 @@ def task_torque(job: dict) -> dict:
     return out
 
 
-def _trajectory_stability(rec, active, model) -> dict:
+def _trajectory_stability(rec, active, model, m=None) -> dict:
+    """The CoP's margin inside the contacts' hull (a quasi-static gait's measure: the CoP is a
+    positive-weighted mean of the contact points, so it is never outside, and with two feet
+    down, a trot, it is 0 by construction), plus what shows a fall in any gait: the body's
+    largest tilt, how far the CoM dropped below where the motion started, and the parts that
+    are not feet that touched the floor."""
+    idx = [k for k, ok in enumerate(active) if ok]
+    tilts = [rec["tilt"][k] for k in idx] if rec.get("tilt") else []
+    touched = sorted({m.body(int(m.geom_bodyid[g])).name.removeprefix("b_")
+                      for k in idx for g in rec["touch"][k]}) if m is not None and \
+        rec.get("touch") else []
+    com_z = [c[2] for c in rec["com"]]
+    z0 = com_z[idx[0]] if idx else (com_z[0] if com_z else 0.0)
+    body = {"max_tilt_deg": _r(max(tilts) if tilts else 0.0, 2),
+            "com_drop_m": _r(max(0.0, z0 - min(com_z[k] for k in idx)) if idx else 0.0),
+            "non_foot_floor_contacts": touched}
     margins = []
-    for k, ok in enumerate(active):
-        if not ok or rec["cop"][k] is None:
+    for k in idx:
+        if rec["cop"][k] is None:
             continue
         margin, _ = _hull_margin(rec["support"][k], rec["cop"][k])
         margins.append((rec["t"][k], margin))
     if not margins:
-        return {"min_cop_margin_m": None, "note": "no floor contact during the motion"}
+        return {"min_cop_margin_m": None, "note": "no floor contact during the motion", **body}
     t_min, mmin = min(margins, key=lambda x: x[1])
-    com_z = [c[2] for c in rec["com"]]
     return {"min_cop_margin_m": _r(mmin), "at_s": _r(t_min, 4),
-            "com_z_range_m": _r([min(com_z), max(com_z)]),
+            "com_z_range_m": _r([min(com_z), max(com_z)]), **body,
             "series": {"t": _r(_thin([x[0] for x in margins])),
                        "margin": _r(_thin([x[1] for x in margins]))}}
 

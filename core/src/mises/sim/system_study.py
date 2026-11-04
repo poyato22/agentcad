@@ -61,6 +61,8 @@ JOB_TIMEOUT_S = 1800.0
 G = 9.80665
 ROOT = "@root"           # the playback's pseudo joint: the whole assembly's translation (mm)
 MAX_STEPS = 12           # the app's assembly player plays at most 12 steps
+MAX_TILT_WARN_DEG = 12.0  # a gait's body tilt: past this it is wobbling hard
+MAX_TILT_FAIL_DEG = 25.0  # past this (or the trunk touching the floor) it falls
 VIS_HEIGHT_X = 3.0       # a launch / drop plays to at most this many assembly heights
 
 
@@ -400,6 +402,11 @@ def _torque_checks(td: dict) -> tuple[list[dict], list[dict]]:
     return checks, metrics
 
 
+def _floor_friction() -> float:
+    from ..dyn.export import FLOOR_FRICTION
+    return FLOOR_FRICTION
+
+
 async def _walk(ctx, pid: str, s: WalkSettings, rec: dict, asm) -> dict:
     from ..dyn import run as dyn_run
     from ..dyn import tools as dt
@@ -421,9 +428,25 @@ async def _walk(ctx, pid: str, s: WalkSettings, rec: dict, asm) -> dict:
         checks.append(_check(f"stability: {r.get('check', '')}", r.get("status", ""),
                              r.get("reason") or "", r.get("margin_mm", r.get("tips_at_deg")),
                              "mm" if "margin_mm" in r else "deg"))
-    cop = (td.get("stability") or {}).get("min_cop_margin_m")
-    if cop is not None:
-        checks.append(_check("stability: during the gait", "pass" if cop >= 0.01 else
+    gst = td.get("stability") or {}
+    cop = gst.get("min_cop_margin_m")
+    tilt = gst.get("max_tilt_deg")
+    if tilt is not None:
+        # what a fall looks like in any gait: the body tilts and parts that are not legs touch
+        # the floor. The CoP's margin cannot show it in a trot (two feet down: the CoP is on
+        # the support line, margin 0 by construction), so it is the crawl's check only.
+        touched = gst.get("non_foot_floor_contacts") or []
+        drop = float(gst.get("com_drop_m") or 0.0) * 1000
+        status = ("fail" if touched or tilt > MAX_TILT_FAIL_DEG else
+                  "warn" if tilt > MAX_TILT_WARN_DEG else "pass")
+        why = (f"{', '.join(touched[:3])} touched the floor: it falls" if touched else
+               f"the body stays within {tilt:.1f} deg of level and its CoM drops at most "
+               f"{drop:.0f} mm")
+        checks.append(_check("stability: during the gait", status, why, round(tilt, 1), "deg",
+                             MAX_TILT_WARN_DEG))
+        metrics.append(_metric("max body tilt", round(tilt, 1), "deg", status))
+    if cop is not None and s.gait == "walk":
+        checks.append(_check("stability: CoP during the crawl", "pass" if cop >= 0.01 else
                              "warn" if cop >= 0 else "fail",
                              f"CoP stays {cop * 1000:.0f} mm inside the support polygon"
                              if cop >= 0 else f"CoP leaves the support polygon by "
@@ -438,7 +461,7 @@ async def _walk(ctx, pid: str, s: WalkSettings, rec: dict, asm) -> dict:
             checks.append(_check("travel", "pass" if travel >= s.min_travel_mm else "fail",
                                  f"the body travels {travel:.0f} mm (target >= "
                                  f"{s.min_travel_mm:g} mm)", travel, "mm", s.min_travel_mm))
-    if cop is not None:
+    if cop is not None and s.gait == "walk":
         metrics.append(_metric("min CoP margin", round(cop * 1000, 1), "mm"))
     saved = dyn_run.load_result(Path(ctx.workdir), pid, td["result_id"]) or {}
     steps = joint_steps(saved.get("playback") or {})
@@ -449,8 +472,9 @@ async def _walk(ctx, pid: str, s: WalkSettings, rec: dict, asm) -> dict:
                                     "place; it travels "
                                     f"{travel or 0:.0f} mm in the simulation)"}
             if steps else None,
-            "notes": (td.get("notes") or []) + ["foot slip is not measured: the floor "
-                                                "friction is MuJoCo's default (1.0)"],
+            "notes": (td.get("notes") or []) + [
+                "foot slip is not measured: the floor friction is "
+                f"{_floor_friction():g} (dry PETG/TPU on a hard floor is ~0.5-1)"],
             "accuracy": td.get("accuracy") or [],
             "sources": [{"tool": "dyn_torque", "result_id": td.get("result_id")},
                         {"tool": "dyn_stability", "result_id": st.data.get("result_id")},

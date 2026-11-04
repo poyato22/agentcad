@@ -29,6 +29,21 @@ async def test_walk_gait_moves_the_body_and_keeps_a_playback(ctx):  # noqa: F811
     assert max(hip["values"]) - min(hip["values"]) > 1.0
 
 
+@pytest.mark.parametrize("duty, phase", [(0.5, 0.0), (0.5, 0.5), (0.25, 0.75)])
+def test_the_gait_starts_and_ends_where_the_robot_stands(duty, phase):
+    """DOG demo: a full stride from t = 0 put every foot half a step (55 mm) away in one
+    instant; every servo saturated on that jump and it was the study's peak torque."""
+    import numpy as np
+    kw = dict(period=0.4, cycles=3, step=0.11, lift=0.03, duty=duty)
+    assert np.allclose(traj.gait_offset(0.0, phase, **kw), 0)
+    assert np.allclose(traj.gait_offset(1.2, phase, **kw), 0)
+    ts = np.linspace(0, 1.2, 1201)
+    pts = np.array([traj.gait_offset(t, phase, **kw) for t in ts])
+    jumps = np.abs(np.diff(pts, axis=0)).max()
+    assert jumps < 0.11 * 0.02            # no step: < 2 % of the stride per ms
+    assert np.abs(pts[:, 0]).max() == pytest.approx(0.055, rel=0.02)   # full stride mid-gait
+
+
 def test_walk_lifts_one_foot_at_a_time():
     """The crawl's phases: four feet, a quarter cycle apart, each in the air a quarter."""
     import math

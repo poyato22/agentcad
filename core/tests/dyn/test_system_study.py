@@ -49,6 +49,21 @@ async def test_walk_study_record(ctx):  # noqa: F811
     assert ss.list_records(ctx.workdir, "quad")[0]["study_id"] == sid
 
 
+async def test_a_trot_is_judged_by_its_body_not_the_cop_on_the_support_line(ctx):  # noqa: F811
+    """DOG demo: every trot failed "CoP leaves the support polygon by 0 mm: it tips mid-step"
+    (two feet down: the CoP lies on their line, margin 0 by construction)."""
+    out = await ss.assembly_study.handler(ctx, ss.StudyArgs(
+        project_id="quad", kind="walk",
+        settings={"gait": "trot", "cycles": 2, "period_s": 0.8, "step_mm": 30, "lift_mm": 15,
+                  "rom_poses": 20}))
+    rec = ss.load(ctx.workdir, out.data["study_id"])
+    by = {c["name"]: c for c in rec["checks"]}
+    gait = by["stability: during the gait"]
+    assert gait["unit"] == "deg" and "of level" in gait["reason"]
+    assert "stability: CoP during the crawl" not in by
+    assert any(m["label"] == "max body tilt" for m in rec["metrics"])
+
+
 async def test_drop_and_mechanism(ctx):  # noqa: F811
     out = await ss.assembly_study.handler(ctx, ss.StudyArgs(
         project_id="quad", kind="drop", settings={"drop_m": 0.5, "max_g": 5}))

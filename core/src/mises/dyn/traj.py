@@ -38,6 +38,16 @@ class Plan:
     def at(self, t: float) -> dict[str, float]:
         return {j: float(np.interp(t, self.times, v)) for j, v in self.targets.items()}
 
+    def rate_at(self, t: float) -> dict[str, float]:
+        """The targets' speed (rad/s or m/s) at t: a servo's loop tracks the moving setpoint
+        (its velocity feed-forward)."""
+        rates = getattr(self, "_rates", None)
+        if rates is None:
+            rates = {j: (np.gradient(v, self.times) if len(self.times) > 1 else np.zeros(len(v)))
+                     for j, v in self.targets.items()}
+            object.__setattr__(self, "_rates", rates)
+        return {j: float(np.interp(t, self.times, v)) for j, v in rates.items()}
+
 
 def _cos_blend(s: float) -> float:
     """0 -> 1 smoothly (zero velocity at both ends)."""
@@ -180,6 +190,26 @@ def _leg_motion(m, model, joints, times, settle, offset_fn, notes) -> tuple[dict
     return out, worst
 
 
+def gait_offset(t: float, phase: float, *, period: float, cycles: int, step: float,
+                lift: float, duty: float) -> np.ndarray:
+    """One foot's offset from its standing spot at gait time t (s): swing forward and up for
+    `duty` of a cycle, then sweep back under the body. The stride ramps in over the first half
+    cycle and out over the last (a cosine envelope), so the motion starts and ends where the
+    robot stands: a full stride at t = 0 put every foot half a step away in one instant, and
+    that jump was the walk study's peak torque (DOG demo: every servo saturated at t = 0)."""
+    end = period * cycles
+    if t >= end or t <= 0.0:
+        return np.zeros(3)
+    ramp = min(1.0, end / 2.0, period / 2.0)
+    env = min(_cos_blend(t / ramp), _cos_blend((end - t) / ramp))
+    ph = (t / period + phase) % 1.0
+    if ph < duty:                    # swing: foot moves forward and up
+        s = ph / duty
+        return np.array([env * step * (s - 0.5), 0.0, env * lift * math.sin(math.pi * s)])
+    s = (ph - duty) / (1.0 - duty)   # stance: foot sweeps back under the body
+    return np.array([env * step * (0.5 - s), 0.0, 0.0])
+
+
 def plan(m, model: dict, traj: dict) -> Plan:
     joints = actuated(m)
     kind = traj.get("kind", "hold")
@@ -255,14 +285,8 @@ def plan(m, model: dict, traj: dict) -> Plan:
         duty = (1.0 / max(len(fs), 1)) if walk else 0.5     # the swing's share of a cycle
 
         def swing(k, t):
-            if t >= period * cycles:
-                return np.zeros(3)
-            ph = (t / period + phase[k]) % 1.0
-            if ph < duty:                # swing: foot moves forward and up
-                s = ph / duty
-                return np.array([step * (s - 0.5), 0.0, lift_h * math.sin(math.pi * s)])
-            s = (ph - duty) / (1.0 - duty)   # stance: foot sweeps back under the body
-            return np.array([step * (0.5 - s), 0.0, 0.0])
+            return gait_offset(t, phase[k], period=period, cycles=cycles, step=step,
+                               lift=lift_h, duty=duty)
         times = _grid(dur)
         targets, err = _leg_motion(m, model, joints, times, settle, swing, notes)
         notes.append(f"{'walk (4-beat crawl)' if walk else 'trot'}: {cycles} cycles of "
