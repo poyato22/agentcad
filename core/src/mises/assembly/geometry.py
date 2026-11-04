@@ -58,6 +58,7 @@ def face_resolver(parts_root: Path):
 class GeometryResult:
     interferences: list[dict] = field(default_factory=list)
     glb_path: Path | None = None
+    step_path: Path | None = None                          # want="step": the whole assembly
     stderr: str = ""
     positions: list[dict] = field(default_factory=list)   # want="sweep": one per pose
 
@@ -145,7 +146,6 @@ async def run_geometry(parts_root: Path, assembly, result: SolveResult, *, want:
     except Exception as e:  # noqa: BLE001
         raise MisesError(ErrorCode.TOOL_FAILED, f"assembly geometry produced no result: {e}")
     glb = out / "assembly.glb" if data.get("glb") else None
-    if owned and glb is None:
-        pass
+    step = out / "assembly.step" if data.get("step") else None
     return GeometryResult(interferences=data.get("interferences", []), glb_path=glb, stderr=stderr,
-                          positions=data.get("positions", []))
+                          positions=data.get("positions", []), step_path=step)

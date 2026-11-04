@@ -102,6 +102,23 @@ async def test_glb_has_one_node_per_instance(tmp_path):
     assert gltf["nodes"][1]["matrix"][12] == pytest.approx(20.0)
 
 
+async def test_the_assembly_exports_as_one_step_with_every_instance_placed(tmp_path):
+    """DOG demo: the lead could export each part's STEP but not the robot: mirror_export takes
+    a part id only. The assembly exports as one STEP, every instance at its solved pose."""
+    import build123d as b3
+    parts = await _build_box(tmp_path)
+    asm = Assembly(instances=[
+        Instance(id="a", part_id="cube", name="base"),
+        Instance(id="b", part_id="cube", name="flap", transform=_shift_x(20.0)),
+    ])
+    geo = await run_geometry(parts, asm, solve(asm), want="step", out_dir=tmp_path / "out")
+    assert geo.step_path is not None and geo.step_path.name == "assembly.step"
+    shape = b3.import_step(str(geo.step_path))
+    assert len(shape.solids()) == 2
+    bb = shape.bounding_box()
+    assert bb.min.X == pytest.approx(-5, abs=1e-3) and bb.max.X == pytest.approx(25, abs=1e-3)
+
+
 def test_sweep_measures_only_what_moves_and_prunes_far_pairs(monkeypatch):
     """DOG demo: an 8-step knee sweep of a 40-instance dog timed out (240 s): every pose took
     OCCT distances of all ~800 pairs. Pairs at the same relative pose as an earlier pose reuse
@@ -132,3 +149,19 @@ async def test_resolve_face_reads_metrics(tmp_path):
     parts = await _build_box(tmp_path)
     origin, normal = resolve_face(parts, "cube", "f0")
     assert len(origin) == 3 and len(normal) == 3
+
+
+async def test_assembly_export_tool_hands_back_the_assembly_step(tmp_path):
+    from mises.assembly.model import AssemblyStore
+    from mises.assembly.tools import ProjectArgs, assembly_export
+    from mises.events import EventBus
+    await _build_box(tmp_path)
+    store = AssemblyStore(tmp_path / "assembly.db")
+    store.add_instance("p", Instance(id="a", part_id="cube", name="base"))
+    store.add_instance("p", Instance(id="b", part_id="cube", name="flap",
+                                     transform=_shift_x(20.0)))
+    ctx = SimpleNamespace(workdir=tmp_path, events=EventBus(), services={"assembly": store})
+    out = await assembly_export.handler(ctx, ProjectArgs(project_id="p"))
+    step = Path(out.handles[0])
+    assert step.name == "p_assembly.step" and step.parent.name == "exports"
+    assert step.stat().st_size > 1000 and out.data["instances"] == 2

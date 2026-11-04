@@ -979,8 +979,33 @@ async def assembly_allow_contact(ctx: ToolContext, args: AllowContactArgs) -> To
                       step_kind=StepKind.DIFF)
 
 
+@tool("assembly_export", safety=SafetyClass.READ, scope_arg="project_id", timeout_s=300,
+      description="Export the whole build as one STEP: every built part at its solved pose in "
+                  "the assembly. Returns a file handle (mirror_export exports one part).")
+async def assembly_export(ctx: ToolContext, args: ProjectArgs) -> ToolOutput:
+    import shutil
+    import tempfile
+    pid = _resolve_build(ctx, args.project_id)
+    asm, res = _solve(ctx, pid)
+    with tempfile.TemporaryDirectory(prefix="mises-asm-step-") as tmp:
+        geo = await run_geometry(_parts_root(ctx), asm, res, want="step", out_dir=Path(tmp),
+                                 timeout_s=240)
+        if geo.step_path is None or not geo.step_path.is_file():
+            raise MisesError(ErrorCode.TOOL_FAILED, "the assembly STEP was not written")
+        dest = Path(ctx.workdir) / "exports"
+        dest.mkdir(parents=True, exist_ok=True)
+        f = dest / f"{pid}_assembly.step"
+        shutil.copyfile(geo.step_path, f)
+    n = len(asm.instances)
+    return ToolOutput(summary=f"assembly STEP of {pid}: {n} instance(s), "
+                              f"{f.stat().st_size // 1024} KB",
+                      handles=[str(f)], data={"project_id": pid, "format": "step",
+                                              "instances": n})
+
+
 def register_assembly_tools(registry: ToolRegistry) -> None:
     for t in (assembly_get, assembly_add_instance, assembly_add_joint, assembly_drive,
               assembly_remove, assembly_check, assembly_add_part, assembly_move,
-              assembly_animate, assembly_add_loop, assembly_health, assembly_allow_contact):
+              assembly_animate, assembly_add_loop, assembly_health, assembly_allow_contact,
+              assembly_export):
         registry.register(t)

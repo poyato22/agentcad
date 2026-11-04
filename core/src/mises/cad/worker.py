@@ -1357,6 +1357,13 @@ def _assembly(job_path: Path, nonce: str) -> None:
     if want in ("both", "interference"):
         result["interferences"] = _assembly_interference(loaded, threshold)
 
+    if want == "step":
+        # the whole assembly as one STEP: every instance's solids at its solved world pose
+        placed = [shape.moved(Location(_trsf(m))) for _name, shape, m, _iid in loaded]
+        b3.export_step(b3.Compound(placed), str(out_dir / "new_assembly.step"))
+        os.replace(out_dir / "new_assembly.step", out_dir / "assembly.step")
+        result["step"] = "assembly.step"
+
     if want in ("both", "glb"):
         items = []
         for name, shape, m, _iid in loaded:
