@@ -28,6 +28,19 @@ def test_wrong_proportions_fail_and_show_in_the_overlay():
     assert red > 0 and blue == 0 or blue > 0   # only one side can be left over for nested boxes
 
 
+def test_mismatch_is_located_for_the_agent():
+    # bench fix: builds stalled at IoU ~0.7 with only an overlay to go on; the result now
+    # names where the extra and the missing material are
+    photo = _rect(100, 100, 100, 100)
+    model = photo.copy()
+    model[130:170, 170:200] = False                   # the model lacks the photo's right tab
+    r = compare_masks(model, photo)
+    assert r["missing_at"] == ["right"], r["missing_at"]
+    assert r["extra_at"] == []
+    same = compare_masks(model, model)
+    assert same["missing_at"] == [] and same["extra_at"] == []
+
+
 def test_empty_photo_is_zero_not_a_crash():
     r = compare_masks(_rect(10, 10, 5, 5), np.zeros((300, 300), dtype=bool))
     assert r["iou"] == 0.0 and r["aspect_error"] is None

@@ -18,6 +18,12 @@ def test_several_solids_are_flagged():
     assert "2 separate solids" in s and "one connected solid" in s
 
 
+def test_no_solid_at_all_is_flagged():
+    # CADBench F-23374: the delivered part was a shell with 0 solids and passed silently
+    s = _summary("p", _m(0))
+    assert "no closed solid" in s
+
+
 def test_old_metrics_without_a_solid_count_still_summarise():
     m = _m(1)
     del m["solids"]
