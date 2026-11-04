@@ -22,6 +22,7 @@ import itertools
 import json
 import math
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -136,6 +137,9 @@ def public(rec: dict) -> dict:
     for v in rec.get("variants") or []:
         pv = {k: x for k, x in v.items() if k != "spec"}
         pv["urls"] = urls(rec["topopt_id"], v["id"])
+        # the density's evolution (replay / stills): one preview mesh per kept iteration
+        pv["urls"]["evolution"] = [f"/topopt/{rec['topopt_id']}/variants/{v['id']}/"
+                                   f"evo_{int(i):03d}.glb" for i in v.get("evolution") or []]
         out["variants"].append(pv)
     return out
 
@@ -499,6 +503,7 @@ async def _run_variant(ctx_events, rec: dict, v: dict, d: Path, args: TopoptRunA
         "fallback_at", "compliance_gray", "compliance_bw", "deflection_bw", "vf_bw",
         "mesh", "faces", "final_vf", "islands_dropped_pct", "times_s", "total_s")},
              history=[[r["it"], r["c"], r["vf"]] for r in rep.get("history") or []],
+             evolution=[int(i) for i in rep.get("evolution") or []],
              volume_mm3=rep["volume_mm3"],
              mass_g=rep["volume_mm3"] / 1000.0 * mat.density_g_cm3,
              faces=rep["faces"], step_bytes=rep["step_bytes"],
@@ -736,7 +741,8 @@ def active_ids() -> list[str]:
 
 
 def variant_file(home: Path, topopt_id: str, vid: str, name: str) -> tuple[bytes, str]:
-    if not VARIANT_ID_RE.fullmatch(vid or "") or name not in _FILES:
+    evo = re.fullmatch(r"evo_\d{3}\.glb", name or "") is not None
+    if not VARIANT_ID_RE.fullmatch(vid or "") or (name not in _FILES and not evo):
         raise MisesError(ErrorCode.NOT_FOUND, f"no file {name!r}")
     vdir = job_dir(home, topopt_id) / vid
     try:
@@ -745,4 +751,4 @@ def variant_file(home: Path, topopt_id: str, vid: str, name: str) -> tuple[bytes
         data = None
     if data is None:
         raise MisesError(ErrorCode.NOT_FOUND, f"{topopt_id}/{vid} has no {name} yet")
-    return data, _FILES[name]
+    return data, _FILES.get(name, "model/gltf-binary")

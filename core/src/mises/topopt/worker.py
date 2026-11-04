@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -234,6 +235,19 @@ def _preview(path: Path, x: np.ndarray, p: simp.Problem, grid: vx.Grid) -> int:
     return int(len(T))
 
 
+# the density's evolution, kept for replay and stills (evo_NNN.glb beside preview.glb): every
+# preview up to EVO_DENSE iterations (where the shape forms), then ever sparser, at most EVO_MAX
+EVO_MAX, EVO_DENSE, EVO_GROWTH = 12, 20, 1.4
+
+
+def _keep_frame(job: Path, it: int, state: dict) -> None:
+    if len(state["evo"]) >= EVO_MAX or it < state["next_evo"]:
+        return
+    shutil.copyfile(job / "preview.glb", job / f"evo_{it:03d}.glb")
+    state["evo"].append(it)
+    state["next_evo"] = it + 1 if it < EVO_DENSE else math.ceil(it * EVO_GROWTH)
+
+
 def printability(stl_tris: np.ndarray, build_dir: str | None) -> dict:
     """Overhang area fraction: downward-facing area steeper than 45 degrees from the build
     direction, off the build plate."""
@@ -287,13 +301,14 @@ def run(job: Path, progress=None) -> dict:
     _write(job / "bc.json", bc)
     max_iter = int(spec.get("max_iter", 60))
     every = max(1, int(spec.get("preview_every", 5)))
-    state = {"preview": None}
+    state = {"preview": None, "evo": [], "next_evo": 1}
 
     def on_iter(it: int, row: dict, x: np.ndarray) -> None:
         if it % every == every - 1:
             try:
                 if _preview(job / "preview.glb", x, p, grid):
                     state["preview"] = it + 1
+                    _keep_frame(job, it + 1, state)
             except Exception:  # noqa: BLE001 - a preview is never worth failing the run
                 pass
         prog(phase="optimize", it=it + 1, max_iter=max_iter, c=row["c"], vf=row["vf"],
@@ -388,6 +403,7 @@ def run(job: Path, progress=None) -> dict:
         "case_compliance_bw": res.case_compliance_bw, "deflection_bw": res.deflection_bw,
         "vf_bw": res.vf_bw,
         "history": [{k: r[k] for k in ("it", "c", "vf", "ch", "cg")} for r in res.history],
+        "evolution": list(state["evo"]),
         "mesh_raw": raw, "mesh": dec, "ambiguous_cells_filled": filled,
         "cavities_filled": cavities, "specks_dropped": len(specks),
         "faces": len(part.faces()), "volume_mm3": float(part.volume),
