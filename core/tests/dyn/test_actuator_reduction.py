@@ -94,6 +94,18 @@ def test_a_feetech_page_with_its_own_spec_names_resolves(monkeypatch):
     assert p.mass_g == 74.5
 
 
+def test_a_servo_that_kept_up_is_checked_on_its_own_torque_speed_points():
+    """DOG demo: the hips 'failed the torque-speed line' on inverse points (3 N m at speed)
+    while the servo itself drew 1 N m there and tracked within 1 deg."""
+    perf = act.resolve("servo_st3215_hs")
+    w = 0.6 * perf.no_load_rad_s
+    j = {"joint": "hip", "actuator": "a", "peak_servo": 1.0, "peak_inverse": 1.0,
+         "rms_servo": 0.3, "rms_inverse": 0.3, "peak_speed": w, "max_tracking_error": 0.01,
+         "free_base": True, "points": [[w, 1.8]], "points_servo": [[w, 0.3]]}
+    assert checks.torque_row(j, perf)["torque_speed_margin"] > 0
+    assert checks.torque_row({**j, "max_tracking_error": 0.2}, perf)["torque_speed_margin"] < 0
+
+
 def test_torque_rows_check_against_the_reduced_actuator():
     reduced = act.resolve({"id": "mg996r", "ratio": 2})
     peak = 1.5 * act.resolve("mg996r").stall_torque_nm * 0.6   # over 1:1, fine at 2:1

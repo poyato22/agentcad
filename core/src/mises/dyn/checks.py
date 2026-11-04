@@ -94,8 +94,9 @@ def torque_row(j: dict, perf: act.Perf | None, *, margin: float | None = None) -
     m = margin if margin is not None else perf.peak_margin
     use = peak / perf.stall_torque_nm if perf.stall_torque_nm else math.inf
     # every (speed, torque) point under the torque-speed line, with the speed margin
+    pts = (j.get("points_servo") or j.get("points")) if tracked else j.get("points")
     ts_margin = min(((perf.torque_available(p[0] / 0.8) - p[1]) / perf.stall_torque_nm
-                     for p in j.get("points") or []), default=1.0)
+                     for p in pts or []), default=1.0)
     reasons = []
     status = "pass"
     if use > m:

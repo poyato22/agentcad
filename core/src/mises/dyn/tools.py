@@ -392,6 +392,8 @@ async def dyn_torque(ctx: ToolContext, args: TorqueArgs) -> ToolOutput:
             "card": card, "accuracy": card["accuracy"], "stream": "sim"}
     if res.get("com_travel_m") is not None:
         data["com_travel_mm"] = round(res["com_travel_m"] * 1000, 1)
+    if res.get("com_speed_mps") is not None:
+        data["com_speed_mps"] = res["com_speed_mps"]
     return ToolOutput(summary=summary, data=data, warnings=ex.notes, step_kind=StepKind.SIM_RUN)
 
 

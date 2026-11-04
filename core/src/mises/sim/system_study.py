@@ -467,7 +467,10 @@ async def _walk(ctx, pid: str, s: WalkSettings, rec: dict, asm) -> dict:
     metrics.append(_metric("commanded speed", round(v_cmd, 3), "m/s"))
     if travel is not None:
         metrics.append(_metric("body travel", travel, "mm"))
-        v_real = travel / 1000.0 / (period * s.cycles)
+        # at full stride when the dynamics measured it (the stride ramps in and out)
+        v_real = td.get("com_speed_mps")
+        if v_real is None:
+            v_real = travel / 1000.0 / (period * s.cycles)
         metrics.append(_metric("achieved speed", round(v_real, 3), "m/s"))
         if s.min_travel_mm is not None:
             checks.append(_check("travel", "pass" if travel >= s.min_travel_mm else "fail",

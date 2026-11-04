@@ -316,6 +316,9 @@ def task_torque(job: dict) -> dict:
             # (speed, torque) operating points for the torque-speed check
             "points": _r(_thin([[abs(float(x)), abs(float(y))] for x, y in
                                 zip(w, np.maximum(np.abs(f), np.abs(iv)))], 160), 5),
+            # ... and the servo's own (what it drew), for a servo that kept up
+            "points_servo": _r(_thin([[abs(float(x)), abs(float(y))] for x, y in
+                                      zip(w, np.abs(f))], 160), 5),
             "series": {"t": _r(_thin(ts[active].tolist())),
                        "servo": _r(_thin(f.tolist())), "inverse": _r(_thin(iv.tolist())),
                        "target": _r(_thin([plan.at(t)[j] for t in ts[active]]))}})
@@ -331,6 +334,17 @@ def task_torque(job: dict) -> dict:
         if idx and rec.get("com"):
             a, b = np.array(rec["com"][idx[0]]), np.array(rec["com"][idx[-1]])
             out["com_travel_m"] = _r(float(np.hypot(*(b - a)[:2])))
+            # the gait's real speed at full stride (between the ramp-in and the ramp-out)
+            tj = job.get("trajectory") or {}
+            if tj.get("kind") in ("trot", "walk"):
+                period = float(tj.get("period_s") or (1.2 if tj["kind"] == "walk" else 0.6))
+                cycles = int(tj.get("cycles", 3))
+                t0, t1 = plan.start_s + period / 2, plan.start_s + period * cycles - period / 2
+                ks = [k for k in idx if t0 <= rec["t"][k] <= t1]
+                if len(ks) > 1 and t1 > t0:
+                    pa, pb = np.array(rec["com"][ks[0]]), np.array(rec["com"][ks[-1]])
+                    out["com_speed_mps"] = _r(float(np.hypot(*(pb - pa)[:2])) /
+                                              (rec["t"][ks[-1]] - rec["t"][ks[0]]), 4)
     if job.get("reactions"):
         out["reactions"] = _reactions(m, rec, active)
     return out
