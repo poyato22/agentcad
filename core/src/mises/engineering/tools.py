@@ -38,7 +38,7 @@ from ..sim.mesh import FACE_ID_RE
 from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, StepKind, ToolOutput
 from .interview import build_interview
-from .loads import DEFAULT_IMPACT_K, impact_equivalent
+from .loads import DEFAULT_IMPACT_K, impact_equivalent, propulsion
 from .spec import LOAD_CASE_KINDS, LoadCase, Requirement, Spec, evaluate_spec
 from .study import (MAX_EVALS, MAX_MINUTES, Budget, Objective, Variable, Weight, finalize,
                     run_study, weights_from_priorities)
@@ -388,6 +388,34 @@ async def loads_impact(ctx: ToolContext, args: LoadsImpactArgs) -> ToolOutput:
     res = impact_equivalent(args.mass_kg, args.drop_m, args.k)
     return ToolOutput(summary=f"impact (estimate): {res['newtons']:g} N = m·g·k "
                               f"({args.mass_kg:g} kg · g · {args.k:g})", data=res)
+
+
+class PropulsionArgs(BaseModel):
+    prop_diameter_in: float = Field(gt=0.5, le=40)
+    pitch_in: float | None = Field(None, gt=0, le=40, description="default 0.8 x diameter")
+    blades: int = Field(2, ge=2, le=6)
+    motor_kv: float = Field(gt=0, le=100000)
+    cells: int = Field(ge=1, le=14, description="LiPo cells in series (3.7 V each)")
+    motors: int = Field(4, ge=1, le=16)
+    all_up_mass_g: float = Field(gt=0, le=1e6)
+    motor_max_power_w: float | None = Field(None, gt=0, le=1e5,
+                                            description="the motor's rated power, if known")
+
+
+@tool("loads_propulsion", safety=SafetyClass.READ,
+      description="Multirotor propulsion estimate from static prop coefficients: max thrust "
+                  "per motor, thrust-to-weight, hover rpm and throttle, power and current, and "
+                  "the excitation bands a frame mode must avoid (1x rotation and blade pass, "
+                  "hover to full throttle; use them as a modal study's band_hz). An estimate, "
+                  "not a thrust table.")
+async def loads_propulsion(ctx: ToolContext, args: PropulsionArgs) -> ToolOutput:
+    r = propulsion(**args.model_dump())
+    lo, hi = r["rotation_band_hz"]
+    bp = r["blade_pass_band_hz"]
+    return ToolOutput(summary=(
+        f"propulsion (estimate): {r['max_thrust_g_per_motor']:g} g per motor, thrust-to-weight "
+        f"{r['thrust_to_weight']:g}:1, hover {r['hover_rpm']} rpm ({r['hover_throttle']:.0%} "
+        f"of max); rotation {lo:g}-{hi:g} Hz, blade pass {bp[0]:g}-{bp[1]:g} Hz"), data=r)
 
 
 # ---- study
@@ -959,7 +987,8 @@ def _study_summary(rec: dict) -> str:
 
 def register_engineering_tools(registry: ToolRegistry) -> None:
     """Idempotent."""
-    for t in (interview_plan, spec_get, spec_set, spec_check, loads_impact, study_run,
+    for t in (interview_plan, spec_get, spec_set, spec_check, loads_impact, loads_propulsion,
+              study_run,
               study_get, study_apply):
         if not registry.list([t.name]):
             registry.register(t)

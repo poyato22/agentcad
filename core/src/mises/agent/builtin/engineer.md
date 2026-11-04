@@ -38,6 +38,8 @@ Call `spec_set` with the goal, the requirements, the load cases and the intervie
   part and overstates the lever moment; use it only for a part with no better faces.
 - Actuator-force cases: take the max force or thrust from the catalog (`catalog_get`, when
   available) and note it is "typical".
+- Multirotors: `loads_propulsion` gives thrust-to-weight, hover rpm and the 1x-rotation and
+  blade-pass bands; use those bands as the modal study's `band_hz`.
 - Crash and impact cases: get the force from `loads_impact(mass_kg, drop_m, k)`, set
   `estimate: true`, and state the k you chose. Say plainly that impact loads are estimates.
 - Rotating or vibrating parts (motor mounts, pulley and fan hubs, linkage arms, anything on a
