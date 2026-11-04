@@ -6,6 +6,7 @@
 // Everything moves the build view's own scene: the controller's poses (animation) or the view
 // modes' section (sweep), so a presented card plays on exactly the assembly the user builds.
 import type { JSX } from "preact";
+import type * as THREE from "three";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ModeHost } from "../viewer/scene";
 import { restBox } from "../viewer/modes/controller";
@@ -60,6 +61,21 @@ function useArrows(nudge: (dir: 1 | -1, big: boolean) => void): void {
   }, []);
 }
 
+/** The assembly's rest box, re-checked until the parts have loaded: the bar can mount (a study's
+ *  Watch) before the scene has any parts, and nothing else re-renders it then, so Section stayed
+ *  disabled for the whole playback. */
+export function useRestBox(host: ModeHost | null): THREE.Box3 | null {
+  const [, setTick] = useState(0);
+  const box = host ? restBox(host.parts()) : null;
+  const missing = host !== null && box === null;
+  useEffect(() => {
+    if (!missing) return;
+    const t = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(t);
+  }, [missing, host]);
+  return box;
+}
+
 /** G5: Section (axis, flip, the plane's slider) and X-ray while a motion plays: the cut is a
  *  world plane, so the moving parts pass through it and their caps follow them every frame. */
 function MotionModes({ host }: { host: ModeHost | null }): JSX.Element {
@@ -67,7 +83,7 @@ function MotionModes({ host }: { host: ModeHost | null }): JSX.Element {
   const set = (patch: Partial<ModesState>) => { assemblyModes.value = { ...assemblyModes.peek(), ...patch }; };
   const sec = modes.section;
   const xrayOn = modes.xray.opacity < 0.999;
-  const box = host ? restBox(host.parts()) : null;
+  const box = useRestBox(host);
   const range = box ? sectionRange(box, unit(sec.normal)) : [0, 0];
   const at = sectionAt(sec, box);
   return (
@@ -142,7 +158,7 @@ function MotionBar({ ctl, host, onClose }: { ctl: AssemblyController; host: Mode
 
 function SweepBar({ imm, host, onClose }: { imm: Extract<Immersive, { mode: "sweep" }>; host: ModeHost | null; onClose(): void }): JSX.Element {
   const sweep = imm.sweep;
-  const box = host ? restBox(host.parts()) : null;
+  const box = useRestBox(host);
   const ends = sweepEnds(sweep, box);
   const [phase, setPhase] = useState<"auto" | "manual">("auto");
   const [value, setValue] = useState<number | null>(null);

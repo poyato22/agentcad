@@ -9,7 +9,7 @@ import { topoptEventSchema, type TopoptAcceptBody, type TopoptAcceptResult, type
 import type { MisesEvent } from "../../api/types";
 import { applyEvent, isRunning, merged, toBody, validate, type FormError, type GdForm, type LiveRun } from "./model";
 
-export type TopoptClient = Pick<CoreClient, "topoptStart" | "topoptGet" | "topoptList" | "topoptCancel" | "topoptAccept" | "topoptGlb" | "topoptRender" | "partGlb">;
+export type TopoptClient = Pick<CoreClient, "topoptStart" | "topoptGet" | "topoptList" | "topoptCancel" | "topoptAccept" | "topoptGlb" | "topoptEvoGlb" | "topoptRender" | "partGlb">;
 
 export const POLL_MS = 1500;
 

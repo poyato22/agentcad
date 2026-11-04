@@ -222,24 +222,47 @@ function Setup({ c, partId, faces, built, disarm }: {
   );
 }
 
+/** The replay's beat per kept iteration, and how long the last one holds before the result. */
+const REPLAY_MS = 900;
+const REPLAY_HOLD_MS = 1400;
+
 function RunView({ c, topoptId }: { c: TopoptController; topoptId: string }): JSX.Element {
   const rec = c.view(topoptId);
   const loadRender = useCallback((vid: string) => c.client().topoptRender(topoptId, vid), [c, topoptId]);
   const running = rec !== null && isRunning(rec);
   const pv = rec ? (running ? previewVariant(rec) : rec.variants.find((v) => v.id === rec.recommended) ?? null) : null;
   const which = running ? "preview" : "result";
-  const load = useMemo(() => (pv ? (etag?: string) => c.client().topoptGlb(topoptId, pv.id, which, etag) : null), [c, topoptId, pv?.id, which]);
+  // the density's evolution, replayed on a finished run: one kept iteration a beat, then the result
+  const evo = !running ? pv?.urls?.evolution ?? [] : [];
+  const [frame, setFrame] = useState<number | null>(null);
+  useEffect(() => { setFrame(null); }, [pv?.id, running]);
+  useEffect(() => {
+    if (frame === null) return;
+    const t = setTimeout(() => setFrame(frame + 1 < evo.length ? frame + 1 : null), frame + 1 < evo.length ? REPLAY_MS : REPLAY_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [frame, evo.length]);
+  const evoPath = frame !== null ? evo[frame] ?? null : null;
+  const load = useMemo(() => (
+    evoPath ? (etag?: string) => c.client().topoptEvoGlb(evoPath, etag)
+      : pv ? (etag?: string) => c.client().topoptGlb(topoptId, pv.id, which, etag) : null
+  ), [c, topoptId, pv?.id, which, evoPath]);
   if (!rec) return <div class="gd-body"><p class="faint">Loading…</p></div>;
+  const iteration = evoPath ? Number(/evo_(\d+)\.glb$/.exec(evoPath)?.[1] ?? 0) : null;
   return (
     <div class="gd-body gd-run" data-testid="gd-run" data-status={rec.status}>
       <div class="gd-status">
-        <span data-testid="gd-status">{statusLine(rec)}</span>
+        <span data-testid="gd-status">{iteration !== null && frame !== null && pv
+          ? `Density of ${pv.name} · iteration ${iteration} · frame ${frame + 1} of ${evo.length}`
+          : statusLine(rec)}</span>
         {running && <Button variant="danger" onClick={() => void c.cancel(topoptId)}>Cancel</Button>}
+        {evo.length > 1 && (
+          <Button variant="ghost" onClick={() => setFrame(0)} disabled={frame !== null}>Replay the density</Button>
+        )}
       </div>
       {running && <div class="gd-bar" role="progressbar" aria-valuenow={overallPct(rec)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${overallPct(rec)}%` }} /></div>}
       {load && pv && (
-        <DensityPreview load={load} version={running ? (pv.preview ?? null) : `${pv.id}-done`}
-          label={running ? `Density of ${pv.name} converging` : `Result of ${pv.name}`} />
+        <DensityPreview load={load} version={evoPath ?? (running ? (pv.preview ?? null) : `${pv.id}-done`)}
+          label={evoPath ? `Density of ${pv.name}, iteration ${iteration}` : running ? `Density of ${pv.name} converging` : `Result of ${pv.name}`} />
       )}
       <VariantGrid rec={rec} loadRender={loadRender} busy={c.busy.value}
         onAccept={(vid) => void c.accept(topoptId, { variant: vid, mode: "new" })} />

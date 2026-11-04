@@ -37,6 +37,7 @@ function client(states: TopoptRecord[] = [RUNNING, DONE]) {
     topoptCancel: vi.fn().mockResolvedValue({ status: "cancelling" }),
     topoptAccept: vi.fn().mockResolvedValue(ACCEPT),
     topoptGlb: vi.fn().mockRejectedValue(new Error("no GLB in jsdom")),
+    topoptEvoGlb: vi.fn().mockRejectedValue(new Error("no GLB in jsdom")),
     topoptRender: vi.fn().mockResolvedValue(new Blob(["png"], { type: "image/png" })),
     partGlb: vi.fn().mockRejectedValue(new Error("no GLB in jsdom")),
   };
@@ -191,5 +192,37 @@ describe("result card", () => {
     expect(within(card).getAllByTestId("gd-verdict").map((e) => e.textContent)).toEqual(DONE.variants.map(() => "✓ Verified"));
     fireEvent.click(within(card).getByRole("button", { name: "Open the generative design run" }));
     expect(ctl.panel.value).toEqual({ partId: "block", topoptId: DONE.topopt_id });
+  });
+});
+
+describe("the density's evolution", () => {
+  it("replays the kept iterations of the shown variant, then returns to its result", async () => {
+    const base = `/topopt/${DONE.topopt_id}/variants/${DONE.recommended}`;
+    const evo = [`${base}/evo_005.glb`, `${base}/evo_010.glb`, `${base}/evo_030.glb`];
+    const rec = topoptRecordSchema.parse({ ...DONE, variants: DONE.variants.map((v) => (v.id === DONE.recommended ? { ...v, urls: { ...v.urls, evolution: evo } } : v)) });
+    c = client([rec]);
+    ctl = new TopoptController(() => c);
+    ctl.open("block", rec.topopt_id);
+    render(<GenerativeRoot controller={ctl} />);
+    await act(async () => { await ctl.refresh(rec.topopt_id); });
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Replay the density" }));
+    await settle();
+    // (jsdom has no WebGL, so the preview itself never loads: follow the frames by the status line)
+    const status = () => screen.getByTestId("gd-status").textContent ?? "";
+    expect(status()).toMatch(/iteration 5 · frame 1 of 3/);
+    await waitFor(() => expect(status()).toMatch(/iteration 10 · frame 2 of 3/), { timeout: 4000 });
+    await waitFor(() => expect(status()).toMatch(/iteration 30 · frame 3 of 3/), { timeout: 4000 });
+    await waitFor(() => expect(status()).not.toMatch(/iteration/), { timeout: 4000 });  });
+
+  it("offers no replay when the run kept no iterations", async () => {
+    c = client([DONE]);
+    ctl = new TopoptController(() => c);
+    ctl.open("block", DONE.topopt_id);
+    render(<GenerativeRoot controller={ctl} />);
+    await act(async () => { await ctl.refresh(DONE.topopt_id); });
+    await settle();
+    expect(screen.getByTestId("gd-run")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Replay the density" })).toBeNull();
   });
 });

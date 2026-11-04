@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render } from "@testing-library/preact";
 import { describe, expect, it } from "vitest";
 import type { StudyChart as Chart } from "../../../../api/studies";
@@ -26,5 +28,14 @@ describe("StudyChart histogram at tiny stresses", () => {
     const h = (d: string) => Number(/^M[\d.]+,([\d.]+)/.exec(d)?.[1]) - Number(/Q[\d.]+,([\d.]+) /.exec(d)?.[1]);
     expect(h(bars[9].getAttribute("d") ?? "")).toBeCloseTo(2, 5);
     expect(h(bars[5].getAttribute("d") ?? "")).toBe(0);
+  });
+});
+
+describe("StudyChart legend with many series (a walk study's joint torques)", () => {
+  it("wraps inside its chart instead of running over the chart beside it", () => {
+    const css = readFileSync(resolve(import.meta.dirname, "charts.css"), "utf8");
+    const rule = /\.sc-legend\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule).toMatch(/min-width:\s*0/);
   });
 });

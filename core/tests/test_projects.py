@@ -276,3 +276,27 @@ def test_project_view_carries_the_builds_tree_mass(store, tmp_path):
     assert views[b.id]["mass_g"] is None
     # without a home (no disk to weigh) the field is there, null
     assert projects.list_projects(store)[0]["mass_g"] is None
+
+
+def test_home_tile_mass_counts_every_assembly_instance(store, tmp_path):
+    """The Home tile and the build's Parts total must agree: with an assembly, the build weighs
+    every instance x its part (a dog's four legs), not each part once (793 g vs 1.65 kg)."""
+    from mises.assembly.model import AssemblyStore, Instance
+    a = store.create_project("Dog")
+    _built(store, tmp_path, a.id, "leg", "body")
+    for n, vol in (("leg", 1000.0), ("body", 3000.0)):          # volume x the build default
+        (tmp_path / "parts" / n / "metrics.json").write_text(json.dumps({"volume_mm3": vol}))
+    g = {r["id"]: r["mass_g"] for r in projects.list_parts(store, tmp_path, a.id)}
+    assert g["leg"] > 0 and g["body"] > 0
+    asm = AssemblyStore(tmp_path / "assembly.db")
+    asm.add_instance(a.id, Instance(part_id="body", name="body", fixed=True))
+    for i in range(4):
+        asm.add_instance(a.id, Instance(part_id="leg", name=f"leg_{i}"))
+    view = {v["id"]: v for v in projects.list_projects(store, tmp_path, assemblies=asm)}[a.id]
+    assert view["mass_g"] == pytest.approx(g["body"] + 4 * g["leg"])
+    # no assembly yet: the tree's sum, as before
+    b = store.create_project("Loose")
+    _built(store, tmp_path, b.id, "plate")
+    (tmp_path / "parts" / "plate" / "metrics.json").write_text(json.dumps({"volume_mm3": 1000.0}))
+    view_b = projects.project_view(store, store.get_project(b.id), tmp_path, assemblies=asm)
+    assert view_b["mass_g"] == pytest.approx(g["leg"])

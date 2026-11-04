@@ -433,6 +433,11 @@ export class CoreClient {
   topoptGlb(id: string, variant: string, name: "preview" | "result" | "stress", etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
     return this.glb(`/topopt/${enc(id)}/variants/${enc(variant)}/${name}.glb`, etag);
   }
+  /** One kept iteration of a variant's density (a path from its urls.evolution). */
+  topoptEvoGlb(path: string, etag?: string): Promise<{ bytes: ArrayBuffer; etag: string } | "not-modified"> {
+    if (!/^\/topopt\/[\w-]+\/variants\/[\w-]+\/evo_\d{3}\.glb$/.test(path)) return Promise.reject(new Error(`not an evolution frame: ${path}`));
+    return this.glb(path, etag);
+  }
   /** A variant's iso render (PNG), for the variant grid. */
   topoptRender(id: string, variant: string): Promise<Blob> { return this.blob(`/topopt/${enc(id)}/variants/${enc(variant)}/render.png`, "image/png"); }
 

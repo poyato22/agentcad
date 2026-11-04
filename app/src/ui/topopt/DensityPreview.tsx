@@ -12,11 +12,25 @@ export type GlbLoader = (etag?: string) => Promise<{ bytes: ArrayBuffer; etag: s
 
 interface View { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.OrthographicCamera; part: PartScene | null; az: number; el: number }
 
-function place(v: View): void {
+/** What framing needs of a view (tests pass stand-ins). */
+interface Frame {
+  renderer: Pick<THREE.WebGLRenderer, "setSize" | "render">; scene: THREE.Scene; camera: THREE.OrthographicCamera;
+  part: Pick<PartScene, "bbox"> | null; az: number; el: number;
+}
+
+/** Turn the camera to (az, el) and frame the part for a w × h CSS px canvas: the drawing buffer
+ *  and the frustum follow the canvas's shape (a 1:1 frustum on the wide panel stretched the part
+ *  sideways, and the buffer sized before layout was a blurry 320 × 240). */
+export function placeView(v: Frame, w: number, h: number): void {
   const az = THREE.MathUtils.degToRad(v.az); const el = THREE.MathUtils.degToRad(v.el);
+  v.renderer.setSize(Math.max(1, w), Math.max(1, h), false);
   v.camera.position.set(Math.cos(el) * Math.sin(az), -Math.cos(el) * Math.cos(az), Math.sin(el)).multiplyScalar(100);
-  if (v.part) fitOrtho(v.camera, v.part.bbox, 1, 1.1);
+  if (v.part) fitOrtho(v.camera, v.part.bbox, Math.max(1, w) / Math.max(1, h), 1.1);
   v.renderer.render(v.scene, v.camera);
+}
+
+function place(v: View, canvas: HTMLCanvasElement | null): void {
+  placeView(v, canvas?.clientWidth || 320, canvas?.clientHeight || 240);
 }
 
 export function DensityPreview({ load, version, label }: { load: GlbLoader; version: string | number | null; label: string }): JSX.Element {
@@ -62,7 +76,7 @@ export function DensityPreview({ load, version, label }: { load: GlbLoader; vers
       v.part?.dispose();
       v.part = part;
       v.scene.add(part.object);
-      place(v);
+      place(v, canvas.current);
       setState("ok");
     }).catch(() => { if (live) setState((s) => (s === "ok" ? s : "error")); });
     return () => { live = false; };
@@ -76,7 +90,7 @@ export function DensityPreview({ load, version, label }: { load: GlbLoader; vers
     v.az -= (e.clientX - drag.current.x) * 0.5;
     v.el = Math.max(-85, Math.min(85, v.el + (e.clientY - drag.current.y) * 0.5));
     drag.current = { x: e.clientX, y: e.clientY };
-    place(v);
+    place(v, canvas.current);
   };
   const onUp = () => { drag.current = null; };
 

@@ -23,6 +23,8 @@ export type TopoptVerify = z.infer<typeof topoptVerifySchema>;
 
 export const topoptUrlsSchema = z.looseObject({
   preview: z.string(), result: z.string(), stress: z.string(), render: z.string(), step: z.string(), stl: z.string(),
+  /** The density's evolution: one kept preview mesh per iteration (evo_NNN.glb), oldest first. */
+  evolution: z.array(z.string()).default([]),
 });
 
 export const topoptVariantSchema = z.looseObject({

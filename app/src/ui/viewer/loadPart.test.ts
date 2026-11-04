@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { loadPart } from "./loadPart";
+import { loadPart, mergeFaceMeshes } from "./loadPart";
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -48,5 +48,50 @@ describe("loadPart", () => {
     for (const g of geoms) g.addEventListener("dispose", () => { disposed++; });
     p.dispose();
     expect(disposed).toBe(geoms.length);
+  });
+});
+
+describe("a part with thousands of faces (a topology-optimized body)", () => {
+  it("draws as one mesh and one edge set, with the same triangles, edges and extent", () => {
+    // the GLB holds one mesh per B-rep face; a topopt bracket has thousands of tiny faces, so the
+    // assembly made thousands of draw calls per part and orbited at ~10 fps
+    const root = new THREE.Group();
+    root.position.set(5, 0, 0);
+    let tris = 0;
+    let segs = 0;
+    for (let i = 0; i < 300; i++) {
+      const g = new THREE.PlaneGeometry(1, 1);
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial());
+      m.position.set(i % 20, Math.floor(i / 20), 0);
+      m.rotation.z = i * 0.1;
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(g, 20), new THREE.LineBasicMaterial());
+      e.userData["edges"] = true;
+      m.add(e);
+      root.add(m);
+      tris += 2;
+      segs += 4;
+    }
+    root.updateMatrixWorld(true);
+    const before = new THREE.Box3().setFromObject(root);
+    mergeFaceMeshes(root);
+    root.updateMatrixWorld(true);
+    const meshes: THREE.Mesh[] = []; const lines: THREE.LineSegments[] = [];
+    root.traverse((o) => { if (o instanceof THREE.LineSegments) lines.push(o); else if (o instanceof THREE.Mesh) meshes.push(o); });
+    expect(meshes).toHaveLength(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].userData["edges"]).toBe(true);
+    const g = meshes[0].geometry;
+    expect((g.getIndex()?.count ?? g.getAttribute("position").count) / 3).toBe(tris);
+    expect(lines[0].geometry.getAttribute("position").count / 2).toBe(segs);
+    const after = new THREE.Box3().setFromObject(root);
+    expect(after.min.distanceTo(before.min)).toBeLessThan(1e-6);
+    expect(after.max.distanceTo(before.max)).toBeLessThan(1e-6);
+  });
+
+  it("leaves a part with a few faces as it is", () => {
+    const root = new THREE.Group();
+    for (let i = 0; i < 6; i++) root.add(new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial()));
+    mergeFaceMeshes(root);
+    expect(root.children).toHaveLength(6);
   });
 });
