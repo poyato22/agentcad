@@ -17,9 +17,11 @@ ORDER = {"fail": 3, "warn": 2, "pass": 1, "not_checked": 0, "n/a": 0}
 ACCURACY = {
     "dynamics": [
         "Guide only: rigid bodies (link compliance and gear backlash ignored).",
-        "Servos are a PD model (stall at about 3 deg of error); 'servo' is what a stiff "
-        "position servo draws tracking the motion, 'ideal' is inverse dynamics of the motion "
-        "the robot actually made. Sizing uses the larger.",
+        "Servos are a PD model (stall at about 3 deg of error) tracking the moving setpoint; "
+        "'servo' is what it draws, 'ideal' is inverse dynamics of the motion the robot "
+        "actually made, band-limited to a servo's loop (a 20 ms mean). Sizing uses the "
+        "larger. Shorter foot-strike spikes ('impact') load the gears and structure, not the "
+        "motor: they are reported, and the FEM hand-off uses them.",
         "Contacts are soft (MuJoCo): impact peaks depend on contact stiffness and are "
         "estimates; static and quasi-static results are accurate (exact on the 2-link check).",
         "Mass is B-rep volume x density (exact for solid parts); infill, fasteners and wiring "
@@ -64,6 +66,7 @@ def torque_row(j: dict, perf: act.Perf | None, *, margin: float | None = None) -
     w = float(j["peak_speed"])
     row = {"peak_nm": round(peak, 4), "rms_nm": round(rms, 4),
            "peak_servo_nm": j["peak_servo"], "peak_ideal_nm": j["peak_inverse"],
+           "peak_impact_nm": j.get("peak_impact", j["peak_inverse"]),
            "peak_speed_rpm": round(w * 60 / (2 * math.pi), 2),
            "peak_power_w": j.get("peak_power_w"),
            "tracking_error_deg": round(math.degrees(float(j.get("max_tracking_error", 0))), 2)}

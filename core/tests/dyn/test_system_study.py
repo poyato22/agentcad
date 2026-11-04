@@ -62,6 +62,10 @@ async def test_a_trot_is_judged_by_its_body_not_the_cop_on_the_support_line(ctx)
     assert gait["unit"] == "deg" and "of level" in gait["reason"]
     assert "stability: CoP during the crawl" not in by
     assert any(m["label"] == "max body tilt" for m in rec["metrics"])
+    # the gait's speed is stated: commanded = step / stance time (half the cycle in a trot)
+    mets = {m["label"]: m for m in rec["metrics"]}
+    assert mets["commanded speed"]["value"] == pytest.approx(0.030 / 0.4, rel=1e-3)
+    assert "achieved speed" in mets
 
 
 async def test_drop_and_mechanism(ctx):  # noqa: F811

@@ -459,8 +459,16 @@ async def _walk(ctx, pid: str, s: WalkSettings, rec: dict, asm) -> dict:
     rom_st = rom.data.get("status")
     checks.append(_check("range of motion collisions", rom_st, rom.summary))
     travel = td.get("com_travel_mm")
+    # the gait's commanded speed: a stance foot sweeps one step back in (1 - duty) of a cycle
+    walk = s.gait == "walk"
+    period = s.period_s or (1.2 if walk else 0.6)
+    step = (s.step_mm or 40.0) / 1000.0
+    v_cmd = step / ((1.0 - (0.25 if walk else 0.5)) * period)
+    metrics.append(_metric("commanded speed", round(v_cmd, 3), "m/s"))
     if travel is not None:
         metrics.append(_metric("body travel", travel, "mm"))
+        v_real = travel / 1000.0 / (period * s.cycles)
+        metrics.append(_metric("achieved speed", round(v_real, 3), "m/s"))
         if s.min_travel_mm is not None:
             checks.append(_check("travel", "pass" if travel >= s.min_travel_mm else "fail",
                                  f"the body travels {travel:.0f} mm (target >= "

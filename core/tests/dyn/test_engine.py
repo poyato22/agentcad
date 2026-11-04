@@ -103,6 +103,20 @@ def test_a_motion_reports_body_tilt_and_non_foot_floor_contacts():
     assert st["non_foot_floor_contacts"] == ["box"]
 
 
+def test_the_actuator_demand_is_band_limited_but_the_impact_is_kept():
+    """DOG demo: a slow trot's knee 'needed' 3.0 N m from a few-ms foot-strike spike while the
+    servo tracked within 1 deg drawing 1.2 N m. A servo's loop cannot follow (or be asked for)
+    a 4 ms spike: the gears and structure take it. Sizing reads the inverse dynamics
+    band-limited at the servo's bandwidth (a 20 ms mean); the raw impact peak is reported."""
+    n = 200
+    arr = np.ones((n, 1))               # a 1 N m plateau (0.4 s at 2 ms samples)
+    arr[100:102, 0] = 10.0               # a 4 ms spike of 10 N m
+    demand, impact = engine._inverse_bands(arr)
+    assert impact[:, 0].max() == pytest.approx(1 + 18 / 5)    # the 10 ms mean: the strike
+    assert demand[:, 0].max() == pytest.approx(1 + 18 / 10)   # the 20 ms mean: half of it
+    assert demand[50, 0] == pytest.approx(1.0)
+
+
 def fourbar_model(a=0.04, b=0.12, c=0.08, dd=0.10):
     """Spike fourbar: crank a, coupler b, rocker c, ground d in the XZ plane, closed by an
     equality connect at the coupler tip."""

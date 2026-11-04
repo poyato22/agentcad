@@ -20,7 +20,8 @@ except ImportError:                      # pragma: no cover - the worker injects
     mjmodel = trajmod = None             # type: ignore[assignment]
 
 SAMPLE_S = 0.002          # recorded every 2 ms
-INVERSE_FILTER_SAMPLES = 5  # free-base inverse dynamics: a 10 ms moving average
+INVERSE_FILTER_SAMPLES = 5  # free-base inverse dynamics: a 10 ms moving average (impacts)
+ACTUATOR_BAND_SAMPLES = 10  # ... and the actuator's demand: a 20 ms mean (servo bandwidth)
 SERIES_POINTS = 240       # points per chart series
 PENETRATION_TOL_M = 0.0005
 # MuJoCo enums as plain ints: numpy ints from the model arrays never compare equal to them
@@ -248,13 +249,23 @@ def _inverse(m, rec, active, plan, jnames, free: bool):
         d2.qacc[:] = (v2 - v1) / dt
         mujoco.mj_inverse(m, d2)
         out.append([d2.qfrc_inverse[k] for k in dofs])
-    arr = np.array(out)
-    # the finite-difference noise of contacts: a 5-sample moving average
-    n = INVERSE_FILTER_SAMPLES
-    if len(arr) > n and arr.ndim == 2 and arr.shape[1]:
-        k = np.ones(n) / n
-        arr = np.vstack([np.convolve(arr[:, c], k, mode="same") for c in range(arr.shape[1])]).T
-    return arr
+    return np.array(out)
+
+
+def _mean_filter(arr: np.ndarray, n: int) -> np.ndarray:
+    if len(arr) <= n or arr.ndim != 2 or not arr.shape[1]:
+        return arr
+    k = np.ones(n) / n
+    return np.vstack([np.convolve(arr[:, c], k, mode="same") for c in range(arr.shape[1])]).T
+
+
+def _inverse_bands(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """A free base's inverse dynamics (finite-difference accelerations) as (actuator demand,
+    impact): the demand is band-limited to what a servo's loop can follow (a 20 ms mean, ~25 Hz
+    to its first null); foot-strike spikes shorter than that load the gears and structure, not
+    the motor, and stay in the impact series (the 10 ms mean that only removes the
+    differencing noise)."""
+    return (_mean_filter(arr, ACTUATOR_BAND_SAMPLES), _mean_filter(arr, INVERSE_FILTER_SAMPLES))
 
 
 def task_torque(job: dict) -> dict:
@@ -281,6 +292,7 @@ def task_torque(job: dict) -> dict:
     F = np.array(rec["force"])
     V = np.array(rec["qvel"])
     inv = _inverse(m, rec, active, plan, jnames, free)
+    inv, impact = _inverse_bands(inv) if free else (inv, inv)
     joints = []
     for a, j in enumerate(jnames):
         dof = int(m.joint(j).dofadr[0])
@@ -291,6 +303,7 @@ def task_torque(job: dict) -> dict:
             "peak_servo": _r(np.max(np.abs(f)) if len(f) else 0.0),
             "rms_servo": _r(np.sqrt(np.mean(f ** 2)) if len(f) else 0.0),
             "peak_inverse": _r(np.max(np.abs(iv)) if len(iv) else 0.0),
+            "peak_impact": _r(np.max(np.abs(impact[active, a])) if len(iv) else 0.0),
             "rms_inverse": _r(np.sqrt(np.mean(iv ** 2)) if len(iv) else 0.0),
             "peak_speed": _r(np.max(np.abs(w)) if len(w) else 0.0),
             "rms_speed": _r(np.sqrt(np.mean(w ** 2)) if len(w) else 0.0),
