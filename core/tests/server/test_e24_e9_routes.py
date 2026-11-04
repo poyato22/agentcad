@@ -100,6 +100,24 @@ def test_retry_resends_last_user_turn(client):
     assert r2.status_code == 404
 
 
+def test_continue_carries_the_run_on_without_the_users_words(client):
+    pid = _pid(client)
+    rid = client.post(f"/projects/{pid}/chat", headers=AUTH,
+                      json={"text": "Build a drone"}).json()["run_id"]
+    wait_status(client, rid)
+    r = client.post(f"/runs/{rid}/continue", headers=AUTH, json={"cause": "the tools hung"})
+    assert r.status_code == 200, r.text
+    wait_status(client, rid)
+    steps = client.get(f"/runs/{rid}/steps", headers=AUTH).json()
+    users = [s["payload"] for s in steps if s["payload"].get("role") == "user"]
+    assert [u["text"] for u in users if "system_note" not in u] == ["Build a drone"]
+    note = [u for u in users if "system_note" in u]
+    assert note and note[0]["system_note"]["kind"] == "continuation"
+    assert [s["payload"]["continuation"]["text"] for s in steps
+            if "continuation" in s["payload"]] == ["Mises continued after: the tools hung"]
+    assert client.post("/runs/nope/continue", headers=AUTH).status_code == 404
+
+
 def test_scan_stalls_publishes_once(rt, monkeypatch):
     pid = rt.store.create_project("Robot").id
     run = rt.store.create_run("engineer", "fake", "m", "go", project_id=pid)

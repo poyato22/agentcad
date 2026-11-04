@@ -246,6 +246,10 @@ class Resume(BaseModel):
     text: str | None = None
 
 
+class ContinueRun(BaseModel):
+    cause: str | None = Field(default=None, max_length=2000)   # what stopped it (shown, told)
+
+
 class Decision(BaseModel):
     payload_hash: str
     approve: bool
@@ -549,6 +553,14 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
         """E9: re-send the run's last user turn after an error or a stall."""
         _run(run_id)
         return await runtime.retry_last(run_id)
+
+    @app.post("/runs/{run_id}/continue")
+    async def continue_(run_id: str, body: ContinueRun | None = None):
+        """Carry a stopped run on with an internal continuation (the error card's Continue):
+        never the user's message again, never a user bubble; budgets keep their window."""
+        _run(run_id)
+        cause = (body.cause if body is not None and body.cause else None) or "the run stopped"
+        return await runtime.continue_run(run_id, cause[:300])
 
     @app.post("/runs/{run_id}/resume")
     async def resume(run_id: str, body: Resume | None = None):

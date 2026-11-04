@@ -1487,7 +1487,7 @@ class Runtime:
 
     async def _drive_claude(self, rid: str, text: str, *, first: bool,
                             images: list[tuple[str, str]] | None = None,
-                            log: dict | None = None) -> RunResult:
+                            log: dict | None = None, record: bool = True) -> RunResult:
         st = self._claude[rid]
         assert st.session is not None
         slot, st.slot = st.slot, None
@@ -1507,7 +1507,8 @@ class Runtime:
                 context = {**(context or {}), **st.first_context}
             level, st.effort = st.effort, None
             final = await self._prompt_claude(rid, st, text, context=context, images=images,
-                                              log=log, effort=level, first=first)
+                                              log=log, effort=level, first=first,
+                                              record=record)
             result = RunResult(final_text=final, messages=[], stop_reason="end_turn")
         except MisesError as e:
             stop = "cancelled" if e.code == ErrorCode.CANCELLED else "error"
@@ -1535,7 +1536,7 @@ class Runtime:
         Claude Code has the conversation, else fresh and seeded with a recap of the thread)
         and told to carry on, with a backoff, at most CLAUDE_RECOVERIES times per user turn.
         Each recovery is a visible note step; once the budget is spent the run stops with one
-        card saying what failed and what was tried (Retry / Continue in the app)."""
+        card saying what failed and what was tried (Continue in the app)."""
         from .claude_code.recap import thread_recap
         from .claude_code.session import RECOVERABLE
         tried: list[dict] = []
@@ -1678,12 +1679,12 @@ class Runtime:
 
     def _recovery_exhausted(self, rid: str, cause: str, tried: list[dict]) -> None:
         """The recovery budget is spent: one clear card (P11 F9): what failed, what was tried,
-        and the two ways on (Retry the last message, Continue from here)."""
+        and the way on: Continue (an internal continuation, never the message again)."""
         body = {"code": str(ErrorCode.TOOL_FAILED), "source": CLAUDE_CODE,
                 "message": f"Stopped after {len(tried)} recover{'y' if len(tried) == 1 else 'ies'}:"
                            f" {cause}",
                 "recovery": {"exhausted": True, "cause": cause, "tried": tried,
-                             "actions": ["retry", "continue"]}}
+                             "actions": ["continue"]}}
         with contextlib.suppress(Exception):
             self.store.append_step(rid, StepKind.ERROR, body)
     async def _respawn_without_effort(self, rid: str, st: _ClaudeRun) -> None:
@@ -1776,7 +1777,9 @@ class Runtime:
                                  resume=run.session_ref)
 
     async def _send_claude(self, run_id: str, text: str, log: dict | None = None,
-                           images: list[tuple[str, str]] | None = None) -> None:
+                           images: list[tuple[str, str]] | None = None, *,
+                           record: bool = True) -> None:
+        """`record=False`: an internal continuation (no user message step)."""
         st = self._claude.get(run_id)
         if st is not None and st.task is not None and not st.task.done():
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
@@ -1795,7 +1798,8 @@ class Runtime:
         st.slot = (None if self.parallel.try_acquire(run_id, st.ref)
                    else self._queue(run_id, st.ref, st.started_data))
         st.task = asyncio.create_task(self._drive_claude(run_id, text, first=False, log=log,
-                                                         images=images or None))
+                                                         images=images or None,
+                                                         record=record))
 
     async def release_claude_session(self, run_id: str) -> None:
         """Close an idle Claude Code session once its result is collected (orchestrated
@@ -2476,6 +2480,87 @@ class Runtime:
         text, log = turn
         await (self.send(run_id, text, log=log) if log else self.send(run_id, text))
         return {"ok": True, "run_id": run_id}
+
+    #: automatic continuations (restart resume, a lead continuing its sub-agent) per user turn
+    AUTO_CONTINUES = 2
+
+    @staticmethod
+    def continuation_text(cause: str) -> str:
+        """The internal message that carries a run on. Plain words (no safety-filter bait)."""
+        return (f"Mises note: your last turn stopped ({cause.rstrip('.')}). Carry on with the "
+                "user's request from where you left off. Check what is already built before "
+                "you redo anything. Any approval you were waiting for was cancelled: ask again "
+                "only if the action is still needed.")
+
+    def _auto_continues(self, run_id: str) -> int:
+        """Automatic continuations since the run's last user message."""
+        n = 0
+        with contextlib.suppress(Exception):
+            for s in self.store.steps(run_id, [StepKind.MESSAGE, StepKind.DECISION]):
+                p = s.payload
+                if s.kind == StepKind.MESSAGE and p.get("role") == "user" \
+                        and "system_note" not in p:
+                    n = 0
+                elif s.kind == StepKind.DECISION and (p.get("continuation") or {}).get("auto"):
+                    n += 1
+        return n
+
+    def auto_continue_blocked(self, run_id: str) -> str | None:
+        """Why Mises may not continue this run by itself now (None: it may). A user Stop always
+        wins, the per-turn cap bounds the loop, and a spent budget is not worked around."""
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return "unknown run"
+        if run.archived or run_id in self._deleting:
+            return "the run is archived or being deleted"
+        if run.status == "cancelled" or run_id in self.note_hold:
+            return "the user stopped it"
+        if self.run_busy(run_id):
+            return "it is still working"
+        if self._auto_continues(run_id) >= self.AUTO_CONTINUES:
+            return f"Mises already continued it {self.AUTO_CONTINUES} times for this message"
+        if budget_mod.usd_exhausted(self.store, run_id) is not None:
+            return "its budget for this message is spent"
+        return None
+
+    async def continue_run(self, run_id: str, cause: str, *, auto: bool = False,
+                           extra: str | None = None) -> dict:
+        """Carry a stopped run on with an internal continuation (never the user's message
+        again, never a user bubble): a `continuation` decision step ("Mises continued after:
+        <cause>") and a turn that is not a new user turn, so budgets keep their window. A
+        Claude Code run resumes its session (else a fresh one with a recap). `auto`: Mises
+        decided it by itself, bounded by auto_continue_blocked; the app's Continue is not."""
+        try:
+            self.store.get_run(run_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
+        if auto:
+            why = self.auto_continue_blocked(run_id)
+            if why is not None:
+                raise MisesError(ErrorCode.INVALID_INPUT, f"not continued: {why}")
+        elif run_id in self._deleting:
+            raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is being deleted")
+        if self.run_busy(run_id):
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
+                             hint="wait for it to finish or cancel it")
+        text = self.continuation_text(cause) + (f"\n{extra}" if extra else "")
+        body = {"cause": cause, "auto": auto, "text": f"Mises continued after: {cause}"}
+        self.note_hold.discard(run_id)
+        self._sending.add(run_id)
+        try:
+            if self._is_claude_run(run_id):
+                await self._send_claude(run_id, text, record=False)
+            else:
+                self._sending.discard(run_id)
+                await self.send(run_id, text, user_turn=False, log={
+                    "text": text, "system_note": {"kind": "continuation", **body}})
+        finally:
+            self._sending.discard(run_id)
+        with contextlib.suppress(Exception):
+            self.store.append_step(run_id, StepKind.DECISION, {"continuation": body})
+        self.events.publish(Event(type="run_continued", run_id=run_id, data=body))
+        return {"ok": True, "run_id": run_id, "continuation": body}
 
     #: a running turn with no activity for this long is reported as stalled (E9)
     STALL_S = 90.0
