@@ -216,6 +216,11 @@ def made_estimate(home: Path, part_id: str, material: str,
     m = _metrics(home, part_id)
     if tree_row is not None:
         material = tree_row.get("material") or material
+        if tree_row.get("own_mass_source") == "stated":
+            # a datasheet mass (a battery, a VTX): not priced as kilograms of material
+            return {"unit_cost": None, "mass_g": tree_row.get("own_mass_g"),
+                    "material": mass_mod.canonical_material(material, home) or material,
+                    "note": "stated mass; no cost estimate (a bought part: add its price)"}
         # one BOM line is one part: its OWN mass, never a parent's subtree sum
         mass_g = tree_row.get("own_mass_g") if tree_row.get("own_mass_source") == "built" \
             else None

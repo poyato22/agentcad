@@ -373,3 +373,43 @@ async def test_topopt_on_a_material_without_sim_data_is_refused(tmp_path, fake, 
     with pytest.raises(MisesError) as e:
         await tools.topopt_run.handler(ctx, TopoptRunArgs(**BASE))
     assert "PVA has no simulation data" in e.value.message
+
+
+def test_density_evolution_frames_are_kept_sparse_and_served(tmp_path):
+    # DRONE demo: stills / replay of the density forming, after the run
+    from mises.topopt import worker
+    job = tmp_path / "v0"
+    job.mkdir()
+    state = {"preview": None, "evo": [], "next_evo": 1}
+    for it in range(5, 201, 5):
+        (job / "preview.glb").write_bytes(b"glTF" + bytes([it]))
+        worker._keep_frame(job, it, state)
+    assert state["evo"][:4] == [5, 10, 15, 20] and len(state["evo"]) <= worker.EVO_MAX
+    assert all(b > a for a, b in zip(state["evo"], state["evo"][1:])) and state["evo"][-1] > 100
+    assert (job / "evo_010.glb").read_bytes() == b"glTF" + bytes([10])
+    tid = "to_" + "a" * 12
+    d = jobs.job_dir(tmp_path, tid) / "v0"
+    d.mkdir(parents=True)
+    (d / "evo_005.glb").write_bytes(b"glTF-5")
+    data, media = jobs.variant_file(tmp_path, tid, "v0", "evo_005.glb")
+    assert data == b"glTF-5" and media == "model/gltf-binary"
+    for bad in ("evo_5.glb", "evo_005.glb/../x", "../evo_005.glb", "evo_005.stl"):
+        with pytest.raises(MisesError):
+            jobs.variant_file(tmp_path, tid, "v0", bad)
+    rec = {"topopt_id": tid, "variants": [{"id": "v0", "evolution": [5, 10]}]}
+    assert jobs.public(rec)["variants"][0]["urls"]["evolution"] == [
+        f"/topopt/{tid}/variants/v0/evo_005.glb", f"/topopt/{tid}/variants/v0/evo_010.glb"]
+
+
+def test_a_split_result_says_how_to_join_it():
+    # DRONE demo: 4 arms, each fixed at its own stack hole: 41.6% dropped, then "the load face
+    # tag:pad_fr is not on the variant" with the hint "keep the load face inside the space"
+    from mises.sim.types import SimError
+    rep = {"islands_dropped_pct": 41.6, "bodies": 4}
+    w = jobs.split_warning(rep)
+    assert "split into 4 separate bodies" in w and "keep region" in w and "41.6%" in w
+    assert "islands" in jobs.split_warning({"islands_dropped_pct": 0.4, "bodies": 2})
+    e = SimError("bad_setup", "the load face tag:pad_fr is not on the variant",
+                 hint="keep the load face inside the design space")
+    assert "dropped" in jobs.verify_hint(e, rep)
+    assert jobs.verify_hint(e, {"islands_dropped_pct": 0.0}) == e.hint

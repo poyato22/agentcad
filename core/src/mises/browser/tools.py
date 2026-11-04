@@ -210,11 +210,30 @@ def _entropy(t: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(t).values())
 
 
+_SPEC_PIECE = re.compile(r"\d+[a-z]{1,4}|[a-z]{1,3}\d{1,4}", re.I)   # 350mah, 4v, 50c, xt30
+
+
+def _word_slug(s: str) -> bool:
+    """A product slug of words around part numbers ("tc-1404-4600kv-motor",
+    "rdq-series-11-4v-3s-350mah-50c-lihv-micro-battery-xt30"): split at - _ . +, it has a real
+    word (2+ letters, one past a-f, so hex groups are not words), at least half the pieces are
+    words or spec values (350mah, 4v, xt30), and no single piece looks like encoded data."""
+    parts = [p for p in re.split(r"[-_.+]+", s) if p]
+    if len(parts) < 2:
+        return False
+    words = [p for p in parts if re.fullmatch(r"[A-Za-z]{2,}", p) and re.search(r"[g-zG-Z]", p)]
+    specs = [p for p in parts if _SPEC_PIECE.fullmatch(p)]
+    return (bool(words) and 2 * (len(words) + len(specs)) >= len(parts)
+            and not any(looks_random(p) for p in parts))
+
+
 def looks_random(s: str) -> bool:
     """A host label or path segment that looks like encoded data rather than a word or a part
     number: all hex, mostly digits, mixed case with digits, or high character entropy."""
     t = re.sub(r"[^A-Za-z0-9]", "", s)
     if len(t) < 12:
+        return False
+    if _word_slug(s):
         return False
     digits = sum(c.isdigit() for c in t) / len(t)
     mixed = any(c.isupper() for c in t) and any(c.islower() for c in t) and digits > 0

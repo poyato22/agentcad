@@ -6,7 +6,7 @@ import asyncio
 
 import numpy as np
 
-from .deck import Setup, frequency_step, resolve_supports, write_deck
+from .deck import Setup, frequency_step, point_mass_cards, resolve_supports, write_deck
 from .fem import MAX_GLB_MODES, FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
 from .results import parse_dat_table, parse_frd_blocks
 from .types import SimError
@@ -32,9 +32,12 @@ def _first_elastic(freqs: list[float]) -> float:
 async def _solve(job: FemJob, s, size, d, label, lo, hi):
     mesh = await mesh_level(job, d, size, label, lo)
     setup = None
-    if s.supports:
+    masses: list[dict] = []
+    if s.supports or s.point_masses:
         setup = Setup()
-        resolve_supports(mesh, job.metrics, s.supports, setup)
+        if s.supports:
+            resolve_supports(mesh, job.metrics, s.supports, setup)
+        masses = point_mass_cards(mesh, job.metrics, s.point_masses, setup)
     frd, dat = await solve_deck(
         job, d, lambda p: write_deck(p, mesh, job.material, setup.cards if setup else [],
                                      frequency_step(setup, s.n_modes), "Mises modal study"),
@@ -47,7 +50,8 @@ async def _solve(job: FemJob, s, size, d, label, lo, hi):
     blocks = await asyncio.to_thread(parse_frd_blocks, frd)
     modes = [b for name, b in blocks if name == "DISP"][-len(freqs):]
     info = {"size_mm": round(size, 4), "nodes": len(mesh.nodes), "elements": len(mesh.tets),
-            "order": mesh.order, "fixed_nodes": len(setup.held) if setup else 0}
+            "order": mesh.order, "fixed_nodes": len(setup.held) if setup else 0,
+            "point_masses": masses}
     return _first_elastic(freqs), {"mesh": mesh, "freqs": freqs, "modes": modes, "info": info}
 
 
@@ -80,6 +84,8 @@ async def run_modal(job: FemJob, s, *, sim_id: str, part_id: str) -> dict:
     first = _first_elastic(freqs)
     results = {"frequencies_hz": freqs, "modes": modes, "first_freq_hz": first,
                "band_hz": list(band) if band else None, "modes_in_band": len(hits),
+               "point_masses": fine["info"]["point_masses"],
+               "added_mass_g": sum(pm.mass_g for pm in s.point_masses),
                "error_band": lv["band"],
                "error_band_pct": None if lv["band"] is None else round(100 * lv["band"], 1),
                "convergence": {"history": lv["history"], "converged": lv["converged"]}}

@@ -38,6 +38,8 @@ Call `spec_set` with the goal, the requirements, the load cases and the intervie
   part and overstates the lever moment; use it only for a part with no better faces.
 - Actuator-force cases: take the max force or thrust from the catalog (`catalog_get`, when
   available) and note it is "typical".
+- Rotor thrust: `loads_propulsion` gives thrust-to-weight, hover rpm and the 1x-rotation and
+  blade-pass bands; use those bands as the modal study's `band_hz`.
 - Crash and impact cases: get the force from `loads_impact(mass_kg, drop_m, k)`, set
   `estimate: true`, and state the k you chose. Say plainly that impact loads are estimates.
 - Rotating or vibrating parts (motor mounts, pulley and fan hubs, linkage arms, anything on a
@@ -103,6 +105,10 @@ For a system build, pick real components the user can buy (servos, motors, beari
   7075, steel, stainless, brass) for shafts, pins and highly loaded links, POM / PA for gears
   and bushings, PETG / PA-CF / PC for printed structure, TPU for feet and grips, CF plate for
   flat stiff panels (never an RF window).
+- A bought or placeholder part (battery, VTX, camera, wiring) weighs its datasheet mass:
+  `part_set_mass(part_id, mass_g, source)`; never fake a mass with a material's density.
+- A modal check of a part that carries motors, a battery or boards: put them on it as
+  `point_masses` (face + grams); a bare part overstates its first frequency.
 
 <!-- mises-shapes:begin (generated: recipes.prompt_section) -->
 ## Curved and organic shapes: use the recipes

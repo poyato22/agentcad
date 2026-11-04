@@ -244,21 +244,41 @@ async def massing_clashes(massing_dir: Path, tolerance_pct: float = 2.0) -> dict
 
 # ---- rendering (sandboxed render worker)
 
-def cameras_for(views: list[str]) -> dict[str, list[list[float]]]:
-    return {v: [list(VIEW_CAMERAS[v][0]), list(VIEW_CAMERAS[v][1])] for v in views}
+# a flat, wide massing (a drone, a tray, a car seen as a slab) seen from the standard 3/4
+# height is a thin sliver on a big ground disc: look down on it more steeply (~35 degrees)
+FLAT_RATIO = 0.3
+FLAT_THREE_QUARTER = (-0.62, 1.0, -0.82)
 
 
-def camera_record(view: str, framing: dict, size: int, style: str) -> dict:
+def view_camera(view: str, massing_size: list[float] | None = None
+                ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """(forward, up) of a view, for a massing of this size (mm) when known."""
+    fwd, up = VIEW_CAMERAS[view]
+    if view == "three_quarter" and massing_size is not None and len(massing_size) == 3:
+        sx, sy, sz = (float(v) for v in massing_size)
+        if max(sx, sy) > 0 and sz < FLAT_RATIO * max(sx, sy):
+            fwd = FLAT_THREE_QUARTER
+    return fwd, up
+
+
+def cameras_for(views: list[str], massing_size: list[float] | None = None
+                ) -> dict[str, list[list[float]]]:
+    return {v: [list(c) for c in view_camera(v, massing_size)] for v in views}
+
+
+def camera_record(view: str, framing: dict, size: int, style: str,
+                  massing_size: list[float] | None = None) -> dict:
     """What maps a normalised image point back to 3D: the camera's direction and up, the
     projection asked for, and the box it frames."""
-    fwd, up = VIEW_CAMERAS[view]
+    fwd, up = view_camera(view, massing_size)
     return {"view": view, "forward": list(fwd), "up": list(up),
             "projection": "perspective" if view in PERSPECTIVE_VIEWS else "orthographic",
             "framing": framing, "size": [size, size], "style": style}
 
 
 async def render_sketch(jobs_root: Path, massing_dir: Path, extras: dict[str, Path],
-                        views: list[str], *, size: int = SKETCH_SIZE) -> RenderOut:
+                        views: list[str], *, size: int = SKETCH_SIZE,
+                        massing_size: list[float] | None = None) -> RenderOut:
     """The sketch images of `views` (key "sk"): massing + ground + figure, style "sketch"."""
     meshes = [MeshIn(massing_dir, "massing", MASSING_COLOR)]
     if "ground" in extras:
@@ -270,7 +290,8 @@ async def render_sketch(jobs_root: Path, massing_dir: Path, extras: dict[str, Pa
     renders = []
     if persp:
         renders.append({"key": "sk_p", "views": persp, "size": size, "style": "sketch",
-                        "perspective": True, "cameras": cameras_for(persp)})
+                        "perspective": True,
+                        "cameras": cameras_for(persp, massing_size)})
     if ortho:
         renders.append({"key": "sk_o", "views": ortho, "size": size, "style": "sketch",
                         "perspective": False, "cameras": cameras_for(ortho)})

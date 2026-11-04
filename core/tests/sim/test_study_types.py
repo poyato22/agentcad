@@ -82,6 +82,41 @@ async def test_modal_cantilever_first_frequency_matches_beam_theory(tmp_path):
 
 
 @pytest.mark.timeout(240)
+async def test_modal_tip_mass_lowers_the_cantilever_to_the_spring_mass_answer(tmp_path):
+    # DRONE demo: a frame's resonance is set by the motors on its arm tips, not the bare plate
+    ctx = _ctx(tmp_path)
+    await _part(ctx, "beam", BEAM)
+    out = await _run(ctx, "modal", "beam", {
+        "supports": [{"kind": "fixed", "face": "x-min"}], "n_modes": 2,
+        "point_masses": [{"face": "x-max", "mass_g": 50.0, "label": "motor"}],
+        "material": {"name": "PLA"}})
+    assert out.ok, out.summary
+    r = out.data["results"]
+    L, b = 100.0, 10.0
+    I = b ** 4 / 12
+    k = 3 * PLA_E * I / L ** 3                         # N/mm
+    m_beam = PLA_RHO * b * b * L                       # t
+    f = math.sqrt(k / (50e-6 + 0.2235 * m_beam)) / (2 * math.pi)
+    assert abs(r["first_freq_hz"] - f) / f < 0.10, (r["first_freq_hz"], f)
+    assert r["point_masses"] == [{"face": "x-max", "label": "motor", "mass_g": 50.0,
+                                  "nodes": r["point_masses"][0]["nodes"]}]
+    assert r["point_masses"][0]["nodes"] > 3 and r["added_mass_g"] == pytest.approx(50.0)
+    # the same mass at a point (the tip's centre) gives the same answer
+    out2 = await _run(ctx, "modal", "beam", {
+        "supports": [{"kind": "fixed", "face": "x-min"}], "n_modes": 2,
+        "point_masses": [{"point": [100, 5, 5], "radius_mm": 7.5, "mass_g": 50.0}],
+        "material": {"name": "PLA"}})
+    assert out2.ok, out2.summary
+    f2 = out2.data["results"]["first_freq_hz"]
+    assert abs(f2 - f) / f < 0.12, (f2, f)
+    assert out2.data["results"]["point_masses"][0]["point"] == [100, 5, 5]
+    from mises.types import MisesError
+    with pytest.raises(MisesError, match="exactly one of face or point"):
+        await _run(ctx, "modal", "beam", {"supports": [{"kind": "fixed", "face": "x-min"}],
+                                         "point_masses": [{"mass_g": 5.0}]})
+
+
+@pytest.mark.timeout(240)
 async def test_buckling_euler_column(tmp_path):
     ctx = _ctx(tmp_path)
     await _part(ctx, "col", COLUMN)

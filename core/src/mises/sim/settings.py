@@ -355,6 +355,12 @@ class _Common(_M):
     mesh: MeshSettings = Field(default_factory=MeshSettings)
     solver: SolverSettings = Field(default_factory=SolverSettings)
 
+    @field_validator("material", mode="before")
+    @classmethod
+    def _material_name(cls, v):
+        # "material": "CF plate" (the drone lead's first modal call) means that material
+        return {"name": v} if isinstance(v, str) else v
+
 
 class StaticSettings(_Common):
     load_cases: list[LoadCase] = Field(min_length=1, max_length=8)
@@ -383,9 +389,32 @@ class Excitation(_M):
                               "blades", **_u("%"))
 
 
+class PointMass(_FaceM):
+    """A mass carried by the part but not modelled as a solid (a motor on an arm's mount, a
+    battery on a tray): spread evenly as CalculiX MASS elements over a face's nodes, or over
+    the nodes within radius_mm of a point (face ids change when a part is regenerated, a
+    motor's position does not)."""
+    face: Face | None = None
+    point: Vec3 | None = Field(None, description="where the mass sits (part coordinates); "
+                               "instead of face", **_u("mm"))
+    radius_mm: float = Field(4.0, gt=0, le=1000, description="point: the nodes within this "
+                             "distance carry it", **_u("mm"))
+    mass_g: float = Field(gt=0, le=1e6, **_u("g"))
+    label: str = Field("", max_length=40, description="what it is, e.g. 'motor 1'")
+
+    @model_validator(mode="after")
+    def _where(self):
+        if (self.face is None) == (self.point is None):
+            raise ValueError("a point mass needs exactly one of face or point")
+        return self
+
+
 class ModalSettings(_Common):
     supports: list[Support] = Field(default_factory=list, max_length=12, description="empty = "
                                     "free-free (the first six modes are rigid-body)")
+    point_masses: list[PointMass] = Field(default_factory=list, max_length=24, description=(
+        "masses the part carries (motors, battery, electronics) on its faces; they lower the "
+        "frequencies, often a lot: a bare frame overstates its first mode"))
     n_modes: int = Field(6, ge=1, le=30)
     band_hz: tuple[float, float] | None = Field(None, description="excitation band [lo, hi]",
                                                 **_u("Hz"))

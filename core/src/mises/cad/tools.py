@@ -214,6 +214,14 @@ def _guard_source(ctx: ToolContext, part_id: str, d: Path,
     return _conflict(ctx, part_id, d, reason=why, source_level=True)
 
 
+def _wrote_source(ctx: ToolContext, d: Path, version: int, kept: bool) -> None:
+    """An agent's own whole-script write is a read of what it wrote (the DRONE build's lead was
+    refused its second edit in a row): the source on disk at `version` is exactly its script,
+    unless the user's feature ops were appended to it (then it must read them first)."""
+    if not kept and _editor(ctx) != "user":
+        note_source_read(getattr(ctx, "run_id", None), d, version)
+
+
 def _keep_ops(ctx: ToolContext, d: Path, new_source: str,
               drop_ops: bool) -> tuple[str, bool, int]:
     """An agent's whole-script replacement keeps the part's `# mises-op` feature blocks (the
@@ -570,6 +578,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
         note = _ops_note(kept, dropped)
         version = _finish_edit(ctx, args.part_id, d, f"{'rebuilt' if existed else 'created'} "
                                f"{args.part_id} from script{note}")
+        _wrote_source(ctx, d, version, kept)
         placed = await _auto_place(ctx, args.part_id, d) if args.place and not existed else None
     return ToolOutput(summary=_summary(args.part_id, res.metrics) + note
                       + (f"; placed in the assembly as {placed['instance']['name']}"
@@ -767,6 +776,7 @@ async def mirror_part_set_source(ctx: ToolContext, args: SetSourceArgs) -> ToolO
         _accept(d, res)
         note = _ops_note(kept, dropped)
         version = _finish_edit(ctx, args.part_id, d, f"edited {args.part_id} source{note}")
+        _wrote_source(ctx, d, version, kept)
     return ToolOutput(summary=f"{_summary(args.part_id, res.metrics)}; version {version}{note}",
                       data={"part_id": args.part_id, "vars": res.vars, "version": version,
                             **_inline(res.metrics)}, step_kind=StepKind.DIFF)

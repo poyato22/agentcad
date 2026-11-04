@@ -170,7 +170,8 @@ async def _sketch_images(ctx: ToolContext, d: Path, script: str, views: list[str
             raise MassingClash(rep)      # a check that could not run fails closed
     meshes, info = sk.scene_extras(metrics["bbox"], scale_figure)
     extras = sk.write_extras(d, meshes)
-    out = await sk.render_sketch(d / "jobs", d / "massing", extras, views)
+    size_mm = info.get("massing_size_mm")
+    out = await sk.render_sketch(d / "jobs", d / "massing", extras, views, massing_size=size_mm)
     images = []
     h = home(ctx)
     for view in views:
@@ -181,7 +182,8 @@ async def _sketch_images(ctx: ToolContext, d: Path, script: str, views: list[str
         w, hh = png_size(png)
         images.append({"view": view, "label": sk.VIEW_LABEL[view], "render_id": rid,
                        "width": w, "height": hh,
-                       "camera": sk.camera_record(view, info["framing"], w, "sketch")})
+                       "camera": sk.camera_record(view, info["framing"], w, "sketch",
+                                                 massing_size=size_mm)})
     return images, info, metrics
 
 

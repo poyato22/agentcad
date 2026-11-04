@@ -214,7 +214,37 @@ def validate_settings(type_id: str, settings: dict | None) -> BaseModel:
         msgs = "; ".join(f"{'.'.join(map(str, er['loc'])) or 'settings'}: {er['msg']}"
                          for er in e.errors()[:8])
         raise SimError("bad_setup", f"invalid {type_id} settings: {msgs}",
+                       hint=settings_hint(type_id, e),
                        data={"errors": json.loads(e.json())[:20]}) from None
+
+
+def _item_model(ann):
+    """The BaseModel a field holds (itself, or a list / optional of it), else None."""
+    import typing
+    if isinstance(ann, type) and issubclass(ann, BaseModel):
+        return ann
+    for a in typing.get_args(ann):
+        m = _item_model(a)
+        if m is not None:
+            return m
+    return None
+
+
+def settings_hint(type_id: str, e: ValidationError) -> str:
+    """What the settings accept (the drone lead probed fixed_faces, fixtures, fix_faces... one
+    refusal at a time): the type's fields, and the item fields of each field that failed."""
+    model = SETTINGS_MODELS[type_id]
+    fields = model.model_fields
+    out = f"{type_id} settings take: {', '.join(fields)}"
+    seen: set[str] = set()
+    for er in e.errors():
+        top = str(er["loc"][0]) if er["loc"] else ""
+        if top in fields and top not in seen:
+            seen.add(top)
+            sub_model = _item_model(fields[top].annotation)
+            if sub_model is not None:
+                out += f"; {top}: {{{', '.join(sub_model.model_fields)}}}"
+    return out
 
 
 def resolve_material(ms, default: str, home: Path | None) -> Material:

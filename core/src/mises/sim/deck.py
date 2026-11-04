@@ -293,6 +293,37 @@ def static_step(setup: Setup) -> list[str]:
     return out + ["*NODE FILE", "U", "*EL FILE", "S", "*END STEP"]
 
 
+def point_mass_cards(mesh: Mesh, metrics: dict, masses: list, setup: Setup) -> list[dict]:
+    """MASS elements for each point mass (spread evenly over its face's nodes, numbered after
+    the tets, in their own element sets): appended to setup.cards; returns one row per mass."""
+    rows, eid = [], len(mesh.tets)
+    for i, pm in enumerate(masses, 1):
+        if pm.point is not None:
+            ids = np.fromiter(mesh.nodes.keys(), dtype=np.int64)
+            xyz = np.array([mesh.nodes[n] for n in ids], dtype=float)
+            near = np.linalg.norm(xyz - np.asarray(pm.point, float), axis=1) <= pm.radius_mm
+            nodes = sorted(int(n) for n in ids[near])
+            where = f"point {list(pm.point)}"
+        else:
+            nodes = sorted(mesh.nodes_of(_faces(mesh, pm.face, metrics, setup.tags)))
+            where = f"face {pm.face}"
+        if not nodes:
+            raise SimError("bad_setup", f"the point mass at {where} has no nodes",
+                           hint="pick a face of this part (mirror_faces), or a point on the "
+                                "part with a larger radius_mm")
+        per_t = pm.mass_g * 1e-6 / len(nodes)          # g -> tonne (the deck's mass unit)
+        elset = f"EPM{i}"
+        setup.cards.append(f"*ELEMENT, TYPE=MASS, ELSET={elset}")
+        for n in nodes:
+            eid += 1
+            setup.cards.append(f"{eid},{n}")
+        setup.cards += [f"*MASS, ELSET={elset}", f"{per_t:.9g}"]
+        rows.append({**({"face": pm.face} if pm.face is not None else
+                        {"point": list(pm.point), "radius_mm": pm.radius_mm}),
+                     "label": pm.label, "mass_g": pm.mass_g, "nodes": len(nodes)})
+    return rows
+
+
 def frequency_step(setup: Setup | None, n_modes: int) -> list[str]:
     out = ["*STEP", "*FREQUENCY", str(n_modes)]
     if setup is not None and setup.boundary:

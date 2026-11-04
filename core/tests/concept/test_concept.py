@@ -4,6 +4,7 @@ and pitch choice."""
 from __future__ import annotations
 
 import io
+import math
 import time
 from types import SimpleNamespace
 
@@ -104,6 +105,21 @@ def test_sketch_versions_and_status(tmp_path):
     assert cs.add_sketch("p2", {"sketch_id": "cks_" + "4" * 12, "images": []})["version"] == 1
     with pytest.raises(MisesError):
         cs.update("p1", status="nonsense")
+
+
+def test_a_flat_massing_gets_a_steeper_three_quarter_camera():
+    # DRONE demo: a 162 x 162 x 29 mm quad was a thin sliver on the ground disc
+    flat, tall = [162.0, 162.0, 29.0], [300.0, 200.0, 400.0]
+    f_flat, _ = sk.view_camera("three_quarter", flat)
+    f_tall, _ = sk.view_camera("three_quarter", tall)
+    assert f_tall == sk.VIEW_CAMERAS["three_quarter"][0]
+    elev = lambda f: math.degrees(math.atan2(-f[2], math.hypot(f[0], f[1])))  # noqa: E731
+    assert elev(f_flat) > 30 > elev(f_tall)
+    assert sk.view_camera("side", flat) == sk.VIEW_CAMERAS["side"]
+    # what the render uses is what the stored record maps marks back through
+    assert sk.cameras_for(["three_quarter"], flat)["three_quarter"][0] == list(f_flat)
+    assert sk.camera_record("three_quarter", {}, 64, "sketch", massing_size=flat)[
+        "forward"] == list(f_flat)
 
 
 def test_marks_validate_normalised_coordinates():
@@ -466,6 +482,16 @@ def test_choose_a_pitch_option_or_a_mix(home):
         assert rt.concepts.get_pitch(p["pitch_id"])["chosen"]["comment"] == "keep it cheap"
         _wait_idle(client, lead)
         assert "concept_sketch the chosen direction" in prov.users[-1][0].text
+
+
+def test_a_mix_label_drops_the_takes_leading_article():
+    # DRONE demo: the thread read "Chose Lattice X's the 2.5-D ... plate"
+    from mises.concept import ChooseIn
+    from mises.concept.service import _chosen_label
+    body = ChooseIn.model_validate({"mix": [
+        {"option": "Lattice X", "take": "the 2.5-D carbon plate"},
+        {"option": "Ring Spine", "take": "A ring guard"}, {"option": "Honest"}]})
+    assert _chosen_label(body) == "Lattice X's 2.5-D carbon plate + Ring Spine's ring guard + Honest"
 
 
 def test_lead_prompt_and_tools_carry_the_concept_stage():

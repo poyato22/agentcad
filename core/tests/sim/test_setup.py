@@ -93,3 +93,22 @@ def test_mesh_sizes_coarse_then_fine_and_capped():
     # a huge solid block is capped so the fine mesh stays within the node budget
     c2, f2 = mesh_sizes([500, 500, 500], 500 ** 3)
     assert f2 > 500 / 40
+
+
+def test_a_material_name_string_and_a_point_mass_by_point_validate():
+    # DRONE demo: the lead sent "material": "CF plate" and point masses at motor positions
+    from mises.sim.settings import ModalSettings
+    s = ModalSettings.model_validate({"material": "CF plate", "point_masses": [
+        {"point": [43, -43, 11], "mass_g": 9.3}]})
+    assert s.material.name == "CF plate" and s.point_masses[0].radius_mm == 4.0
+
+
+def test_bad_settings_list_what_the_study_takes():
+    from mises.sim import studies
+    from mises.sim.types import SimError
+    import pytest as _pt
+    with _pt.raises(SimError) as e:
+        studies.validate_settings("modal", {"fixed_faces": ["f7"], "supports": ["f7"]})
+    h = e.value.hint
+    assert "supports" in h and "point_masses" in h and "band_hz" in h
+    assert "supports: {kind, face, axis}" in h

@@ -75,3 +75,13 @@ def test_styling_words_still_make_it_design_work():
 def test_an_unknown_head_says_so_and_points_at_the_chip():
     dc = di.design_intensity("a car seat gap filler")
     assert any("filler" in r and "Design focus" in r for r in dc["reasons"])
+
+
+@pytest.mark.parametrize("prompt", [
+    # DRONE demo: an em dash ends the head phrase (it was read as "... cinewhoop all-up weight")
+    "Design a sub-100 g 3-inch FPV cinewhoop — all-up weight with the battery under 100 g",
+    "a 3 inch cinewhoop – light and stiff", "a tiny whoop", "a 2.5 inch toothpick quad",
+])
+def test_a_whoop_is_a_drone_and_a_dash_ends_the_head_phrase(prompt):
+    dc = di.design_intensity(prompt)
+    assert dc["archetype"] == "drone" and dc["cls"] == "mixed", (prompt, dc)

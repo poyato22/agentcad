@@ -628,7 +628,8 @@ def patch_part(store: Store, home: Path, part_id: str, **kw: Any) -> dict:
 def _patch_part(store: Store, home: Path, part_id: str, *, label: str | None = None,
                color: str | None | object = ..., parent_id: str | None | object = ...,
                appearance: dict | None | object = ...,
-               material: str | None | object = ...) -> dict:
+               material: str | None | object = ...,
+               stated_mass: dict | None | object = ...) -> dict:
     """Rename, recolor, re-material or re-parent a part. `color`/`parent_id`/`appearance` left
     as the sentinel are unchanged; None clears them. The parent must be in the same build, and
     a move that would form a cycle is rejected. The row's color and appearance.color stay equal:
@@ -661,6 +662,8 @@ def _patch_part(store: Store, home: Path, part_id: str, *, label: str | None = N
     if material is not ...:
         from . import mass
         fields["material"] = mass.check_material(material, home)   # type: ignore[arg-type]
+    if stated_mass is not ...:
+        fields["stated_mass"] = _check_stated_mass(stated_mass)
     if parent_id is not ...:
         if parent_id is not None:
             _parent_in(store, str(parent_id), row.project_id)
@@ -669,6 +672,19 @@ def _patch_part(store: Store, home: Path, part_id: str, *, label: str | None = N
     if fields:
         store.update_part(part_id, **fields)
     return part_view(store, home, _part_or_404(store, part_id))
+
+
+def _check_stated_mass(v: Any) -> dict | None:
+    if v is None:
+        return None
+    try:
+        g = float(v.get("mass_g"))
+    except (AttributeError, TypeError, ValueError):
+        raise _bad("stated_mass needs mass_g (grams)") from None
+    if not (0 < g <= 1e6):
+        raise _bad("stated mass_g must be over 0 and at most 1e6 g")
+    src = " ".join(str(v.get("source") or "").split())[:200]
+    return {"mass_g": round(g, 4), "source": src}
 
 
 def reorder_parts(store: Store, home: Path, project_id: str, parent_id: str | None,
