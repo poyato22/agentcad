@@ -62,7 +62,8 @@ _ARCHETYPES: list[tuple[str, str, float, str, dict[str, float]]] = [
      "engineering core with a designed shell (the nacelle)",
      {"nacelle": 0.6, "cowl": 0.6, "spinner": 0.5, "fan disk": 0.1, "fan blade": 0.25,
       "compressor": 0.1, "turbine": 0.1, "combustor": 0.05, "shaft": 0.05, "casing": 0.2}),
-    ("drone", r"drone|quadcopter|multirotor|fpv", 0.4,
+    ("drone", r"drone|quadcopter|multirotor|fpv|cinewhoop|whoop|tinywhoop|toothpick quad|"
+     r"fpv quad|racing quad|freestyle quad", 0.4,
      "a functional airframe; the canopy and arms can be styled",
      {"canopy": 0.65, "shell": 0.6, "body": 0.5, "arm": 0.35, "frame": 0.2}),
     ("aircraft", r"aircraft|airplane|aeroplane|glider|fuselage|flying wing|b-2|bomber|"
@@ -170,7 +171,7 @@ def _segments(text: str) -> list[list[str]]:
     """The request's noun phrases, in order: tokens split at prepositions, conjunctions and
     punctuation, with numbers and their units dropped ("a 5 inch fpv drone frame")."""
     out, cur, skip_unit = [], [], False
-    for tok in re.findall(r"[a-z0-9]+(?:['\-][a-z0-9]+)*|[,.;:!?()/]", text):
+    for tok in re.findall(r"[a-z0-9]+(?:['\-][a-z0-9]+)*|[,.;:!?()/\u2013\u2014]", text):
         tok = tok[:-2] if tok.endswith("'s") else tok
         if tok in _BOUNDARY or not tok[0].isalnum():
             if cur:
