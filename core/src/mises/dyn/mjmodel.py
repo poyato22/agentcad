@@ -91,6 +91,7 @@ def build_spec(model: dict, mode: str = "dyn") -> "mujoco.MjSpec":
                 jt.limited = mujoco.mjtLimited.mjLIMITED_TRUE
             else:
                 jt.limited = mujoco.mjtLimited.mjLIMITED_FALSE
+        has_foot = any(g.get("foot") for g in b.get("geoms", []))
         for g in b.get("geoms", []):
             gtype = {"box": mujoco.mjtGeom.mjGEOM_BOX,
                      "sphere": mujoco.mjtGeom.mjGEOM_SPHERE}[g.get("type", "box")]
@@ -99,6 +100,10 @@ def build_spec(model: dict, mode: str = "dyn") -> "mujoco.MjSpec":
                   "friction": [float(g.get("friction", 0.9)), 0.005, 0.0001]}
             if rom:
                 kw.update(contype=ROBOT_BIT, conaffinity=ROBOT_BIT)
+            elif has_foot and not g.get("foot"):
+                # a lower leg meets the floor through its foot: its other boxes (bounding boxes,
+                # huge for a diagonal link) would touch down behind the foot
+                kw.update(contype=0, conaffinity=0)
             else:
                 kw.update(contype=ROBOT_BIT, conaffinity=FLOOR_BIT)
             geom = body.add_geom(**kw)

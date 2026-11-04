@@ -117,6 +117,23 @@ def test_the_actuator_demand_is_band_limited_but_the_impact_is_kept():
     assert demand[50, 0] == pytest.approx(1.0)
 
 
+def test_a_lower_leg_touches_the_floor_only_through_its_foot():
+    """DOG demo: a diagonal shank's collision box (its part's bounding box) reached the floor
+    behind the foot, so the gait and the FEM hand-off saw a 15 N 'contact' 110 mm from the
+    foot. In the dynamics a body with a foot touches the floor only through the foot; the
+    range-of-motion sweep (self-collision) still uses every box."""
+    from mises.dyn import mjmodel
+    model = box_model()
+    model["bodies"][0]["geoms"].append({"name": "shin", "size": [0.1, 0.01, 0.01],
+                                        "pos": [0, 0, 0]})
+    m, _ = mjmodel.compile_model(model, "dyn")
+    shin, foot = m.geom("shin"), m.geom("b")
+    assert shin.conaffinity[0] == 0 and shin.contype[0] == 0
+    assert foot.conaffinity[0] != 0
+    r, _ = mjmodel.compile_model(model, "rom")
+    assert r.geom("shin").conaffinity[0] != 0
+
+
 def test_the_fem_load_snapshot_skips_a_one_sample_contact_spike():
     """DOG demo: 'check part stresses' loaded a thigh with 45 N (3.2 body weights) taken from
     one 2 ms sample of a foot strike. The load case is the snapshot nearest the peak of the
