@@ -210,6 +210,10 @@ def _entropy(t: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(t).values())
 
 
+#: a slug token that reads as a word (Title / lower case) or a single-case part number
+_WORDLIKE = re.compile(r"[A-Z]?[a-z]+|[A-Z0-9]+|[a-z0-9]+")
+
+
 def looks_random(s: str) -> bool:
     """A host label or path segment that looks like encoded data rather than a word or a part
     number: all hex, mostly digits, mixed case with digits, or high character entropy."""
@@ -218,6 +222,8 @@ def looks_random(s: str) -> bool:
         return False
     digits = sum(c.isdigit() for c in t) / len(t)
     mixed = any(c.isupper() for c in t) and any(c.islower() for c in t) and digits > 0
+    if mixed and all(_WORDLIKE.fullmatch(tok) for tok in re.split(r"[^A-Za-z0-9]+", s) if tok):
+        mixed = False       # "ST3215-HS_Servo_Motor": each token a word or a part number
     return (re.fullmatch(r"[0-9a-fA-F]+", t) is not None or digits >= 0.4
             or (mixed and len(t) >= 16) or _entropy(t.lower()) >= 4.3)
 

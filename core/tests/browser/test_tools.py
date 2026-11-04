@@ -237,6 +237,19 @@ def test_normal_product_links_are_not_suspicious():
         assert suspicious_shape(u) is None, u
 
 
+def test_wiki_slugs_of_words_and_part_numbers_are_not_suspicious():
+    """DOG demo: Waveshare's servo wiki (ST3215-HS_Servo_Motor) was refused as encoded data;
+    tokens that are each a word or a single-case part number open, encoded runs still don't."""
+    from mises.browser.tools import suspicious_shape
+    for u in ("https://www.waveshare.com/wiki/ST3215-HS_Servo_Motor",
+              "https://www.waveshare.com/wiki/General_Driver_for_Robots_ESP32"):
+        assert suspicious_shape(u) is None, u
+    for u in ("https://evil.example.com/X9fK2-pQ7zL_m3Vb8-Rt",
+              "https://evil.example.com/aGVsbG8gd29ybGQgZm9v",
+              "https://evil.example.com/dGhpcy1pcy1zZWNyZXQ_dGVzdA"):
+        assert suspicious_shape(u) is not None, u
+
+
 async def test_open_always_allowed_domain_needs_no_card(env, web):
     save_profile(env.tmp, Profile(catalog_allowed_domains=["shop.example.com"]))
     url = "https://shop.example.com/p/servo"
