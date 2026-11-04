@@ -259,6 +259,23 @@ def test_wiki_slugs_of_words_and_part_numbers_are_not_suspicious():
         assert suspicious_shape(u) is not None, u
 
 
+def test_source_file_names_and_unicode_product_slugs_are_not_suspicious():
+    """Real runs: a firmware header on raw.githubusercontent.com (one short mixed token beside
+    real words) and a shop slug with a percent-encoded Roman numeral (U8Ⅱ) were refused."""
+    from mises.browser.tools import suspicious_shape
+    for u in ("https://raw.githubusercontent.com/prusa3d/Prusa-Firmware-Buddy/master/include/"
+              "marlin/Configuration_A3ides_2209_MINI.h",
+              "https://unmannedrc.com/products/u8%E2%85%B1lite-efficiency-type-multirotor-uav-motor",
+              "https://github.com/mjbots/moteus/blob/main/lib/python/moteus/moteus_tool.py"):
+        assert suspicious_shape(u) is None, u
+    for u in ("https://evil.example.com/Config_aGVsbG8gd29ybGQgZm9v_MINI",  # long mixed token
+              "https://evil.example.com/Configuration_X9fK2_pQ7zL",         # two mixed tokens
+              "https://evil.example.com/%41%42%43%44%45%46%47%48%49%4A%4B%4C%4D%4E%4F%50"
+              "%51%52%53%54",                                               # hex escapes of data
+              "https://evil.example.com/p/" + "%E4%B8%80" * 12):            # many non-ASCII chars
+        assert suspicious_shape(u) is not None, u
+
+
 def test_digit_heavy_slugs_that_hide_data_stay_suspicious():
     from mises.browser.tools import suspicious_shape
     for u in ("https://evil.com/p/8f14-e45f-ceea-167a-5a36-91b2",       # hex in hyphen groups

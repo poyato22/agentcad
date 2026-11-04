@@ -41,7 +41,7 @@ import secrets
 import time
 from collections import Counter
 from typing import Annotated
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
@@ -233,11 +233,17 @@ def _word_slug(s: str) -> bool:
 
 #: a slug token that reads as a word (Title / lower case) or a single-case part number
 _WORDLIKE = re.compile(r"[A-Z]?[a-z]+|[A-Z0-9]+|[a-z0-9]+")
+NON_ASCII_MAX = 8
 
 
 def looks_random(s: str) -> bool:
     """A host label or path segment that looks like encoded data rather than a word or a part
-    number: all hex, mostly digits, mixed case with digits, or high character entropy."""
+    number: all hex, mostly digits, mixed case with digits, or high character entropy.
+    Percent-escapes are judged decoded (an escaped run of data is still data); a segment with
+    more than NON_ASCII_MAX non-ASCII characters (each can carry many bits) is refused."""
+    s = unquote(s)
+    if sum(not c.isascii() for c in s) > NON_ASCII_MAX:
+        return True
     t = re.sub(r"[^A-Za-z0-9]", "", s)
     if len(t) < 12:
         return False
@@ -245,8 +251,14 @@ def looks_random(s: str) -> bool:
         return False
     digits = sum(c.isdigit() for c in t) / len(t)
     mixed = any(c.isupper() for c in t) and any(c.islower() for c in t) and digits > 0
-    if mixed and all(_WORDLIKE.fullmatch(tok) for tok in re.split(r"[^A-Za-z0-9]+", s) if tok):
-        mixed = False       # "ST3215-HS_Servo_Motor": each token a word or a part number
+    if mixed:
+        toks = [tok for tok in re.split(r"[^A-Za-z0-9]+", s) if tok]
+        odd = [tok for tok in toks if not _WORDLIKE.fullmatch(tok)]
+        # "ST3215-HS_Servo_Motor": each token a word or a part number; a source file name
+        # ("Configuration_A3ides_2209_MINI.h"): one short identifier beside a real word
+        if not odd or (len(odd) == 1 and len(odd[0]) <= 8
+                       and any(len(tok) >= 6 and tok.isalpha() for tok in toks)):
+            mixed = False
     return (re.fullmatch(r"[0-9a-fA-F]+", t) is not None or digits >= 0.4
             or (mixed and len(t) >= 16) or _entropy(t.lower()) >= 4.3)
 
