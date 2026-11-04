@@ -268,6 +268,9 @@ class Runtime:
         self.orchestrator = Orchestrator(self)
         self.started_at = time.time()
         self.catalog = Catalog(self.store)
+        # URL-imported actuators (a vendor servo page) resolve for dynamics and sizing too
+        from .engineering import actuators as _act
+        _act.set_item_lookup(self.catalog.existing)
         # the agent browser's snapshots and part cards, and the builds' parts lists (U4c)
         self.snapshots = SnapshotStore(self.store)
         self.part_cards = CardStore(self.store)

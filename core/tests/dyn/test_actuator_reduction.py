@@ -23,6 +23,36 @@ def test_waveshare_st3215_servos_are_known():
     assert act.resolve("sts3215").id == "servo_sts3215"
 
 
+WAVESHARE_ITEM = {
+    "id": "url_ab2ca371799eed72", "category": "motor", "source": "url", "vendor": "Waveshare",
+    "name": "20kg.cm Bus Servo Motor, 106PRM High Speed, Large Torque",
+    "specs": [{"key": "weight", "value": 68.0, "unit": "g"},
+              {"key": "product_type", "value": "ST3215-HS bus servo motor", "unit": None},
+              {"key": "torque", "value": "20kg.cm@12V", "unit": None},
+              {"key": "no_load_speed", "value": "0.094sec / 60° (106RPM)", "unit": None},
+              {"key": "no_load_current", "value": 240.0, "unit": "mA"},
+              {"key": "locked_rotor_current", "value": 2.4, "unit": "A"}]}
+
+
+def test_an_imported_catalog_servo_resolves(monkeypatch):
+    """DOG demo: every joint's actuator was the URL-imported ST3215-HS item, which resolve()
+    could not read, so the walk study ran with no actuators ("no actuator assigned")."""
+    items = {WAVESHARE_ITEM["id"]: WAVESHARE_ITEM}
+    monkeypatch.setattr(act, "_item_lookup", items.get)
+    p = act.resolve({"item_id": WAVESHARE_ITEM["id"], "ratio": 1.24})
+    assert p is not None and p.stall_torque_nm == 1.96 * 1.24       # the curated row, reduced
+    unknown = {**WAVESHARE_ITEM, "id": "url_x", "specs": [
+        s for s in WAVESHARE_ITEM["specs"] if s["key"] != "product_type"]}
+    unknown["name"] = "Bus servo"
+    items["url_x"] = unknown
+    q = act.resolve("url_x")                                         # parsed from its specs
+    assert q.stall_torque_nm == round(20 * 0.0980665, 4) and q.no_load_rpm == 106
+    assert q.stall_current_a == 2.4 and q.idle_current_a == 0.24 and q.mass_g == 68
+    assert q.voltage_v == 12
+    items["url_y"] = {"id": "url_y", "category": "motor", "name": "Mystery", "specs": []}
+    assert act.resolve("url_y") is None
+
+
 def test_torque_rows_check_against_the_reduced_actuator():
     reduced = act.resolve({"id": "mg996r", "ratio": 2})
     peak = 1.5 * act.resolve("mg996r").stall_torque_nm * 0.6   # over 1:1, fine at 2:1

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
 
@@ -161,6 +162,87 @@ def _from_catalog(item_id: str) -> Perf | None:
         return None
 
 
+#: the user's catalog (URL-imported items), set by the Runtime: item id -> item dict or None
+_item_lookup: Callable[[str], dict | None] | None = None
+
+
+def set_item_lookup(fn: Callable[[str], dict | None] | None) -> None:
+    global _item_lookup
+    _item_lookup = fn
+
+
+def _spec(it: dict, *keys: str):
+    for s in it.get("specs") or []:
+        if str(s.get("key", "")).lower() in keys:
+            return s
+    return None
+
+
+def _num(s, unit_scale: dict[str, float] | None = None) -> float | None:
+    """A spec's number, scaled by its unit (`unit_scale`: lower-case unit -> factor)."""
+    if s is None:
+        return None
+    v, u = s.get("value"), str(s.get("unit") or "").lower()
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v) * (unit_scale or {}).get(u, 1.0)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*([a-zA-Z]*)", str(v or ""))
+    if not m:
+        return None
+    return float(m.group(1)) * (unit_scale or {}).get(m.group(2).lower() or u, 1.0)
+
+
+def _perf_from_item(it: dict) -> Perf | None:
+    """An imported (URL) catalog item as an actuator: a curated row its name or product type
+    names (the vendor numbers we checked), else its specs parsed (torque in kg.cm or N m,
+    speed in rpm or s/60 deg, currents, mass, voltage). None without a torque and a speed."""
+    if it.get("category") not in ("motor", "servo", "actuator", None):
+        return None
+    texts = [str(it.get("name") or "")]
+    pt = _spec(it, "product_type", "model", "part_no")
+    if pt is not None:
+        texts.insert(0, str(pt.get("value") or ""))
+    for t in texts:
+        n = _norm(t)
+        for k, p in _BY_KEY.items():
+            if len(k) >= 5 and re.search(rf"(^|_){re.escape(k)}(_|$)", n):
+                return p
+    tq = _spec(it, "torque", "stall_torque", "holding_torque")
+    raw = str((tq or {}).get("value") or "")
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(kg\.?\s*[·.]?\s*cm|kgf\.?cm|n\.?\s*[·.]?\s*m|nm)", raw,
+                  re.I)
+    if not m:
+        return None
+    stall = float(m.group(1)) * (0.0980665 if m.group(2).lower().startswith("kg") else 1.0)
+    sp = str((_spec(it, "no_load_speed", "speed") or {}).get("value") or "")
+    rpm_m = re.search(r"(\d+(?:\.\d+)?)\s*rpm", sp, re.I)
+    sec_m = re.search(r"(\d+(?:\.\d+)?)\s*s(?:ec)?\s*/\s*60", sp, re.I)
+    rpm = float(rpm_m.group(1)) if rpm_m else (_RPM(float(sec_m.group(1))) if sec_m else None)
+    if not rpm:
+        return None
+    volt = re.search(r"@\s*(\d+(?:\.\d+)?)\s*v", raw, re.I)
+    amps = {"a": 1.0, "ma": 0.001}
+    mass = _num(_spec(it, "weight", "mass"), {"g": 1.0, "kg": 1000.0}) or \
+        float((it.get("dims") or {}).get("mass_g") or 0.0)
+    return Perf(id=str(it.get("id")), name=str(it.get("name") or it.get("id"))[:80],
+                type="servo", voltage_v=float(volt.group(1)) if volt else 0.0,
+                stall_torque_nm=round(stall, 4), rated_torque_nm=round(stall / 3, 4),
+                no_load_rpm=round(rpm, 2),
+                stall_current_a=_num(_spec(it, "locked_rotor_current", "stall_current"), amps)
+                or 1.0,
+                idle_current_a=_num(_spec(it, "no_load_current", "idle_current"), amps) or 0.01,
+                mass_g=mass, source="catalog import (vendor specs; rated ~1/3 stall [2])")
+
+
+def _from_user_catalog(item_id: str) -> Perf | None:
+    if _item_lookup is None:
+        return None
+    try:
+        it = _item_lookup(item_id)
+    except Exception:  # noqa: BLE001 - the catalog is optional here
+        return None
+    return _perf_from_item(it) if isinstance(it, dict) else None
+
+
 def resolve(ref) -> Perf | None:
     """An actuator from a catalog id, a table id or alias ("mg996r"), or a joint's `actuator`
     metadata ({"catalog_id"|"id": ..., "ratio"?}). None when unknown."""
@@ -182,7 +264,8 @@ def resolve(ref) -> Perf | None:
         except ValueError:
             pass
     # the curated table first (its own ids and aliases), then C2's catalog perf rows
-    hit = _BY_KEY.get(s) or _BY_KEY.get(_norm(s)) or _from_catalog(s)
+    hit = (_BY_KEY.get(s) or _BY_KEY.get(_norm(s)) or _from_catalog(s)
+           or _from_user_catalog(s))
     if hit is None:
         n = _norm(s)
         for k, p in _BY_KEY.items():
