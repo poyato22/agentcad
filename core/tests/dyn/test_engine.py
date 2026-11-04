@@ -117,6 +117,17 @@ def test_the_actuator_demand_is_band_limited_but_the_impact_is_kept():
     assert demand[50, 0] == pytest.approx(1.0)
 
 
+def test_the_fem_load_snapshot_skips_a_one_sample_contact_spike():
+    """DOG demo: 'check part stresses' loaded a thigh with 45 N (3.2 body weights) taken from
+    one 2 ms sample of a foot strike. The load case is the snapshot nearest the peak of the
+    10 ms mean (the same band as the joint 'impact'), not the single-sample spike."""
+    mags = [10.0] * 40
+    mags[20] = 45.0                        # one 2 ms contact-solver spike
+    mags[28:33] = [17.0, 18.0, 19.0, 18.0, 17.0]   # a real 10 ms load peak
+    k = engine._representative_peak(mags)
+    assert mags[k] < 20.0 and 28 <= k <= 32
+
+
 def test_a_foot_strike_does_not_count_as_the_servo_saturating():
     """DOG demo: every trot joint read 100 % of stall because the stiff PD servo answers a foot
     strike within a few ms by hitting its force limit. The motor's demand is the same 20 ms

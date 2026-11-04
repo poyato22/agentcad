@@ -381,6 +381,20 @@ def _trajectory_stability(rec, active, model, m=None) -> dict:
                        "margin": _r(_thin([x[1] for x in margins]))}}
 
 
+def _representative_peak(mags: list[float], n: int = INVERSE_FILTER_SAMPLES) -> int:
+    """The sample for a link's peak-load snapshot: at the peak of the n-sample mean (the joint
+    'impact' band), the sample in that window closest to the mean. The snapshot stays one
+    consistent instant (its child reactions and contacts balance), and a single-sample
+    contact-solver spike is not taken for the load."""
+    a = np.asarray(mags, dtype=float)
+    if len(a) <= n:
+        return int(np.argmax(a))
+    sm = np.convolve(a, np.ones(n) / n, mode="same")
+    c = int(np.argmax(sm))
+    lo, hi = max(0, c - n // 2), min(len(a), c + n // 2 + 1)
+    return lo + int(np.argmin(np.abs(a[lo:hi] - sm[c])))
+
+
 def _reactions(m, rec, active) -> list[dict]:
     """Per link with a parent joint: the force + moment its parent exerts on it at the joint
     anchor (world frame, from cfrc_int shifted to the anchor), peak over the motion; at the
@@ -405,7 +419,7 @@ def _reactions(m, rec, active) -> list[dict]:
             vecs.append((force, moment, xa))
         if not mags:
             continue
-        kk = int(np.argmax(mags))
+        kk = _representative_peak(mags)
         k = idx[kk]
         force, moment, xa = vecs[kk]
         axis = _axis(m, rec, k, jid, b)
