@@ -7,8 +7,8 @@ n = i + Nx * (j + Ny * k) with N = n + 1; dof = 3 * node + axis.
 
 The coarse operators are Galerkin (P^T A P), smoothing is symmetric damped Jacobi (3 pre- and 3
 post-sweeps, so the preconditioner is symmetric and CG stays valid) and the coarsest grid is
-solved directly with SuperLU. Each level halves the grid, so every dimension must be divisible
-by 2 ** (levels - 1).
+solved directly with SuperLU. Each level halves every axis that divides and keeps >= 2
+elements; a thin axis stays (semi-coarsening: level_dims).
 """
 from __future__ import annotations
 
@@ -87,8 +87,13 @@ class Level:
         r, c = uk // self.ndof, uk % self.ndof
         self.fixed = fixed_dofs
         self.free = ~fixed_dofs
-        self.zero = fixed_dofs[r] | fixed_dofs[c]
-        self.diag_fixed = np.flatnonzero(self.zero & (r == c))
+        # the pattern keeps only what a fixed dof leaves: its identity diagonal (a part whose
+        # design space fills a third of its grid has most dofs fixed: matvecs shrink with it)
+        zero = fixed_dofs[r] | fixed_dofs[c]
+        self.n_entries = len(uk)
+        self.kept = np.flatnonzero(~zero | (r == c))
+        r, c, zero = r[self.kept], c[self.kept], zero[self.kept]
+        self.diag_fixed = np.flatnonzero(zero)
         indptr = np.zeros(self.ndof + 1, np.int64)
         np.add.at(indptr, r + 1, 1)
         self.indptr = np.cumsum(indptr)
@@ -99,8 +104,7 @@ class Level:
     def assemble(self, Ee: np.ndarray) -> sp.csr_matrix:
         """K(E) with identity rows / columns on the fixed dofs."""
         data = np.bincount(self.inv, weights=(Ee[:, None] * self.kev[None, :]).ravel(),
-                           minlength=self.nnz)
-        data[self.zero] = 0.0
+                           minlength=self.n_entries)[self.kept]
         data[self.diag_fixed] = 1.0
         return sp.csr_matrix((data, self.indices, self.indptr), shape=(self.ndof, self.ndof))
 
@@ -122,10 +126,29 @@ def prolong_1d(nc: int) -> sp.csr_matrix:
 MIN_COARSE_DOFS = 2000
 
 
+def _halve(d: int) -> bool:
+    return d % 2 == 0 and d // 2 >= 2
+
+
+def level_dims(n: tuple[int, int, int], levels: int) -> list[tuple[int, int, int]]:
+    """Each level's grid. An axis halves while it divides and keeps >= 2 elements; a thin axis
+    (a plate 4 voxels thick) stops there while the others go on halving (semi-coarsening),
+    so a thin part's coarsest grid stays small. Raises when a level would halve no axis."""
+    dims = [tuple(int(d) for d in n)]
+    for _ in range(levels - 1):
+        d = dims[-1]
+        if not any(_halve(x) for x in d):
+            raise ValueError(f"grid {n} cannot be halved into {levels} levels")
+        dims.append(tuple(x // 2 if _halve(x) else x for x in d))
+    return dims
+
+
 def max_levels(n: tuple[int, int, int], cap: int = 3) -> int:
-    """The most levels (up to cap) every dimension can be halved into, keeping >= 2 elements."""
-    lv = 1
-    while lv < cap and all(d % (2 ** lv) == 0 and d // (2 ** lv) >= 2 for d in n):
+    """The most levels (up to cap) the grid can be halved into (level_dims): every axis that
+    can halve does, and at least one must at each level."""
+    lv, d = 1, tuple(n)
+    while lv < cap and any(_halve(x) for x in d):
+        d = tuple(x // 2 if _halve(x) else x for x in d)
         lv += 1
     return lv
 
@@ -136,8 +159,7 @@ def choose_levels(n: tuple[int, int, int], cap: int = 3) -> int:
     should correct makes CG crawl: 70+ iterations instead of 10-20)."""
     lv = max_levels(n, cap)
     while lv > 2:
-        s = 2 ** (lv - 1)
-        if 3 * np.prod([d // s + 1 for d in n]) >= MIN_COARSE_DOFS:
+        if 3 * np.prod([d + 1 for d in level_dims(n, lv)[-1]]) >= MIN_COARSE_DOFS:
             break
         lv -= 1
     return lv
@@ -148,29 +170,34 @@ class MGCG:
 
     def __init__(self, n: tuple[int, int, int], h: float, nu: float, fixed_dofs: np.ndarray,
                  levels: int = 3):
-        if any(d % (2 ** (levels - 1)) for d in n):
-            raise ValueError(f"grid {n} is not divisible by 2^{levels - 1}")
+        dims = level_dims(n, levels)          # raises when the grid cannot take `levels`
         ke1 = hex8_ke(nu)
         self.levels: list[Level] = []
         self.P: list[sp.csr_matrix] = []
         self.fixed_c: list[np.ndarray] = []
         fx = fixed_dofs
         for lv in range(levels):
-            s = 2 ** lv
-            lev = Level(tuple(d // s for d in n), h * s, ke1, fx)
+            # only the fine level is assembled from ke (the coarse ones are Galerkin), so a
+            # semi-coarsened level's nominal h does not matter
+            lev = Level(dims[lv], h * 2 ** lv, ke1, fx)
             self.levels.append(lev)
             if lv + 1 < levels:
-                cn = tuple(d // (2 * s) for d in n)
-                Pn = sp.kron(prolong_1d(cn[2]), sp.kron(prolong_1d(cn[1]), prolong_1d(cn[0])))
+                cn = dims[lv + 1]
+                half = [c != f for c, f in zip(cn, dims[lv])]
+                p1 = [prolong_1d(c) if hv else sp.eye(c + 1, format="csr")
+                      for c, hv in zip(cn, half)]
+                Pn = sp.kron(p1[2], sp.kron(p1[1], p1[0]))
                 Pd = sp.kron(Pn, sp.eye(3)).tocsr()
                 Pd = sp.diags(lev.free.astype(float)) @ Pd
                 # a coarse node is fixed when its coincident fine node is
                 Nf = lev.N
-                ii, jj, kk = np.meshgrid(*(np.arange(0, m, 2) for m in Nf), indexing="ij")
+                ii, jj, kk = np.meshgrid(*(np.arange(0, m, 2 if hv else 1)
+                                           for m, hv in zip(Nf, half)), indexing="ij")
                 fine = (ii + Nf[0] * (jj + Nf[1] * kk)).transpose(2, 1, 0).ravel()
                 fx = fx[(3 * fine[:, None] + np.arange(3)).ravel()]
-                Pd = Pd @ sp.diags((~fx).astype(float))
-                self.P.append(Pd.tocsr())
+                Pd = (Pd @ sp.diags((~fx).astype(float))).tocsr()
+                Pd.eliminate_zeros()
+                self.P.append(Pd)
                 self.fixed_c.append(fx.astype(float))
         self.A: list[sp.csr_matrix] = []
 

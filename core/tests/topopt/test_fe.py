@@ -62,5 +62,26 @@ def test_mgcg_matches_direct_solve(levels):
 def test_grid_must_divide_into_levels():
     with pytest.raises(ValueError):
         fe.MGCG((6, 4, 4), 1.0, 0.3, np.zeros(3 * 7 * 5 * 5, bool), levels=3)
-    assert fe.max_levels((6, 4, 4)) == 2 and fe.max_levels((8, 8, 4)) == 2
-    assert fe.max_levels((16, 8, 8)) == 3
+    assert fe.max_levels((6, 4, 4)) == 2 and fe.max_levels((16, 8, 8)) == 3
+    # a thin axis stops halving at 2 elements while the others go on (semi-coarsening)
+    assert fe.max_levels((8, 8, 4)) == 3
+
+
+def test_a_thin_plate_semi_coarsens_and_still_matches_the_direct_solve():
+    """DRONE demo: a 2 mm plate is 4 voxels thick, so it could only take 2 levels and the
+    coarsest grid (98 x 98 x 2) was LU-factored at 4+ GB: every variant hit its memory budget.
+    The thin axis now stays at 2 elements while x and y keep halving."""
+    n = (16, 16, 4)
+    assert fe.level_dims(n, 3) == [(16, 16, 4), (8, 8, 2), (4, 4, 2)]
+    assert fe.level_dims((196, 196, 4), 3)[-1] == (49, 49, 2)
+    assert fe.choose_levels((196, 196, 4), 3) == 3
+    fixed, f = _cantilever(n)
+    rng = np.random.default_rng(1)
+    Ee = 1e-4 + rng.random(np.prod(n)) ** 3
+    mg = fe.MGCG(n, 1.0, 0.3, fixed, levels=3)
+    assert [lv.n for lv in mg.levels] == [(16, 16, 4), (8, 8, 2), (4, 4, 2)]
+    mg.set_density(Ee)
+    u, it = mg.solve(f, tol=1e-10, maxit=400)
+    ref = spla.spsolve(mg.A[0].tocsc(), f)
+    assert it < 400
+    assert np.allclose(u, ref, rtol=1e-6, atol=1e-8 * np.abs(ref).max())
