@@ -154,6 +154,7 @@ TOOL_LABELS: dict[str, str] = {
     "assembly_check": "checking the assembly", "ui_ask_user": "asking you",
     "agent_spawn": "delegating", "orchestrator_run": "delegating",
     "agent_wait": "waiting on subagents", "agent_result": "collecting a subagent",
+    "agent_continue": "continuing a subagent",
     "sim_run": "running a study", "design_review": "reviewing the design",
     "sim_wait": "waiting on a study", "job_wait": "waiting on a background job",
     "design_review_get": "reading a design review",

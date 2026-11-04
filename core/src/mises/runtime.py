@@ -82,7 +82,7 @@ log = logging.getLogger(__name__)
 #: offered every tool (the designer) does not get these on such a model. An agent that lists
 #: them by name (the planner) keeps them.
 STRONG_MODEL_TOOLS = frozenset({"orchestrator_run", "agent_spawn", "agent_wait", "agent_result",
-                                "orchestrator_submit_plan"})
+                                "agent_continue", "orchestrator_submit_plan"})
 
 
 #: `log` key naming the words the design-class classifier may read for this message (the
@@ -2546,6 +2546,18 @@ class Runtime:
                 "user's request from where you left off. Check what is already built before "
                 "you redo anything. Any approval you were waiting for was cancelled: ask again "
                 "only if the action is still needed.")
+
+    def last_error(self, run_id: str) -> str | None:
+        """What stopped the run: its last run-level error (not a tool call's), plain."""
+        with contextlib.suppress(Exception):
+            for s in reversed(self.store.steps(run_id, [StepKind.ERROR])):
+                p = s.payload or {}
+                if p.get("call_id"):
+                    continue
+                msg = str(p.get("message") or p.get("error") or "").strip()
+                if msg:
+                    return msg[:300]
+        return None
 
     def _auto_continues(self, run_id: str) -> int:
         """Automatic continuations since the run's last user message."""
