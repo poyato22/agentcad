@@ -384,10 +384,14 @@ class Runtime:
         owned by another live process (e.g. a `mises serve` next to this CLI) are left alone.
         Once failed, the MCP endpoint refuses them (it only serves running runs)."""
         out = []
+        # when each last worked (before this marking bumps it): resume_interrupted's age limit
+        self._interrupted_last: dict[str, float] = {}
         for run in self.store.running_runs(include_queued=True):
             pid = run.owner_pid
             if pid is not None and (pid == os.getpid() or self._pid_alive(pid)):
                 continue
+            self._interrupted_last[run.id] = float(run.last_activity_at or run.updated_at
+                                                   or run.created_at or 0)
             self.approvals.cancel_run(run.id)
             self.store.release_run_reservations(run.id)
             self.store.append_step(run.id, StepKind.ERROR, {
@@ -401,6 +405,57 @@ class Runtime:
         if out:
             log.warning("marked %d interrupted run(s) failed: %s", len(out), ", ".join(out))
         return out
+
+    #: a run interrupted longer ago than this (by its last activity) is not continued by itself
+    RESUME_MAX_AGE_S = 24 * 3600.0
+    RESTART_CAUSE = "the app restarted before the turn finished"
+
+    def _resumable(self, run_id: str) -> bool:
+        try:
+            run = self.store.get_run(run_id)
+        except KeyError:
+            return False
+        if not (run.external and run.provider == CLAUDE_CODE and run.session_ref):
+            return False      # a native run's conversation lived in the dead process
+        last = getattr(self, "_interrupted_last", {}).get(run_id) or float(
+            run.last_activity_at or run.updated_at or run.created_at or 0)
+        if time.time() - last > self.RESUME_MAX_AGE_S:
+            return False
+        return self.auto_continue_blocked(run_id) is None
+
+    async def resume_interrupted(self) -> list[str]:
+        """The app (core) restarted mid-turn: carry each interrupted Claude Code run on from its
+        stored session with an internal continuation, sub-agents before their parents, so a
+        lead told "your sub-agents were continued" can collect them with agent_wait. Bounded
+        by auto_continue_blocked (a Stop, the per-turn cap, a spent budget). Returns the ids
+        continued; one that cannot be continued keeps its interrupted card."""
+        ids = [r for r in self.interrupted if self._resumable(r)]
+        self.interrupted = []
+
+        def depth(rid: str) -> int:
+            n, seen = 0, {rid}
+            with contextlib.suppress(KeyError):
+                run = self.store.get_run(rid)
+                while run.parent_id and run.parent_id not in seen:
+                    seen.add(run.parent_id)
+                    run = self.store.get_run(run.parent_id)
+                    n += 1
+            return n
+
+        done: list[str] = []
+        for rid in sorted(ids, key=depth, reverse=True):
+            kids = [k for k in done if self.store.get_run(k).parent_id == rid]
+            extra = (f"Mises continued your sub-agents {', '.join(kids)} too; collect them with "
+                     "agent_wait and agent_result." if kids else None)
+            try:
+                await self.continue_run(rid, self.RESTART_CAUSE, auto=True, extra=extra)
+            except Exception as e:  # noqa: BLE001 - one run must not stop the others
+                log.warning("could not continue interrupted run %s: %s", rid, e)
+                continue
+            done.append(rid)
+        if done:
+            log.info("continued %d interrupted run(s): %s", len(done), ", ".join(done))
+        return done
 
     def _remove_stale_mcp_files(self) -> None:
         """A Claude Code session's MCP config (it holds an MCP-only token) is deleted when the

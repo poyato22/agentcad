@@ -307,15 +307,33 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
             except Exception:  # noqa: BLE001 - a watchdog must never crash the server
                 log.debug("stall scan failed", exc_info=True)
 
+    async def _resume_interrupted():
+        """Runs the restart interrupted mid-turn carry on by themselves once Claude Code can
+        reach the Mises tools (attach_mcp follows the server's start)."""
+        if not runtime.interrupted:
+            return
+        for _ in range(600):
+            if runtime.mcp_endpoint is not None:
+                break
+            await asyncio.sleep(0.1)
+        else:
+            return
+        try:
+            await runtime.resume_interrupted()
+        except Exception:  # noqa: BLE001 - never crash the server over it
+            log.warning("resuming interrupted runs failed", exc_info=True)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         # warm 2D drawings in the background as parts change (U6)
         runtime.drawing_pregen.start()
         stall_task = asyncio.create_task(_stall_watch())
+        resume_task = asyncio.create_task(_resume_interrupted())
         try:
             async with manager.run():
                 yield
         finally:
+            resume_task.cancel()
             stall_task.cancel()
             await runtime.drawing_pregen.aclose()
             # background work of the UI routes (OpenRouter refresh, model downloads) stops here
