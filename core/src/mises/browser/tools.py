@@ -210,15 +210,21 @@ def _entropy(t: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(t).values())
 
 
+_SPEC_PIECE = re.compile(r"\d+[a-z]{1,4}|[a-z]{1,3}\d{1,4}", re.I)   # 350mah, 4v, 50c, xt30
+
+
 def _word_slug(s: str) -> bool:
-    """A product slug of words around part numbers ("tc-1404-4600kv-motor"): split at - _ . +,
-    at least half the pieces are real words (2+ letters, one past a-f, so hex groups are not
-    words) and no single piece looks like encoded data. Its digits are part numbers."""
+    """A product slug of words around part numbers ("tc-1404-4600kv-motor",
+    "rdq-series-11-4v-3s-350mah-50c-lihv-micro-battery-xt30"): split at - _ . +, it has a real
+    word (2+ letters, one past a-f, so hex groups are not words), at least half the pieces are
+    words or spec values (350mah, 4v, xt30), and no single piece looks like encoded data."""
     parts = [p for p in re.split(r"[-_.+]+", s) if p]
     if len(parts) < 2:
         return False
     words = [p for p in parts if re.fullmatch(r"[A-Za-z]{2,}", p) and re.search(r"[g-zG-Z]", p)]
-    return 2 * len(words) >= len(parts) and not any(looks_random(p) for p in parts)
+    specs = [p for p in parts if _SPEC_PIECE.fullmatch(p)]
+    return (bool(words) and 2 * (len(words) + len(specs)) >= len(parts)
+            and not any(looks_random(p) for p in parts))
 
 
 def looks_random(s: str) -> bool:

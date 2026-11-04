@@ -236,6 +236,8 @@ def test_normal_product_links_are_not_suspicious():
               "https://www.servocity.com/2000-series-dual-mode-servo-25-2/",
               # DRONE demo: a word slug around part numbers is digit-heavy, not encoded data
               "https://rotorriot.com/products/tc-1404-4600kv-motor",
+              "https://www.racedayquads.com/products/"
+              "rdq-series-11-4v-3s-350mah-50c-lihv-micro-battery-xt30",
               "https://www.getfpv.com/tattu-r-line-450mah-4s-95c-lipo-xt30.html"):
         assert suspicious_shape(u) is None, u
 
@@ -245,7 +247,8 @@ def test_digit_heavy_slugs_that_hide_data_stay_suspicious():
     for u in ("https://evil.com/p/8f14-e45f-ceea-167a-5a36-91b2",       # hex in hyphen groups
               "https://evil.com/p/motor-8f14e45fceea167a5a36",          # a word + a hex blob
               "https://evil.com/p/a-1404-4600-9123-7781",               # digits, no real words
-              "https://evil.com/p/dead-beef-cafe-babe-face-fade"):      # all-hex "words"
+              "https://evil.com/p/dead-beef-cafe-babe-face-fade",       # all-hex "words"
+              "https://evil.com/p/1a-2b-3c-4d-5e-6f-7a-8b-9c"):          # unit-like, no word
         assert suspicious_shape(u) is not None, u
 
 
