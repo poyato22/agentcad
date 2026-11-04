@@ -350,8 +350,11 @@ class Gate:
         path = workdir / "outputs" / f"{call_id}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(blob)
+        note = (f"the full result is {len(blob) // 1024} KB, too big to show: read it with "
+                f"output_read (handle {path.name}, optionally a key such as 'data.<field>')")
         return ToolOutput(ok=out.ok, summary=out.summary, handles=[str(path)], data={},
-                          warnings=out.warnings, step_kind=out.step_kind, images=out.images)
+                          warnings=[*out.warnings, note], step_kind=out.step_kind,
+                          images=out.images)
 
     def _finish(self, run_id: str, name: str, call_id: str, out: ToolOutput) -> None:
         # the step log keeps what was shown, never the pixels (they are in the PNG handles)

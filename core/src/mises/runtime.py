@@ -73,6 +73,7 @@ from . import sketch as sketch_mod
 from .types import (Block, Caps, ErrorCode, ImageBlock, Message, MisesError, SafetyClass,
                     StepKind, TextBlock)
 from .ui_tools import register_ui_tools
+from .output_tools import register_output_tools
 
 log = logging.getLogger(__name__)
 
@@ -232,6 +233,7 @@ class Runtime:
         register_sim_tools(self.registry)
         register_onshape_tools(self.registry)
         register_ui_tools(self.registry)
+        register_output_tools(self.registry)
         register_print_tools(self.registry)
         register_engineering_tools(self.registry)
         register_orchestrator_tools(self.registry)
