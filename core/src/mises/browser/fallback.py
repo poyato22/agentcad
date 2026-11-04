@@ -6,7 +6,12 @@ snapshot as `fetch_path`:
   headers   the same fetch with a realistic browser User-Agent and headers (HTTP/2 when the
             optional `h2` package is installed)
   cache     the Internet Archive's copy of the page
-  snippet   what a search engine shows for the page (partial; says so)
+  snippet   what a web search (browser.websearch) shows for the page (partial; says so)
+
+A bot wall (401/403/429/503/999, a captcha page) or an empty shell starts the chain at
+`headers`. A page that times out, drops the connection (after the fetcher's own retry) or whose
+host no longer resolves starts it too, skipping `headers` when it cannot help (a timeout or a
+DNS failure). Anything else (a 404, a refused address or redirect) is raised as it is.
 
 A real headless engine (Playwright Chromium/WebKit) is NOT used: it is not installed in core's
 environment and nothing here installs one. A JavaScript-only page with no archived copy therefore
@@ -20,10 +25,10 @@ import html
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 from ..catalog.importer import Page
-from ..types import MisesError
+from ..types import ErrorCode, MisesError
 from .snapshot import BLOCKED_STATUSES, blocked_reason, parse
 
 log = logging.getLogger("mises.browser")
@@ -37,12 +42,13 @@ BROWSER_HEADERS = {
 }
 BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 ARCHIVE = "https://web.archive.org/web/2/"
-SEARCH = "https://html.duckduckgo.com/html/?q="
 MIN_TEXT = 120          # less readable text than this is an empty shell (JavaScript-only)
 SNIPPET_MAX = 1800
 
 # get(url, realistic=False, allow_other_site=False) -> Page (raises MisesError)
 Getter = Callable[..., Awaitable[Page]]
+# search(query) -> [{title, url, snippet, site}] (spends its own web fetches)
+Searcher = Callable[[str], Awaitable[list[dict]]]
 
 
 @dataclass
@@ -68,26 +74,37 @@ def _blocked(e: MisesError) -> bool:
     return getattr(e, "upstream_status", None) in BLOCKED_STATUSES
 
 
-def snippet_page(url: str, results: Page) -> Page | None:
-    """A small page of search-engine text for `url`, or None when the engine had nothing."""
-    p = parse(results.text)
+def _transient(e: MisesError) -> bool:
+    return str(getattr(e, "code", "")) == str(ErrorCode.TRANSIENT)
+
+
+def _no_headers_help(e: MisesError) -> bool:
+    """A timeout or a DNS failure: browser-like headers would fail the same way."""
+    return e.message.startswith(("could not resolve", "the page took longer"))
+
+
+def snippet_page(url: str, results: list[dict]) -> Page | None:
+    """A small page of web-search text for `url` (its own result first, then others on its
+    site), or None when the search had nothing for it."""
     host = (urlsplit(url).hostname or "").removeprefix("www.")
-    lines = [ln.strip() for ln in "\n".join(p.text).splitlines() if ln.strip()]
-    keep = [ln for ln in lines if (host and host in ln.lower()) or len(ln) > 40]
-    body = " ".join(keep)[:SNIPPET_MAX]
+    want = url.rstrip("/")
+    mine = [r for r in results if r["url"].rstrip("/") == want]
+    mine += [r for r in results if r not in mine and host
+             and (urlsplit(r["url"]).hostname or "").removeprefix("www.") == host]
+    body = " ".join(f"{r['title']}: {r['snippet']}" for r in mine)[:SNIPPET_MAX]
     if len(body) < 40:
         return None
     doc = (f"<html><head><title>{html.escape(host)} (search-engine snippets)</title></head><body>"
-           f"<p>The page itself could not be opened; this is what a search engine shows for it."
+           f"<p>The page itself could not be opened; this is what a web search shows for it."
            f"</p><p>{html.escape(body)}</p></body></html>")
     return Page(url, url, "text/html", doc, doc.encode())
 
 
-async def open_chain(get: Getter, url: str, *, charge: Callable[[], None] = lambda: None
-                     ) -> Opened:
-    """Open `url`, falling back down the chain. Non-blocking failures (the site is down, TLS,
-    a refused address) are raised as they are: only a bot wall or an empty shell falls back."""
+async def open_chain(get: Getter, url: str, *, charge: Callable[[], None] = lambda: None,
+                     search: Searcher | None = None) -> Opened:
+    """Open `url`, falling back down the chain (see the module docstring)."""
     tried: list[str] = ["plain"]
+    steps = ["headers", "cache", "snippet"]
     try:
         page = await get(url)
         if usable(page):
@@ -95,26 +112,35 @@ async def open_chain(get: Getter, url: str, *, charge: Callable[[], None] = lamb
         why = blocked_reason(200, parse(page.text).title or "", "") \
             or "the page has no readable text (it may need JavaScript)"
     except MisesError as e:
-        if not _blocked(e):
+        if _blocked(e):
+            why = blocked_reason(getattr(e, "upstream_status", None))
+        elif _transient(e):
+            why = e.message + (f" ({e.hint})" if e.hint else "")
+            if _no_headers_help(e):
+                steps.remove("headers")
+        else:
             raise
-        why = blocked_reason(getattr(e, "upstream_status", None))
-    for name, target, kw in (("headers", url, {"realistic": True}),
-                             ("cache", ARCHIVE + url, {"allow_other_site": True}),
-                             ("snippet", SEARCH + quote(url, safe=""),
-                              {"allow_other_site": True})):
-        charge()
+    for name in steps:
+        if name == "snippet" and search is None:
+            continue
+        if name != "snippet":
+            charge()               # the snippet's web search spends its own fetches
         tried.append(name)
         try:
-            got = await get(target, **kw)
+            if name == "headers":
+                got = await get(url, realistic=True)
+            elif name == "cache":
+                got = await get(ARCHIVE + url, allow_other_site=True)
+            else:
+                u = urlsplit(url)
+                got = snippet_page(url, await search(f"{u.hostname}{u.path}"[:120]))
+                if got is None:
+                    continue
         except MisesError as e:
             log.info("web_open fallback %s failed for %s: %s", name, urlsplit(url).hostname,
                      e.message)
             continue
-        if name == "snippet":
-            got = snippet_page(url, got)
-            if got is None:
-                continue
-        elif not usable(got):
+        if name != "snippet" and not usable(got):
             continue
         if name == "cache":
             got = Page(url, url, got.content_type, got.text, got.body)

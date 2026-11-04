@@ -14,7 +14,7 @@ import { Button } from "../../common/Button";
 import { Card, ConfirmRemove, ErrorLine, SectionBox, useTask, wholeNumber, type SectionProps } from "../common";
 
 /** Core DEFAULT_BROWSER_FETCHES, for a profile that predates the field. */
-const DEFAULT_FETCHES = 60;
+const DEFAULT_FETCHES = 300;   // core profile.DEFAULT_BROWSER_FETCHES
 const DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 function hostname(raw: string): string {

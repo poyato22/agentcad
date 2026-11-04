@@ -101,7 +101,7 @@ describe("SitesSection", () => {
   it("edits browser fetches per run within 1-1000", async () => {
     renderSection();
     const input = screen.getByRole("textbox", { name: "Browser fetches per run" }) as HTMLInputElement;
-    expect(input.value).toBe("60");
+    expect(input.value).toBe("300");
     fireEvent.input(input, { target: { value: "5000" } });
     expect(screen.getByText("A whole number from 1 to 1000.")).toBeTruthy();
     fireEvent.input(input, { target: { value: "120" } });

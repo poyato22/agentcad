@@ -35,7 +35,7 @@ from ..tools.registry import ToolContext, ToolRegistry, tool
 from ..types import ErrorCode, MisesError, SafetyClass, ToolOutput
 from . import Catalog, summary
 from .geometry import insert_item
-from .importer import check_url, import_url, item_id_for, wrap_untrusted
+from .importer import check_url, item_id_for, wrap_untrusted
 
 log = logging.getLogger(__name__)
 
@@ -206,6 +206,64 @@ def _count_fetch(ctx: ToolContext, dom: str) -> None:
     store.count_domain(root, dom)
 
 
+def _import_guard(ctx: ToolContext, start: str):
+    """A redirect off `start`'s site (or a site the user allowed) is followed only to a target
+    that would import as a link the agent gave: an ordinary page shape, within the per-turn
+    caps. check_url has already refused non-https, private and local targets."""
+    from ..browser.sites import on_domain
+    from ..browser.tools import _shape_ok, suspicious_shape
+    allowed = allowed_domains(ctx)
+
+    def guard(url: str) -> str | None:
+        host = _domain(url)
+        if on_domain(host, start) or host in allowed:
+            return None
+        if not _shape_ok(url):
+            return "the link has an unusual shape"
+        return suspicious_shape(url) or _cap_reason(ctx, host)
+    return guard
+
+
+def _from_snapshot(ctx: ToolContext, url: str) -> dict | None:
+    """The catalog item of a page this build already read with web_open (no second fetch)."""
+    store = (ctx.services or {}).get("browser")
+    if store is None or getattr(ctx, "run_id", None) is None:
+        return None
+    _root, family = ctx.store.run_family(ctx.run_id)
+    for run_id in family:
+        for rec in reversed(store.for_run(run_id)):
+            if (rec.get("kind") == "page" and not rec.get("blocked") and rec.get("_item")
+                    and url in (rec.get("url"), rec.get("final_url"))):
+                return {**rec["_item"], "url": url, "id": item_id_for(url)}
+    return None
+
+
+async def _read_product_page(ctx: ToolContext, url: str, guard) -> dict:
+    """Fetch and extract a product page. A rate limit is retried once by the fetcher; a bot
+    wall or a page that will not answer then falls back like web_open (browser-like headers,
+    the archived copy). Every request goes through the same hardened fetch."""
+    from ..browser import fallback as fb
+    from ..browser.sites import on_domain
+    from .importer import extract, fetch
+    http = (ctx.services or {}).get("catalog_http") or {}
+
+    async def get(u: str, realistic: bool = False, allow_other_site: bool = False):
+        kw: dict = dict(user_agent=fb.BROWSER_UA, accept=fb.BROWSER_ACCEPT,
+                        extra_headers=fb.BROWSER_HEADERS) if realistic else {}
+        if allow_other_site:           # the archive's copy stays on the archive
+            kw["redirect_ok"] = lambda h: on_domain(h, _domain(u))
+        else:
+            kw["redirect_guard"] = guard
+        return await fetch(u, partial_ok=True, **kw, **http)
+
+    opened = await fb.open_chain(get, url)
+    if opened.page is None:
+        raise MisesError(ErrorCode.TOOL_FAILED, f"{_domain(url)}: {opened.why}",
+                         hint="tried " + ", ".join(opened.tried) + "; find the part on another"
+                              " site with web_search")
+    return extract(opened.page)
+
+
 async def _import_preview(ctx: ToolContext, args: ImportArgs) -> dict:
     u = urlsplit(args.url)
     return {"domain": _domain(args.url), "url": args.url, "path": u.path or "/",
@@ -248,7 +306,7 @@ async def catalog_get(ctx: ToolContext, args: GetArgs) -> ToolOutput:
 
 
 @tool("catalog_import_url", safety=SafetyClass.LOCAL_MUTATE, scope_keys=_domain_scope,
-      timeout_s=30, needs_approval=_import_needs_approval, preview=_import_preview,
+      timeout_s=90, needs_approval=_import_needs_approval, preview=_import_preview,
       open_world=True,
       description="Read a product page (https only) and add it to the parts directory with the"
                   " specs found on it, normalized to mm/g/N. An ordinary product page imports"
@@ -266,17 +324,14 @@ async def catalog_import_url(ctx: ToolContext, args: ImportArgs) -> ToolOutput:
     if old is not None and not refresh:
         saved = {**old, "existing": True}
     else:
-        http = (ctx.services or {}).get("catalog_http") or {}
-        stay = None
-        if meta is None:
-            # an agent's import stays on the page's own site (or a site the user allowed),
-            # as web_open does (M4)
-            from ..browser import sites as sites_mod
-            start, allowed = _domain(url), allowed_domains(ctx)
-            stay = lambda h: sites_mod.on_domain(h, start) or h in allowed  # noqa: E731
-        saved = cat.add(await import_url(url, redirect_ok=stay, **http), project,
-                        refresh=refresh)
-        _count_fetch(ctx, _domain(url))
+        item = None if meta is not None else _from_snapshot(ctx, url)
+        if item is None:
+            # an agent's import follows a redirect off the site only to a target that would
+            # open as a link the agent gave (M4, the same guard as web_open)
+            guard = _import_guard(ctx, _domain(url)) if meta is None else None
+            item = await _read_product_page(ctx, url, guard)
+            _count_fetch(ctx, _domain(url))
+        saved = cat.add(item, project, refresh=refresh)
     domain = _domain(saved["url"])
     what = ("Already in the directory" if saved["existing"]
             else f"Imported from {domain}: {len(saved['specs'])} spec(s); the user should"

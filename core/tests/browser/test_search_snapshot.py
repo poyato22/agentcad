@@ -76,8 +76,8 @@ def test_pick_sites_by_query_words_and_by_name():
     assert picked[0] in ("Pololu", "ServoCity", "Adafruit", "RobotShop") and len(picked) == 3
     assert [s["name"] for s in sites.pick_sites(ds, "608 bearing")][:2] == ["McMaster-Carr",
                                                                            "Misumi"]
-    assert [s["name"] for s in sites.pick_sites(ds, "xyzzy")] == ["McMaster-Carr", "Misumi",
-                                                                 "Digi-Key"]
+    # no shop matches: the general web search answers it alone
+    assert sites.pick_sites(ds, "xyzzy") == []
     named = sites.pick_sites(ds, "x", ["pololu", "www.adafruit.com"])
     assert [s["name"] for s in named] == ["Pololu", "Adafruit"]
     # P11 F5: any domain is searchable (off the list: marked so the exfil guard sees it), and a
@@ -86,7 +86,7 @@ def test_pick_sites_by_query_words_and_by_name():
     assert off["domain"] == "thrustcurve.org" and off["via"] == sites.SITE_SEARCH_HOST
     assert off.get("listed") is None and off["name"] == "ThrustCurve"   # now a suggested site
     [evil] = sites.pick_sites(ds, "x", ["evil.example.com"])
-    assert evil["listed"] is False and "site%3Aevil.example.com" in evil["search_url"]
+    assert evil["listed"] is False and evil["via"] == sites.SITE_SEARCH_HOST
     [ti] = sites.pick_sites(ds, "x", ["ti.com"])                # no search page of its own
     assert ti["name"] == "Texas Instruments" and ti["via"] == sites.SITE_SEARCH_HOST
     with pytest.raises(KeyError):

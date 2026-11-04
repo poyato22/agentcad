@@ -16,6 +16,8 @@ job_dir/result.json carrying $MISES_NONCE:
   strings without formatting codes (cut to MAX_TEXT).
 - render: Mises's own drawing (a DXF the core wrote) rasterized to render.png, for the
   second-look comparison.
+- pdftext: the text layer of a PDF the agent browser fetched (job_dir/input.pdf), no
+  rendering (mises.browser.pdftext).
 
 Nothing here imports mises: the child only needs pypdfium2 / ezdxf / Pillow. The parent
 validates everything in result.json before using it.
@@ -335,11 +337,43 @@ def _dxf(job: Path) -> dict:
             "texts": out.texts, "skipped": out.skipped, "truncated": out.truncated}
 
 
+PDFTEXT_PAGES = 60
+PDFTEXT_MAX = 200_000
+
+
+def _pdftext(job: Path) -> dict:
+    """pdftext: the text layer of a PDF a web page served (the agent browser), first
+    PDFTEXT_PAGES pages, at most PDFTEXT_MAX characters. No rendering."""
+    import pypdfium2 as pdfium
+
+    try:
+        pdf = pdfium.PdfDocument(str(job / "input.pdf"))
+    except pdfium.PdfiumError as e:
+        raise SystemExit(f"could not open the PDF ({e}); it may be damaged or password-protected")
+    total, out, n = len(pdf), [], 0
+    for i in range(min(total, PDFTEXT_PAGES)):
+        page = pdf[i]
+        try:
+            tp = page.get_textpage()
+            text = tp.get_text_bounded()
+            tp.close()
+        except Exception:  # noqa: BLE001 - a scanned page has no text layer
+            text = ""
+        page.close()
+        text = text[:PDFTEXT_MAX - n]
+        out.append(text)
+        n += len(text)
+        if n >= PDFTEXT_MAX:
+            break
+    pdf.close()
+    return {"pages_total": total, "pages_read": len(out), "text": "\n\f\n".join(out)}
+
+
 def main(argv: list[str]) -> int:
     _limits()
     job, mode = Path(argv[1]), argv[2]
     nonce = os.environ.get("MISES_NONCE", "")
-    modes = {"pdf": _pdf, "image": _image, "dxf": _dxf, "render": _render}
+    modes = {"pdf": _pdf, "image": _image, "dxf": _dxf, "render": _render, "pdftext": _pdftext}
     if mode not in modes:
         raise SystemExit(f"unknown mode {mode!r}")
     result = modes[mode](job)

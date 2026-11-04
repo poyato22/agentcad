@@ -49,7 +49,9 @@ async def test_search_picks_sites_from_the_query_and_reports_blocked_ones(env, w
     web.fixture("https://www.servocity.com/search.php", "captcha.html")
     out = await env.call("web_search", {"query": "servo"})
     by = {s["site"]: s for s in out.data["sites"]}
-    assert set(by) == {"Adafruit", "Pololu", "ServoCity"}
+    # a general web search (no engine answers in this fake web) plus the matching shops
+    assert set(by) == {"web", "Adafruit", "Pololu", "ServoCity"}
+    assert by["web"]["status"] == "failed"
     assert by["Pololu"]["status"] == "blocked"
     assert by["Pololu"]["message"] == "site blocked automated access (HTTP 403)"
     assert by["ServoCity"]["status"] == "blocked"
@@ -57,8 +59,9 @@ async def test_search_picks_sites_from_the_query_and_reports_blocked_ones(env, w
     assert by["Adafruit"]["count"] == 3
     assert "Pololu: site blocked automated access (HTTP 403)" in out.summary
     # the blocked visits show in the run's browser too
-    kinds = [s.get("blocked") is not None for s in env.snaps.for_run(env.run.id)]
-    assert sorted(kinds) == [False, True, True]
+    snaps = env.snaps.for_run(env.run.id)
+    assert [s["site"] for s in snaps if s.get("blocked") is None] == ["Adafruit"]
+    assert {s["site"] for s in snaps if s.get("blocked")} >= {"Pololu", "ServoCity"}
 
 
 async def test_search_other_failures_and_empty_pages(env, web):
@@ -75,7 +78,7 @@ async def test_search_redirect_off_site_refused(env, web):
     out = await env.call("web_search", {"query": "servo", "sites": ["Adafruit"]})
     assert out.data["sites"][0]["status"] == "failed"
     assert "another site" in out.data["sites"][0]["message"]
-    assert web.hosts() == ["www.adafruit.com"]
+    assert "tracker.example.net" not in web.hosts()
 
 
 DDG = "https://html.duckduckgo.com/html/"
@@ -93,11 +96,11 @@ DDG_PAGE = """<html><body>
 @pytest.mark.parametrize("named", ["thrustcurve.org", "ThrustCurve",
                                    "https://www.thrustcurve.org/"])
 async def test_search_any_site_through_the_site_search(env, web, named):
-    web.page(DDG, DDG_PAGE)
+    web.page(DDG, DDG_PAGE)          # Brave and Yahoo are not in this fake web: DuckDuckGo answers
     out = await env.call("web_search", {"query": "F67W thrust curve", "sites": [named]})
     assert out.ok and out.data["result_count"] == 1
-    req = web.requests[0]
-    assert req.headers["host"] == "html.duckduckgo.com"
+    assert web.hosts() == ["search.brave.com", "search.yahoo.com", "html.duckduckgo.com"]
+    req = web.requests[-1]
     assert req.url.query == b"q=site%3Athrustcurve.org+F67W+thrust+curve"
     snap = env.snaps.get(out.data["sites"][0]["snapshot_id"])
     assert [r["url"] for r in snap["results"]] == [
@@ -112,10 +115,11 @@ async def test_search_a_site_off_the_list_counts_and_an_odd_one_is_refused(env, 
     root, _ = env.store.run_family(env.run.id)
     assert env.snaps.domain_counts(root, "rocketryforum.com")[0] == 1
     odd = "x7gq9zpl2mvb8rty4wkc1ndf6hjs3qea.evil.com"          # a data-looking host label
+    n = len(web.requests)
     with pytest.raises(MisesError) as e:
         await env.call("web_search", {"query": "x", "sites": [odd]})
     assert e.value.code == ErrorCode.INVALID_INPUT and "evil.com" in e.value.message
-    assert len(web.requests) == 1                     # nothing more fetched
+    assert len(web.requests) == n                     # nothing more fetched
     assert env.store.pending_approvals(env.run.id) == []     # browsing never asks
 
 
@@ -132,7 +136,7 @@ async def test_search_uses_the_users_site_list(env, web):
          "search_url": "https://parts.example.com/find?term={q}"}]}))
     web.fixture("https://parts.example.com/find", "search_generic.html")
     out = await env.call("web_search", {"query": "bearing"})
-    assert [s["site"] for s in out.data["sites"]] == ["My Shop"]
+    assert [s["site"] for s in out.data["sites"]] == ["web", "My Shop"]
     assert out.data["result_count"] == 2
     with pytest.raises(MisesError):
         await env.call("web_search", {"query": "x", "sites": ["Adafruit"]})   # removed
@@ -255,6 +259,23 @@ def test_wiki_slugs_of_words_and_part_numbers_are_not_suspicious():
         assert suspicious_shape(u) is not None, u
 
 
+def test_source_file_names_and_unicode_product_slugs_are_not_suspicious():
+    """Real runs: a firmware header on raw.githubusercontent.com (one short mixed token beside
+    real words) and a shop slug with a percent-encoded Roman numeral (U8Ⅱ) were refused."""
+    from mises.browser.tools import suspicious_shape
+    for u in ("https://raw.githubusercontent.com/prusa3d/Prusa-Firmware-Buddy/master/include/"
+              "marlin/Configuration_A3ides_2209_MINI.h",
+              "https://unmannedrc.com/products/u8%E2%85%B1lite-efficiency-type-multirotor-uav-motor",
+              "https://github.com/mjbots/moteus/blob/main/lib/python/moteus/moteus_tool.py"):
+        assert suspicious_shape(u) is None, u
+    for u in ("https://evil.example.com/Config_aGVsbG8gd29ybGQgZm9v_MINI",  # long mixed token
+              "https://evil.example.com/Configuration_X9fK2_pQ7zL",         # two mixed tokens
+              "https://evil.example.com/%41%42%43%44%45%46%47%48%49%4A%4B%4C%4D%4E%4F%50"
+              "%51%52%53%54",                                               # hex escapes of data
+              "https://evil.example.com/p/" + "%E4%B8%80" * 12):            # many non-ASCII chars
+        assert suspicious_shape(u) is not None, u
+
+
 def test_digit_heavy_slugs_that_hide_data_stay_suspicious():
     from mises.browser.tools import suspicious_shape
     for u in ("https://evil.com/p/8f14-e45f-ceea-167a-5a36-91b2",       # hex in hyphen groups
@@ -273,13 +294,14 @@ async def test_open_always_allowed_domain_needs_no_card(env, web):
     assert out.ok and env.store.pending_approvals(env.run.id) == []
 
 
-async def test_open_redirect_to_an_unapproved_site_refused(env, web):
+async def test_open_redirect_to_another_ordinary_site_is_followed(env, web):
+    # a redirect off the site is vetted like a link the agent gave (test_open_resilience
+    # covers the refusals); an ordinary page is followed and reported
     web.redirect(PRODUCT, "https://elsewhere.example.net/p")
     web.fixture("https://elsewhere.example.net/p", "product_servo.html")
-    with pytest.raises(MisesError) as e:
-        await env.call("web_open", {"url": PRODUCT})
-    assert "another site (elsewhere.example.net)" in e.value.message
-    assert web.hosts() == ["www.adafruit.com"]
+    out = await env.call("web_open", {"url": PRODUCT})
+    assert out.ok and "redirected to elsewhere.example.net" in out.summary
+    assert web.hosts() == ["www.adafruit.com", "elsewhere.example.net"]
 
 
 async def test_open_redirect_within_the_site_and_to_suggested_sites_ok(env, web):

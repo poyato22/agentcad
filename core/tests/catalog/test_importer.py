@@ -197,15 +197,15 @@ async def test_redirect_limit(web, public_dns):
 
 async def test_size_cap_streamed(web, public_dns):
     web.page(URL, "<p>" + "x" * (importer.MAX_BYTES + 10) + "</p>")
-    with pytest.raises(MisesError) as e:
-        await import_url(URL, transport=web.transport, resolve=public_dns)
+    with pytest.raises(MisesError) as e:          # import_url reads the first part instead
+        await importer.fetch(URL, transport=web.transport, resolve=public_dns)
     assert "larger than 2 MB" in e.value.message
 
 
 async def test_declared_size_cap(web, public_dns):
     web.page(URL, "<p>small</p>", headers={"Content-Length": str(importer.MAX_BYTES + 1)})
     with pytest.raises(MisesError):
-        await import_url(URL, transport=web.transport, resolve=public_dns)
+        await importer.fetch(URL, transport=web.transport, resolve=public_dns)
 
 
 async def test_not_a_web_page(web, public_dns):

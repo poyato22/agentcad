@@ -118,10 +118,11 @@ async def test_exfil_shaped_import_is_refused_without_a_card(env, web):
     assert env.store.pending_approvals(env.run.id) == []
 
 
-async def test_agent_import_redirect_stays_on_site(env, web):
-    # M4: an agent's import may not follow a redirect to another site
-    web.redirect(URL, "https://elsewhere.example.net/p")
-    web.fixture("https://elsewhere.example.net/p", "table_motor.html")
+async def test_agent_import_redirect_off_site_is_vetted_like_a_link(env, web):
+    # M4: an agent's import follows a redirect to another site only when the target passes
+    # the link guard (test_import_resilience covers an ordinary target being followed)
+    web.redirect(URL, "https://elsewhere.example.net/p/8f14e45fceea167a5a36")
+    web.fixture("https://elsewhere.example.net/p/8f14e45fceea167a5a36", "table_motor.html")
     with pytest.raises(MisesError):
         await env.call("catalog_import_url", {"url": URL})
     assert {r.headers["host"] for r in web.requests} == {"shop.example.com"}
