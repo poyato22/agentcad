@@ -77,12 +77,25 @@ def last_edited_at(store: Store, p: Project, home: Path | None = None) -> float:
     return float(max(t for t in ts if t is not None))
 
 
-def build_mass_g(store: Store, home: Path | None, project_id: str) -> float | None:
+def build_mass_g(store: Store, home: Path | None, project_id: str, assemblies=None) -> float | None:
     """The build's mass for its Home tile (FW-app M2): the part tree's total by B2's rule (the
     roots' masses, a parent or group counting its subtree once); None when no part has a
     known mass yet, or with no home to weigh."""
     if home is None:
         return None
+    # with an assembly the build weighs every instance x its part (the Parts total's rule), so
+    # the tile and the open build agree (a part used four times counts four times)
+    if assemblies is not None:
+        try:
+            inst = assemblies.get(project_id).instances
+            if inst:
+                from . import mass as _mass
+                tot = _mass.assembly_total(store, home, project_id, inst)
+                n_unknown = sum(u["count"] for u in tot["mass_unknown"])
+                if n_unknown < len(inst):
+                    return tot["total_mass_g"]
+        except Exception:  # noqa: BLE001 - a tile never fails the listing
+            log.debug("assembly mass of %s unavailable", project_id, exc_info=True)
     try:
         rows = mass_rows(store, home, project_id, versions=False)
     except Exception:  # noqa: BLE001 - a tile never fails the listing
@@ -94,7 +107,7 @@ def build_mass_g(store: Store, home: Path | None, project_id: str) -> float | No
     return round(sum(known), 4) if known else None
 
 
-def project_view(store: Store, p: Project, home: Path | None = None) -> dict:
+def project_view(store: Store, p: Project, home: Path | None = None, assemblies=None) -> dict:
     """The GET /projects shape. onshape stays null until C5's import links a document.
     `last_edited_at` is derived (see last_edited_at); `updated_at` keeps its row meaning.
     `mass_g`: the build's tree mass (build_mass_g), for the Home tile."""
@@ -102,11 +115,11 @@ def project_view(store: Store, p: Project, home: Path | None = None) -> dict:
             "last_edited_at": last_edited_at(store, p, home),
             "trashed_at": p.trashed_at, "part_count": store.project_part_count(p.id),
             "run_count": store.project_run_count(p.id), "onshape": None,
-            "mass_g": build_mass_g(store, home, p.id)}
+            "mass_g": build_mass_g(store, home, p.id, assemblies)}
 
 
-def list_projects(store: Store, home: Path | None = None) -> list[dict]:
-    return [project_view(store, p, home) for p in store.list_projects()]
+def list_projects(store: Store, home: Path | None = None, assemblies=None) -> list[dict]:
+    return [project_view(store, p, home, assemblies) for p in store.list_projects()]
 
 
 def _live(store: Store, project_id: str | None) -> bool:

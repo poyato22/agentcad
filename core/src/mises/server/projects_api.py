@@ -82,7 +82,7 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         # Otherwise the app's first GET /projects raced its GET /parts and saw no build at all
         # (no tabs until the next reconnect).
         runtime.active_project_id()
-        return _projects.list_projects(store, _home())
+        return _projects.list_projects(store, _home(), getattr(runtime, "assembly_store", None))
 
     @router.post("/projects")
     async def create_project(body: NewProject):
@@ -96,7 +96,7 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
                 project_id, None if body.design_class == "auto" else body.design_class)
         if body.name is None:
             out = _projects.project_view(store, _projects._project_or_404(store, project_id),
-                                         _home())
+                                         _home(), getattr(runtime, "assembly_store", None))
         else:
             out = _projects.rename_project(store, project_id, body.name)
         if body.design_class is not None:
