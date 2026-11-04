@@ -289,7 +289,10 @@ def task_torque(job: dict) -> dict:
                            "joint frames")
     ts = np.array(rec["t"])
     active = ts >= plan.start_s - 1e-9
-    F = np.array(rec["force"])
+    F_raw = np.array(rec["force"])
+    # the stiff PD answers a foot strike within ms by hitting its force limit; the motor's
+    # demand is the same servo band as the inverse dynamics (the raw peak is the impact)
+    F = _mean_filter(F_raw, ACTUATOR_BAND_SAMPLES) if free else F_raw
     V = np.array(rec["qvel"])
     inv = _inverse(m, rec, active, plan, jnames, free)
     inv, impact = _inverse_bands(inv) if free else (inv, inv)
@@ -303,7 +306,8 @@ def task_torque(job: dict) -> dict:
             "peak_servo": _r(np.max(np.abs(f)) if len(f) else 0.0),
             "rms_servo": _r(np.sqrt(np.mean(f ** 2)) if len(f) else 0.0),
             "peak_inverse": _r(np.max(np.abs(iv)) if len(iv) else 0.0),
-            "peak_impact": _r(np.max(np.abs(impact[active, a])) if len(iv) else 0.0),
+            "peak_impact": _r(max(np.max(np.abs(impact[active, a])),
+                                  np.max(np.abs(F_raw[active, a]))) if len(iv) else 0.0),
             "rms_inverse": _r(np.sqrt(np.mean(iv ** 2)) if len(iv) else 0.0),
             "peak_speed": _r(np.max(np.abs(w)) if len(w) else 0.0),
             "rms_speed": _r(np.sqrt(np.mean(w ** 2)) if len(w) else 0.0),

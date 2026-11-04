@@ -53,6 +53,23 @@ def test_an_imported_catalog_servo_resolves(monkeypatch):
     assert act.resolve("url_y") is None
 
 
+def test_a_free_base_servo_that_kept_up_is_sized_on_what_it_drew():
+    """DOG demo: a trotting knee servo tracked within 1.3 deg drawing 1.56 N m, but sizing took
+    the free-base inverse (3.2 N m, soft contacts re-solved from differenced accelerations).
+    When the servo kept up, its own torque is the demand; when it fell behind the inverse
+    still says how much more it needed."""
+    perf = act.resolve("servo_st3215_hs")
+    j = {"joint": "knee", "actuator": "a", "peak_servo": 1.0, "peak_inverse": 3.0,
+         "rms_servo": 0.3, "rms_inverse": 0.5, "peak_speed": 1.0, "points": [],
+         "max_tracking_error": 0.02, "free_base": True}
+    row = checks.torque_row(j, perf)
+    assert row["peak_nm"] == 1.0 and row["status"] == "pass"
+    lag = checks.torque_row({**j, "max_tracking_error": 0.2}, perf)
+    assert lag["peak_nm"] == 3.0 and lag["status"] == "fail"
+    fixed = checks.torque_row({**j, "free_base": False}, perf)
+    assert fixed["peak_nm"] == 3.0
+
+
 def test_torque_rows_check_against_the_reduced_actuator():
     reduced = act.resolve({"id": "mg996r", "ratio": 2})
     peak = 1.5 * act.resolve("mg996r").stall_torque_nm * 0.6   # over 1:1, fine at 2:1

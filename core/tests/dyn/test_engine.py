@@ -117,6 +117,26 @@ def test_the_actuator_demand_is_band_limited_but_the_impact_is_kept():
     assert demand[50, 0] == pytest.approx(1.0)
 
 
+def test_a_foot_strike_does_not_count_as_the_servo_saturating():
+    """DOG demo: every trot joint read 100 % of stall because the stiff PD servo answers a foot
+    strike within a few ms by hitting its force limit. The motor's demand is the same 20 ms
+    band as the inverse dynamics; the raw peak stays in `peak_impact`."""
+    model = box_model(0.06, 0.06, 0.06, mass=1.0)
+    model["bodies"][0]["pos"] = [0, 0, 0.08]          # dropped 50 mm onto the floor
+    model["bodies"].append(
+        {"name": "arm", "parent": "box", "pos": [0.03, 0, 0], "mass": 0.6,
+         "com": [0.05, 0, 0], "inertia": _box_inertia(0.2, 0.1, 0.02, 0.02),
+         "joints": [{"name": "j", "type": "hinge", "axis": [0, 1, 0], "armature": 0.004}],
+         "geoms": [{"name": "ga", "size": [0.05, 0.01, 0.01], "pos": [0.05, 0, 0]}]})
+    model["actuators"] = [{"name": "a", "joint": "j", "kp": 39.2, "kv": 0.792,
+                           "forcerange": [-1.96, 1.96]}]
+    j = engine.run({"task": "torque", "model": model,
+                    "trajectory": {"kind": "hold", "duration_s": 0.6, "settle_s": 0.0}}
+                   )["joints"][0]
+    assert j["peak_impact"] > 1.85 and j["peak_impact"] >= j["peak_servo"]   # nearly saturated
+    assert j["peak_servo"] < 1.96 * 0.9               # the strike is not the motor's demand
+
+
 def fourbar_model(a=0.04, b=0.12, c=0.08, dd=0.10):
     """Spike fourbar: crank a, coupler b, rocker c, ground d in the XZ plane, closed by an
     equality connect at the coupler tip."""

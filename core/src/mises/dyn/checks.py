@@ -12,6 +12,8 @@ import math
 from ..engineering import actuators as act
 
 ORDER = {"fail": 3, "warn": 2, "pass": 1, "not_checked": 0, "n/a": 0}
+#: a servo within this tracking error kept up (the PD model reaches stall at ~3 deg)
+TRACKED_DEG = 3.0
 
 #: research §4.5, stated on every result card (guide-only bands)
 ACCURACY = {
@@ -19,8 +21,9 @@ ACCURACY = {
         "Guide only: rigid bodies (link compliance and gear backlash ignored).",
         "Servos are a PD model (stall at about 3 deg of error) tracking the moving setpoint; "
         "'servo' is what it draws, 'ideal' is inverse dynamics of the motion the robot "
-        "actually made, band-limited to a servo's loop (a 20 ms mean). Sizing uses the "
-        "larger. Shorter foot-strike spikes ('impact') load the gears and structure, not the "
+        "actually made, band-limited to a servo's loop (a 20 ms mean). On a free base sizing "
+        "uses what the servo drew while it kept up (within 3 deg), else the larger of the "
+        "two. Shorter foot-strike spikes ('impact') load the gears and structure, not the "
         "motor: they are reported, and the FEM hand-off uses them.",
         "Contacts are soft (MuJoCo): impact peaks depend on contact stiffness and are "
         "estimates; static and quasi-static results are accurate (exact on the 2-link check).",
@@ -61,8 +64,17 @@ def worst(statuses) -> str:
 
 def torque_row(j: dict, perf: act.Perf | None, *, margin: float | None = None) -> dict:
     """One joint of a dyn_torque result against its actuator."""
-    peak = max(float(j["peak_servo"]), float(j["peak_inverse"]))
-    rms = max(float(j["rms_servo"]), float(j["rms_inverse"]))
+    tracked = (perf is not None and j.get("free_base") and
+               math.degrees(float(j.get("max_tracking_error", 0.0))) <= TRACKED_DEG)
+    if tracked:
+        # a free base whose servo kept up (inside its stall error): what it drew IS the demand.
+        # The free-base inverse (soft contacts re-solved from finite-difference accelerations)
+        # runs above the forward simulation's own joint torque, so it only says how much more
+        # a servo that fell behind would have needed.
+        peak, rms = float(j["peak_servo"]), float(j["rms_servo"])
+    else:
+        peak = max(float(j["peak_servo"]), float(j["peak_inverse"]))
+        rms = max(float(j["rms_servo"]), float(j["rms_inverse"]))
     w = float(j["peak_speed"])
     row = {"peak_nm": round(peak, 4), "rms_nm": round(rms, 4),
            "peak_servo_nm": j["peak_servo"], "peak_ideal_nm": j["peak_inverse"],
@@ -118,7 +130,8 @@ def torque_rows(result: dict, mapping: dict) -> list[dict]:
     for j in result["joints"]:
         a = mapping["actuators"].get(j["actuator"]) or {}
         perf = act.resolve(a.get("actuator")) if a.get("actuator") else None
-        rows.append({"joint_id": a.get("joint_id") or j["joint"], **torque_row(j, perf)})
+        jj = {**j, "free_base": bool(result.get("free_base"))}
+        rows.append({"joint_id": a.get("joint_id") or j["joint"], **torque_row(jj, perf)})
     return rows
 
 
