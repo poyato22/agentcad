@@ -103,6 +103,10 @@ For a system build, pick real components the user can buy (servos, motors, beari
   7075, steel, stainless, brass) for shafts, pins and highly loaded links, POM / PA for gears
   and bushings, PETG / PA-CF / PC for printed structure, TPU for feet and grips, CF plate for
   flat stiff panels (never an RF window).
+- A bought or placeholder part (battery, VTX, camera, wiring) weighs its datasheet mass:
+  `part_set_mass(part_id, mass_g, source)`; never fake a mass with a material's density.
+- A modal check of a part that carries motors, a battery or boards: put them on it as
+  `point_masses` (face + grams); a bare part overstates its first frequency.
 
 <!-- mises-shapes:begin (generated: recipes.prompt_section) -->
 ## Curved and organic shapes: use the recipes

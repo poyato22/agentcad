@@ -400,3 +400,44 @@ def test_concurrent_reparents_never_form_a_cycle(store, tmp_path, build):
     assert not errors
     a, b = store.get_part("a"), store.get_part("b")
     assert not (a.parent_id == "b" and b.parent_id == "a")
+
+
+# ---- DRONE demo: a bought / placeholder part's datasheet mass (a LiPo is not volume x density)
+
+async def test_a_stated_mass_wins_over_volume_times_density_everywhere(store, tmp_path, build):
+    _built(store, tmp_path, build, "pack", 5760.0, material="Al 6061-T6")   # 40x16x9 stand-in
+    run = store.create_run("designer", "fake", "m", "build", project_id=build)
+    ctx = SimpleNamespace(run_id=run.id, store=store, events=EventBus(), workdir=tmp_path)
+    tool = mass.part_set_mass
+    assert tool.safety.value == "local_mutate" and tool.scope_arg == "part_id"
+    out = await tool.handler(ctx, tool.input_model(part_id="pack", mass_g=18.5,
+                                                   source="Tattu 3S 200 mAh listing"))
+    assert out.data["mass_g"] == 18.5 and out.data["mass_source"] == "stated"
+    row = _rows(store, tmp_path, build)["pack"]
+    assert row["mass_g"] == 18.5 and row["mass_source"] == "stated"
+    assert "Tattu 3S 200 mAh listing" in row["mass_note"]
+    assert mass.part_mass(store, tmp_path, "pack")["mass_g"] == 18.5
+    t = mass.assembly_total(store, tmp_path, build, [SimpleNamespace(part_id="pack")] * 2)
+    assert t["total_mass_g"] == 37.0
+    v = bom_mod.view(store, bom_mod.BomStore(store), tmp_path, build, material="PLA")
+    assert {s["key"]: s["value"] for s in v["items"][0]["specs"]}["mass"] == 18.5
+    # null goes back to volume x density
+    await tool.handler(ctx, tool.input_model(part_id="pack", mass_g=None))
+    assert _rows(store, tmp_path, build)["pack"]["mass_source"] == "built"
+    with pytest.raises(ValueError):
+        tool.input_model(part_id="pack", mass_g=-1)
+
+
+def test_stated_mass_column_is_added_to_an_old_database(tmp_path):
+    import sqlite3
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.executescript("CREATE TABLE parts (id TEXT PRIMARY KEY, project_id TEXT, label TEXT,"
+                      " parent_id TEXT, ord INTEGER, color TEXT, kind TEXT, version INTEGER);"
+                      "INSERT INTO parts VALUES ('arm', 'p', 'arm', NULL, 0, NULL, 'part', 1);")
+    con.commit()
+    con.close()
+    s = Store(db)
+    assert s.get_part("arm").stated_mass is None
+    got = s.update_part("arm", stated_mass={"mass_g": 3.0, "source": "x"}).stated_mass
+    assert got == {"mass_g": 3.0, "source": "x"}

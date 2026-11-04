@@ -139,6 +139,9 @@ class Part(BaseModel):
     # Plan 9 B2: the part's material for its mass (a materials-table name), None = the
     # build default (the profile's default_material)
     material: str | None = None
+    # DRONE demo: a bought or placeholder part's datasheet mass {mass_g, source}; it wins over
+    # volume x density (a LiPo, a VTX), None = weighed from the build
+    stated_mass: dict | None = None
 
 
 _SCHEMA = """
@@ -234,6 +237,8 @@ class Store:
             self._db.execute("ALTER TABLE parts ADD COLUMN appearance TEXT")
         if "material" not in part_cols:                       # Plan 9 B2
             self._db.execute("ALTER TABLE parts ADD COLUMN material TEXT")
+        if "stated_mass" not in part_cols:
+            self._db.execute("ALTER TABLE parts ADD COLUMN stated_mass TEXT")
         self._migrate_default_project()
 
     @contextmanager
@@ -579,7 +584,8 @@ class Store:
                     parent_id=d["parent_id"], order=d["ord"] or 0, color=d["color"],
                     kind=d["kind"] or "part", version=d["version"] or 1,
                     appearance=_json_or_none(d.get("appearance")),
-                    material=d.get("material"))
+                    material=d.get("material"),
+                    stated_mass=_json_or_none(d.get("stated_mass")))
 
     def get_part(self, part_id: str) -> Part | None:
         row = self._one("SELECT * FROM parts WHERE id=?", (part_id,))
@@ -609,15 +615,16 @@ class Store:
 
     def update_part(self, part_id: str, **fields: Any) -> Part:
         allowed = {"label", "color", "parent_id", "project_id", "kind", "version", "ord",
-                   "appearance", "material"}
+                   "appearance", "material", "stated_mass"}
         bad = set(fields) - allowed
         if bad:
             raise ValueError(f"cannot update part fields: {sorted(bad)}")
         with self._tx() as db:
             if db.execute("SELECT 1 FROM parts WHERE id=?", (part_id,)).fetchone() is None:
                 raise KeyError(part_id)
-            if fields.get("appearance") is not None:
-                fields = {**fields, "appearance": json.dumps(fields["appearance"])}
+            for k in ("appearance", "stated_mass"):
+                if fields.get(k) is not None:
+                    fields = {**fields, k: json.dumps(fields[k])}
             if fields:
                 sets = ", ".join(f"{k}=?" for k in fields)
                 db.execute(f"UPDATE parts SET {sets} WHERE id=?", (*fields.values(), part_id))

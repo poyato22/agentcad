@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .events import Event
 from .tools.registry import ToolContext, ToolRegistry, tool
@@ -112,6 +112,10 @@ def _own(r: dict, has_disk: bool, home: Path | None, default_mat: str,
         return None, "unknown", None
     if kind == "reference":
         return None, "unknown", "reference object: not part of the build, so it adds no mass"
+    sm = r.get("stated_mass")
+    if isinstance(sm, dict) and _num(sm.get("mass_g")) is not None:
+        src = (sm.get("source") or "").strip()
+        return float(sm["mass_g"]), "stated", "stated mass" + (f": {src}" if src else "")
     if kind == "catalog":
         m = _num((metrics or {}).get("mass_g"))
         if m is not None and m >= 0:
@@ -174,7 +178,8 @@ def part_mass(store, home: Path, part_id: str, metrics: dict | None = ...,  # ty
         if not isinstance(metrics, dict):
             metrics = None
     r = {"id": part_id, "kind": getattr(row, "kind", None) or "part",
-         "material": getattr(row, "material", None), "metrics": metrics}
+         "material": getattr(row, "material", None), "metrics": metrics,
+         "stated_mass": getattr(row, "stated_mass", None)}
     m, src, note = _own(r, has_disk, home, default_mat or default_material(home), {})
     return {"mass_g": m, "mass_source": src, "mass_note": note, "material": r["material"]}
 
@@ -313,8 +318,41 @@ async def part_set_material(ctx: ToolContext, args: SetMaterialArgs) -> ToolOutp
                       step_kind=StepKind.DIFF)
 
 
+class SetMassArgs(BaseModel):
+    part_id: str
+    mass_g: float | None = Field(None, gt=0, le=1e6, description="grams; null = weigh the "
+                                 "part from its volume x material again")
+    source: str = Field("", max_length=200, description="where the number comes from, e.g. "
+                        "'T-Motor F1404 listing, 9.3 g with cables' or 'estimate'")
+
+
+@tool("part_set_mass", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
+      description="Set the stated mass of a bought or placeholder part (a battery, a VTX, a "
+                  "motor, wiring) from its datasheet or listing, when its volume x density "
+                  "would be wrong; the tree, BOM, studies and the assembly total use it "
+                  "(mass_source 'stated'). Say where the number comes from in source. null "
+                  "goes back to volume x material. Do not fake a mass with a material.")
+async def part_set_mass(ctx: ToolContext, args: SetMassArgs) -> ToolOutput:
+    from . import projects
+    stated = None if args.mass_g is None else {"mass_g": args.mass_g, "source": args.source}
+    row = projects.patch_part(ctx.store, Path(ctx.workdir), args.part_id, stated_mass=stated)
+    mg = row.get("mass_g")
+    summary = f"{args.part_id}: mass " + (f"{mg:.2f} g ({row.get('mass_note')})" if mg is not None
+                                          else f"unknown ({row.get('mass_note')})")
+    events = getattr(ctx, "events", None)
+    if events is not None:
+        events.publish(Event(type="part_changed", run_id=ctx.run_id, data={
+            "part_id": args.part_id, "version": row.get("version") or 1, "by": "agent",
+            "run_id": ctx.run_id, "summary": summary}))
+    return ToolOutput(summary=summary, data={"part_id": args.part_id, "mass_g": mg,
+                                             "mass_source": row.get("mass_source"),
+                                             "mass_note": row.get("mass_note")},
+                      step_kind=StepKind.DIFF)
+
+
 def register_mass_tools(registry: ToolRegistry) -> None:
     registry.register(part_set_material)
+    registry.register(part_set_mass)
 
 
 def _bad(msg: str, hint: str | None = None) -> MisesError:
