@@ -19,7 +19,7 @@ Which sites ask a card:
   PATH_MAX characters, no segment or query value that looks like an encoded blob); one that
   does not asks a card instead. web_search queries are at most 120 characters with no
   base64- or hex-looking tokens. Every run family has one fetch budget (profile
-  `browser_fetches_per_run`, default 60; sub-agents share their root's, and a build's lead
+  `browser_fetches_per_run`, default 300; sub-agents share their root's, and a build's lead
   gets a fresh one per user message): one per site searched, one per page opened.
 
 Untrusted data: page text, titles, result snippets and a card's page-derived fields reach the
@@ -205,8 +205,8 @@ def _charge(ctx: ToolContext, n: int) -> None:
 # refused with a hint instead of an approval card.
 HOST_LABEL_MAX, HOST_LABELS_MAX = 63, 6
 SEGMENT_MAX, OPEN_PATH_MAX = 120, 300
-PER_DOMAIN_FETCHES = 30         # pages from one non-suggested host per user turn
-NON_SUGGESTED_FETCHES = 100     # pages from all non-suggested hosts per user turn
+PER_DOMAIN_FETCHES = 100        # pages from one non-suggested host per user turn
+NON_SUGGESTED_FETCHES = 400     # pages from all non-suggested hosts per user turn
 
 
 def _entropy(t: str) -> float:

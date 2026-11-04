@@ -22,7 +22,10 @@ from .browser.sites import DEFAULT_SITES, on_domain
 
 log = logging.getLogger(__name__)
 
-DEFAULT_BROWSER_FETCHES = 60
+# web fetches per user message for a run family: an anti-runaway limit a big build (a few
+# hundred pages: searches, datasheets, docs, shop pages) does not hit
+DEFAULT_BROWSER_FETCHES = 300
+_OLD_BROWSER_FETCHES = 60
 
 PROFILE_FILE = "profile.json"
 # 2: max_parallel_agents gained "auto" (the new default). Files without schema_version predate
@@ -30,7 +33,9 @@ PROFILE_FILE = "profile.json"
 # 3: the default agent became "engineer" (was "designer"). save_profile writes the whole model,
 #    so every pre-v3 profile has "designer" on disk because that was the old default, not a
 #    choice; it becomes "engineer". A user who picks the designer now (saved at v3+) keeps it.
-PROFILE_SCHEMA_VERSION = 3
+# 4: browser_fetches_per_run's default went from 60 to 300; a pre-v4 60 was the old default
+#    (the whole model is saved) and becomes 300. Any other number was the user's and is kept.
+PROFILE_SCHEMA_VERSION = 4
 _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 # E3: the only environment variable names the user may set for Claude Code (CA bundle paths and
 # proxy URLs — never API keys)
@@ -344,6 +349,8 @@ def _migrate(data):
     if ver < 3 and data.get("default_agent") == "designer":
         # the whole model was saved, so "designer" here is the old default, not a choice
         data["default_agent"] = "engineer"
+    if ver < 4 and data.get("browser_fetches_per_run") == _OLD_BROWSER_FETCHES:
+        data["browser_fetches_per_run"] = DEFAULT_BROWSER_FETCHES
     if ver < PROFILE_SCHEMA_VERSION:
         data["schema_version"] = PROFILE_SCHEMA_VERSION
     return data
