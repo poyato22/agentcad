@@ -47,9 +47,9 @@ WORKER_MODULE = "mises.topopt.worker"
 TARGET_ELEMENTS = 50_000
 MAX_FILTER_VOXELS = 6.0
 #: a variant's peak memory: measured on the block-CSR solver (drone frame: 216k design-space
-#: elements in a 746k grid peaked at 2.5 GB). Only design-space elements cost matrix memory;
+#: elements in a 746k grid peaked at 2.5 GB in the solver, and 4.7 GB with its 3-voxel filter and the surface stage). Only design-space elements cost matrix memory;
 #: the grid costs vectors and the prolongations.
-BASE_MB, KB_PER_ELEMENT, KB_PER_CELL = 700.0, 8.0, 0.25
+BASE_MB, KB_PER_ELEMENT, KB_PER_CELL = 700.0, 16.0, 0.25
 #: design-space elements a variant may hold, and the grid around them
 MAX_ELEMENTS = 500_000
 MAX_CELLS = 3_000_000
