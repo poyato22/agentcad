@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StudySummary } from "../../../../api/studies";
+import { studySummarySchema, type StudySummary } from "../../../../api/studies";
 import { immersive } from "../immersive/state";
 import { AssemblyWind, type AssemblyWindClient } from "./AssemblyWind";
 
@@ -32,5 +32,12 @@ describe("AssemblyWind", () => {
     const c: AssemblyWindClient = { listStudies: vi.fn(async () => [row({ status: "running", results: null })]), startStudy: vi.fn() };
     render(<AssemblyWind projectId="p1" client={c} />);
     await waitFor(() => expect((screen.getByTestId("asy-wind-run") as HTMLButtonElement).disabled).toBe(true));
+  });
+});
+
+describe("an assembly study's record", () => {
+  it("parses with no part", () => {
+    const r = studySummarySchema.parse({ sim_id: "s", part_id: null, project_id: "p1", run_id: null, status: "done", created_at: 1, finished_at: 2, error: null, hint: null, inputs: {}, results: null, guide: true, label: "x", stale: false });
+    expect(r.part_id).toBe("");
   });
 });

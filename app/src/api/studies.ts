@@ -58,7 +58,8 @@ export type StudyCard = z.infer<typeof studyCardSchema>;
 
 /** GET /sims item (newest first). */
 export const studySummarySchema = z.looseObject({
-  sim_id: z.string(), part_id: z.string(), run_id: z.string().nullable(), step_id: z.number().nullish(),
+  // an assembly study has no part (project_id instead): "" so every part-page check treats it as none
+  sim_id: z.string(), part_id: z.string().nullable().transform((v) => v ?? ""), run_id: z.string().nullable(), step_id: z.number().nullish(),
   type: z.string().nullish(), status: z.string(), stage: z.string().nullish(), phase: z.string().nullish(), pct: num.optional(),
   created_at: z.number(), finished_at: num, error: strN, hint: strN, inputs: z.unknown(),
   results: z.record(z.string(), z.unknown()).nullable(), guide: z.boolean(), label: z.string(), fidelity_class: z.string().nullish(),
@@ -173,7 +174,7 @@ export type StudySolvers = z.infer<typeof studySolversSchema>;
 
 /** `sim_progress` event data (core studies.run_study progress()). */
 export const studyProgressSchema = z.looseObject({
-  sim_id: z.string(), part_id: z.string(), type: z.string().optional(), stage: z.string(),
+  sim_id: z.string(), part_id: z.string().nullable(), type: z.string().optional(), stage: z.string(),
   phase: z.string().optional(), pct: z.number().optional(), detail: z.string().optional(),
   /** The tool call that runs the study (absent on cores before A8 fix round 1). */
   call_id: z.string().nullish(), step_id: z.number().nullish(),
