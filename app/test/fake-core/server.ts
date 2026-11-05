@@ -1267,7 +1267,7 @@ export async function startFakeCore(opts: FakeCoreOptions): Promise<FakeCore> {
         if (l.running) return { ok: true, running: true, note: "Ollama is already running" };
         if (!l.installed) return { ok: false, error: "not_installed", hint: "Install Ollama: `brew install ollama` (or the app from ollama.com), then retry" };
         state.local = { ...l, running: true };
-        return { ok: true, running: true, note: "Started `ollama serve` in the background; it keeps running after Mises quits (stop it with `pkill ollama`). Log: logs/ollama.log in the Mises data folder" };
+        return { ok: true, running: true, note: "Started `ollama serve` in the background; it keeps running after AgentCAD quits (stop it with `pkill ollama`). Log: logs/ollama.log in the AgentCAD data folder" };
       },
     },
     {

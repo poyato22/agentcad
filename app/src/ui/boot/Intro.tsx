@@ -1,5 +1,5 @@
 // The welcome intro (first launch, and Profile → "Replay intro"). A 2.5–3.5s sequence: the grey
-// Mises cube assembles from scattered small cubes (ui/boot/intro.ts), then "Welcome to Mises" types
+// Mises cube assembles from scattered small cubes (ui/boot/intro.ts), then "Welcome to AgentCAD" types
 // in under it in Iosevka, then the whole thing fades to the app. Skippable by click or any key, and
 // under prefers-reduced-motion it becomes a 400ms fade of the finished cube and title. Both themes.
 import type { JSX } from "preact";
@@ -99,7 +99,7 @@ export function Intro({ onDone, createIntro = realCreateIntro, reducedMotion }: 
       <div class="intro-stage">
         <canvas ref={canvasRef} class="intro-canvas" aria-hidden="true" />
         <div class={`intro-title${showTitle ? " is-on" : ""}${reduce ? " is-instant" : ""}`} aria-hidden={!showTitle}>
-          Welcome to Mises
+          Welcome to AgentCAD
         </div>
       </div>
       <div class="intro-skip" aria-hidden="true">click or press any key to skip</div>

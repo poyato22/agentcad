@@ -201,7 +201,7 @@ for (const size of [{ width: 1280, height: 800 }, { width: 1600, height: 1000 }]
       // setup wizard (first run)
       await fake.reset("setup");
       await page.goto("/");
-      await expect(page.getByRole("dialog", { name: "Set up Mises" })).toBeVisible();
+      await expect(page.getByRole("dialog", { name: "Set up AgentCAD" })).toBeVisible();
       await measure(page, mode, "setup wizard");
       // "Connect a model" notice (setup finished, no model)
       await fake.reset(await NOTICE_SCENARIO());
@@ -431,7 +431,7 @@ for (const theme of ["dark", "light"] as const) {
     await fake.reset("setup");
     await page.goto("/");
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
-    await expect(page.getByRole("dialog", { name: "Set up Mises" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Set up AgentCAD" })).toBeVisible();
     const wiz = await chromeOffsets(page, [".setup-title", ".setup-step-name", ".setup-close"]);
     for (const [sel, d] of wiz.off) expect(d, `wizard ${sel}`).toBeLessThanOrEqual(2);
     // and the 78px inset still keeps text clear of the lights

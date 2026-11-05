@@ -143,7 +143,7 @@ def report(home: Path, project_id: str, asm, *, health_available: bool | None = 
         required = need_done or (c in SKELETON and bool(asm.joints))
         if c == "assembly_health" and r is None and health_available is False:
             rows.append({"check": c, "status": "skipped", "required": False,
-                         "summary": "assembly_health is not available in this Mises; run "
+                         "summary": "assembly_health is not available in this AgentCAD; run "
                                     "assembly_check (with sweep) instead"})
             continue
         if c in running:

@@ -15,6 +15,7 @@ NAMES = ["mirror_part_create", "mirror_part_list", "loads_impact", "assembly_get
     ("mirror_part_create", "mirror_part_create"),
     ("mcp__mises__mirror_part_create", "mirror_part_create"),
     ("mises.assembly_get", "assembly_get"),
+    ("AgentCAD.assembly_get", "assembly_get"),
     ("Mirror-Part-Create", "mirror_part_create"),
     ("loads_impact_placeholder", None),
     ("mirror_part", None),                     # never a fuzzy guess

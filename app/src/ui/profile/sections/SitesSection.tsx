@@ -73,7 +73,7 @@ export function SitesSection({ data, update }: SectionProps): JSX.Element {
                   <div class="sites-main">
                     <span class="sites-name text">{s.name || s.domain}</span>
                     <span class="sites-domain faint text">{s.domain}</span>
-                    {s.suggested && <span class="sites-tag" title="One of Mises's suggestions">suggested</span>}
+                    {s.suggested && <span class="sites-tag" title="One of AgentCAD's suggestions">suggested</span>}
                     {s.search_url === null && <span class="sites-tag" title="Agents open pages on this site but don't search it">no search</span>}
                   </div>
                   {s.categories.length > 0 && <div class="sites-cats faint text">{s.categories.join(", ")}</div>}
@@ -88,7 +88,7 @@ export function SitesSection({ data, update }: SectionProps): JSX.Element {
           {confirmReset
             ? (
               <span class="profile-confirm" role="group" aria-label="Confirm restore">
-                <span class="text">Replace your list with Mises's suggested sites?</span>
+                <span class="text">Replace your list with AgentCAD's suggested sites?</span>
                 <Button variant="danger" disabled={task.busy} onClick={() => void restore()}>Restore</Button>
                 <Button variant="ghost" disabled={task.busy} onClick={() => setConfirmReset(false)}>Keep mine</Button>
               </span>

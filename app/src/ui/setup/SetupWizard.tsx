@@ -97,9 +97,9 @@ export function SetupWizard({ reopened, onClose }: { reopened: boolean; onClose:
   };
 
   return (
-    <div ref={root} class="setup" role="dialog" aria-modal="true" aria-label="Set up Mises">
+    <div ref={root} class="setup" role="dialog" aria-modal="true" aria-label="Set up AgentCAD">
       <header class="setup-head">
-        <span class="setup-title">Set up Mises</span>
+        <span class="setup-title">Set up AgentCAD</span>
         <nav aria-label="Setup steps">
           <ol class="setup-steps" onKeyDown={onStepKey}>
             {STEPS.map((s, i) => {

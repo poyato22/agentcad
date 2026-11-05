@@ -500,7 +500,7 @@ async def agent_result(ctx: ToolContext, args: ResultArgs) -> ToolOutput:
 
 @tool("agent_continue", safety=SafetyClass.LOCAL_MUTATE, timeout_s=120,
       description="Carry on a sub-agent of yours that failed or stopped (its session crashed, "
-                  "the tools disconnected, the app restarted): Mises resumes it with its work so "
+                  "the tools disconnected, the app restarted): AgentCAD resumes it with its work so "
                   "far. Returns at once; collect it with agent_wait then agent_result. Refused "
                   "while it still runs, after the user stopped it, or once it was continued "
                   "twice for this task: then spawn a fresh sub-agent or do that part yourself.")

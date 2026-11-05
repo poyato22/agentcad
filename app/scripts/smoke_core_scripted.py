@@ -1,4 +1,4 @@
-"""Smoke-test core: the real Mises server and tools, with a scripted agent instead of a model.
+"""Smoke-test core: the real AgentCAD server and tools, with a scripted agent instead of a model.
 
 For checking the Mac app against the real core when no model is available. Every run gets a
 scripted FakeProvider that builds a 40x20x5 mm `mount_plate` with two 4.2 mm holes

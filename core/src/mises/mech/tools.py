@@ -121,7 +121,7 @@ def _script(mech_id: str, key: str, recipe: str, kwargs: dict) -> str:
     if recipe not in recipe_names():
         raise MisesError(ErrorCode.INVALID_INPUT, f"unknown recipe {recipe!r}")
     kw = json.dumps(kwargs, sort_keys=True)
-    return (f"# Mises mechanism part: {mech_id} / {key}\n"
+    return (f"# AgentCAD mechanism part: {mech_id} / {key}\n"
             f"# Built by ms.{recipe} (recipe_doc {recipe}); edit the arguments to resize.\n"
             f"import json\n\nARGS = json.loads({kw!r})\n\n\n"
             f"def build(v: dict):\n"

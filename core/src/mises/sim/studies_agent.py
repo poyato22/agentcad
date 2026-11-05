@@ -616,7 +616,7 @@ def studies_context(home: Path, store, project_id: str, *, assembly_store=None,
 def _runtime(ctx: ToolContext):
     rt = (ctx.services or {}).get("runtime")
     if rt is None:
-        raise MisesError(ErrorCode.DENIED, "no Mises app is attached to this run")
+        raise MisesError(ErrorCode.DENIED, "no AgentCAD app is attached to this run")
     return rt
 
 

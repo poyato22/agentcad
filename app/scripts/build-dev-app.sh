@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build an ad-hoc signed dev Mises.app that runs the core from this checkout via uv.
+# Build an ad-hoc signed dev AgentCAD.app that runs the core from this checkout via uv.
 #   scripts/build-dev-app.sh            build, then verify
 #   scripts/build-dev-app.sh --verify   verify an existing bundle only
 #   MISES_BUNDLE_DEBUG=1 ...            pass --debug to tauri build (faster)
@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 PROFILE=release
 [ "${MISES_BUNDLE_DEBUG:-}" = 1 ] && PROFILE=debug
-APP="src-tauri/target/$PROFILE/bundle/macos/Mises.app"
+APP="src-tauri/target/$PROFILE/bundle/macos/AgentCAD.app"
 
 verify() {
   local fail=0

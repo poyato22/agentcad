@@ -1,4 +1,4 @@
-"""Mises CAD benchmark harness (not shipped code; spends real model time).
+"""AgentCAD CAD benchmark harness (not shipped code; spends real model time).
 
     cd core
     export MISES_BENCH_CACHE=/some/tmp/dir          # datasets + homes, never the repo
@@ -10,7 +10,7 @@
         --out ../results
 
 Suites: cadbench (60 image->part, CADBench M/F/B), cadtestbench (50 text->part with
-CADTests), functional (20 Mises-Functional tasks). Systems: mises (a real Mises core over HTTP,
+CADTests), functional (20 AgentCAD-Functional tasks). Systems: mises (a real AgentCAD core over HTTP,
 default model, Think=High) and baseline (same Claude Code model, plain build123d prompt and
 one sandboxed exec tool). Runs are resumable: a task whose run.json exists is skipped.
 """
@@ -176,7 +176,7 @@ def cmd_show(a) -> int:
 
 
 def cmd_reexport(a) -> int:
-    """Re-run only the export of finished Mises builds from their kept homes (no model calls):
+    """Re-run only the export of finished AgentCAD builds from their kept homes (no model calls):
     for harness export fixes. Edit tasks' stage_0 exports cannot be redone this way."""
     from .mises_runner import Core, export_build
     for suite in (a.suite.split(",") if a.suite else ALL_SUITES):

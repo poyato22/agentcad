@@ -53,7 +53,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); closeSetupWizard(); closeProfile(); resetStore(); vi.useRealTimers(); });
 
-const wizard = () => screen.findByRole("dialog", { name: "Set up Mises" });
+const wizard = () => screen.findByRole("dialog", { name: "Set up AgentCAD" });
 /** The serialized DOM (attributes included): a secret must not appear anywhere in it. */
 const markup = () => new XMLSerializer().serializeToString(document.body);
 const input = (name: string) => screen.getByLabelText(name, { selector: "input" }) as HTMLInputElement;
@@ -80,7 +80,7 @@ describe("SetupGate", () => {
     render(<SetupGate />);
     const dlg = await wizard();
     expect(dlg.getAttribute("aria-modal")).toBe("true");
-    await screen.findByRole("heading", { name: "Welcome to Mises" });
+    await screen.findByRole("heading", { name: "Welcome to AgentCAD" });
     expect(dlg.textContent).toContain("Stored on this Mac");
   });
 
@@ -90,7 +90,7 @@ describe("SetupGate", () => {
     await waitFor(() => expect(client.setupState).toHaveBeenCalled());
     act(() => openSetupWizard());
     await wizard();
-    await screen.findByRole("heading", { name: "Welcome to Mises" });
+    await screen.findByRole("heading", { name: "Welcome to AgentCAD" });
   });
 
   it("close_keeps_what_is_saved_and_hides", async () => {
@@ -103,7 +103,7 @@ describe("SetupGate", () => {
   it("retries_when_the_core_is_not_ready", async () => {
     client.setupState.mockRejectedValueOnce(new CoreError("network", "down")).mockResolvedValue(fresh);
     render(<SetupGate />);
-    await screen.findByRole("dialog", { name: "Set up Mises" }, { timeout: 4000 });
+    await screen.findByRole("dialog", { name: "Set up AgentCAD" }, { timeout: 4000 });
   });
 
   it("retries_back_off_while_the_core_is_down", async () => {
@@ -539,7 +539,7 @@ describe("step bar: Welcome · Profile · Model · Onshape · Done", () => {
   it("every_step_is_a_button_that_jumps_to_its_step", async () => {
     render(<SetupGate />);
     await wizard();
-    await screen.findByRole("heading", { name: "Welcome to Mises" });
+    await screen.findByRole("heading", { name: "Welcome to AgentCAD" });
     await waitFor(() => expect((stepBtn("Onshape") as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(stepBtn("Onshape"));
     await screen.findByRole("heading", { name: "Onshape" });
@@ -549,7 +549,7 @@ describe("step bar: Welcome · Profile · Model · Onshape · Done", () => {
     fireEvent.click(stepBtn("Done"));
     await screen.findByRole("heading", { name: "Done" });
     fireEvent.click(stepBtn("Welcome"));
-    await screen.findByRole("heading", { name: "Welcome to Mises" });
+    await screen.findByRole("heading", { name: "Welcome to AgentCAD" });
   });
 
   it("steps_show_done_current_and_to_do", async () => {
@@ -569,7 +569,7 @@ describe("step bar: Welcome · Profile · Model · Onshape · Done", () => {
 
   it("arrow_keys_move_focus_between_steps_and_enter_opens_one", async () => {
     render(<SetupGate />);
-    await screen.findByRole("heading", { name: "Welcome to Mises" });
+    await screen.findByRole("heading", { name: "Welcome to AgentCAD" });
     await waitFor(() => expect((stepBtn("Welcome") as HTMLButtonElement).disabled).toBe(false));
     stepBtn("Welcome").focus();
     fireEvent.keyDown(stepBtn("Welcome"), { key: "ArrowRight" });

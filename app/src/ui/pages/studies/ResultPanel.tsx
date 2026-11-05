@@ -108,7 +108,7 @@ export function ResultPanel({ rec, charts, onAsk, onOpenRun, asked, onImmersive 
         <div class={`st-band st-band-${rec.status === "cancelled" ? "faint" : "red"}`} data-testid="study-failed" role={rec.status === "failed" ? "alert" : undefined}>
           <Led tone={rec.status === "cancelled" ? "faint" : "red"} />
           <div>
-            <div class="st-band-title">{rec.status === "failed" ? "Study failed" : rec.status === "cancelled" ? "Study cancelled" : rec.status === "interrupted" ? "Study interrupted (Mises restarted while it ran)" : "Study running"}</div>
+            <div class="st-band-title">{rec.status === "failed" ? "Study failed" : rec.status === "cancelled" ? "Study cancelled" : rec.status === "interrupted" ? "Study interrupted (AgentCAD restarted while it ran)" : "Study running"}</div>
             {rec.error && rec.error !== "cancelled" && <div class="text">{rec.error}</div>}
             {rec.hint && <div class="text dim">{rec.hint}</div>}
           </div>

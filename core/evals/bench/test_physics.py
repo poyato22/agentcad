@@ -1,4 +1,4 @@
-"""Grader self-tests for Mises-Physics: references pass; known-bad designs fail the intended
+"""Grader self-tests for AgentCAD-Physics: references pass; known-bad designs fail the intended
 requirement; the physics helpers agree with hand calculations.
 
     cd core && uv run python -m pytest evals/bench/test_physics.py -q

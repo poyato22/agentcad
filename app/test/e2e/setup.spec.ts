@@ -10,7 +10,7 @@ const API_SECRET = "sk-ant-api03-E2E-SECRET-never-shown";
 const ONSHAPE_ACCESS = "on-access-E2E-1111";
 const ONSHAPE_SECRET = "on-secret-E2E-2222";
 
-const wizard = (page: Page) => page.getByRole("dialog", { name: "Set up Mises" });
+const wizard = (page: Page) => page.getByRole("dialog", { name: "Set up AgentCAD" });
 const heading = (page: Page, name: string) => page.getByRole("heading", { name, exact: true });
 const field = (page: Page, name: string) => page.locator(`input[aria-label="${name}"]`);
 
@@ -134,7 +134,7 @@ test("reload_mid_way_resumes_at_the_first_missing_step", async ({ page, fake }) 
   await page.goto(PAGE);
   await page.getByRole("button", { name: "Start" }).click();
   await page.reload();
-  await expect(heading(page, "Welcome to Mises")).toBeVisible();          // nothing saved yet
+  await expect(heading(page, "Welcome to AgentCAD")).toBeVisible();          // nothing saved yet
   await page.getByRole("button", { name: "Start" }).click();
   await fillProfile(page);
   await page.reload();
@@ -222,7 +222,7 @@ test("claude_code_not_installed_shows_install_hint", async ({ page, fake }) => {
 test("step_bar_jumps_to_any_step_by_click_and_keyboard", async ({ page, fake }) => {
   await fake.reset("setup");
   await page.goto(PAGE);
-  await expect(heading(page, "Welcome to Mises")).toBeVisible();
+  await expect(heading(page, "Welcome to AgentCAD")).toBeVisible();
   const steps = page.getByRole("navigation", { name: "Setup steps" });
   const step = (name: string) => steps.getByRole("button", { name: new RegExp(`^${name}( \\((done|to do)\\))?$`) });
   await expect(step("Welcome")).toHaveAttribute("aria-current", "step");
@@ -242,7 +242,7 @@ test("step_bar_jumps_to_any_step_by_click_and_keyboard", async ({ page, fake }) 
   await page.keyboard.press("Home");
   await expect(step("Welcome")).toBeFocused();
   await page.keyboard.press("Space");
-  await expect(heading(page, "Welcome to Mises")).toBeVisible();
+  await expect(heading(page, "Welcome to AgentCAD")).toBeVisible();
   // a saved profile marks its step done
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await fillProfile(page);
@@ -271,5 +271,5 @@ test("close_is_a_bordered_one_word_button", async ({ page, fake }) => {
   await expect(wizard(page)).not.toContainText("finish later");
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(wizard(page)).not.toContainText("There's no account");
-  await expect(wizard(page)).not.toContainText("signing in to Mises");
+  await expect(wizard(page)).not.toContainText("signing in to AgentCAD");
 });

@@ -290,7 +290,7 @@ def part_script(spec: DrawingSpec, *, source: str = "") -> tuple[str, dict[str, 
     holes = [(_r(h.x - ox), _r(h.y - oy), groups[round(h.diameter, 6)],
               None if h.depth is None else _r(h.depth)) for h in spec.holes]
     cutouts = [_script_loop(c, ox, oy) for c in spec.cutouts]
-    header = (f"# Built by Mises from a technical drawing{f' ({source})' if source else ''}.\n"
+    header = (f"# Built by AgentCAD from a technical drawing{f' ({source})' if source else ''}.\n"
               "# Sizes in mm; the outline's lower-left corner is at the origin.\n")
     script = (header + "VARS = {\n" + "\n".join(lines) + "\n}\n\n"
               f"OUTLINE = {_script_loop(spec.outline, ox, oy)!r}\n"

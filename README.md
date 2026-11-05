@@ -1,6 +1,6 @@
-# Mises
+# AgentCAD
 
-A Mac and Windows desktop app where people and AI agents design physical parts together on a live Onshape model, test them in a built-in simulator, and send them to Prusa and Bambu printers. Named after von Mises stress.
+A Mac and Windows desktop app where people and AI agents design physical parts together on a live Onshape model, test them in a built-in simulator, and send them to Prusa and Bambu printers. Formerly named Mises: the Python package, `mises` CLI, MCP server name, data folder and bundle id keep that name so existing builds and credentials stay valid.
 
 **Status (2026-10-24):** design drafted, awaiting approval. No code yet. Next step after approval: the build plan, starting with milestone M0 (app shell on both platforms).
 

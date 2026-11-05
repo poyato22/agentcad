@@ -343,7 +343,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
             # and the warm measure workers (U2a) with them
             await close_measure_servers()
 
-    app = FastAPI(title="Mises", lifespan=lifespan, docs_url=None, redoc_url=None,
+    app = FastAPI(title="AgentCAD", lifespan=lifespan, docs_url=None, redoc_url=None,
                   openapi_url=None)
     app.state.runtime = runtime
     app.state.ui_router = ui_router

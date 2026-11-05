@@ -1,4 +1,4 @@
-"""Geometry helpers for the Mises-Functional checkers (build123d / OCP on exported STEP)."""
+"""Geometry helpers for the AgentCAD-Functional checkers (build123d / OCP on exported STEP)."""
 from __future__ import annotations
 
 import math

@@ -21,7 +21,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building Mises");
+        .expect("error while building AgentCAD");
     app.run(|handle, event| {
         if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
             if let Some(sup) = handle.try_state::<SharedSupervisor>() {

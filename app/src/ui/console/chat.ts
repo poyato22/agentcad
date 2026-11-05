@@ -116,7 +116,7 @@ export async function sendChat(text: string, target: AgentRun | null = null, ima
     noteRun(res.run_id);
     actions.setFollow(true);
   }
-  if (fellBack && !note) note = res.new_lead ? NEW_LEAD_NOTE : "that run ended with the earlier Mises session · sent to the build's lead";
+  if (fellBack && !note) note = res.new_lead ? NEW_LEAD_NOTE : "that run ended with the earlier AgentCAD session · sent to the build's lead";
   return { runId: res.run_id, note, res };
 }
 

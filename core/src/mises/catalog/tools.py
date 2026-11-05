@@ -177,7 +177,7 @@ def _import_needs_approval(ctx: ToolContext, args: ImportArgs) -> str | None:
     why = ("the link has an unusual shape" if not _shape_ok(args.url)
            else suspicious_shape(args.url) or _cap_reason(ctx, dom))
     if why:      # never an approval card: refused with a hint (the user's ruling)
-        raise MisesError(ErrorCode.INVALID_INPUT, f"Mises won't fetch a web page from {dom} ({why})",
+        raise MisesError(ErrorCode.INVALID_INPUT, f"AgentCAD won't fetch a web page from {dom} ({why})",
                          hint="import the plain product page link instead")
     return None
 
@@ -268,7 +268,7 @@ async def _import_preview(ctx: ToolContext, args: ImportArgs) -> dict:
     u = urlsplit(args.url)
     return {"domain": _domain(args.url), "url": args.url, "path": u.path or "/",
             "allow_domain": _domain(args.url),
-            "note": "Mises will GET this page once and keep its text as untrusted data."}
+            "note": "AgentCAD will GET this page once and keep its text as untrusted data."}
 
 
 @tool("catalog_search", safety=SafetyClass.READ,

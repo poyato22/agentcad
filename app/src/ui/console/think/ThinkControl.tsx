@@ -12,7 +12,7 @@ import { buildThink, loadBuildThink, saveBuildThink, thinkChoice, thinkSupported
 import "./think.css";
 
 const HINT: Record<ThinkChoice, string> = {
-  auto: "Auto: Mises picks the level for each message",
+  auto: "Auto: AgentCAD picks the level for each message",
   low: "Low: quick, for routine edits",
   medium: "Medium: everyday work",
   high: "High: think it through",

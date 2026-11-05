@@ -122,7 +122,7 @@ _ERROR_CLASSES: tuple[tuple[re.Pattern, str, str, str], ...] = (
     # happen on normal requests): the runtime retries on a stronger model in a fresh session
     (re.compile(r"safeguards flagged|reasoning_extraction|legal/aup", re.I),
      "safeguard", "The model's safety filter flagged this turn (a false positive is common).",
-     "Mises retries once on Opus in a fresh session; if it repeats, rephrase or use Think: High."),
+     "AgentCAD retries once on Opus in a fresh session; if it repeats, rephrase or use Think: High."),
     (re.compile(r"UNABLE_TO_GET_ISSUER|SELF_SIGNED_CERT|CERT_|CERTIFICATE|\bSSL\b|ERR_TLS|"
                 r"DEPTH_ZERO_SELF_SIGNED", re.I),
      "tls", "Claude Code could not verify the TLS certificate on the way to Anthropic.",
@@ -192,7 +192,7 @@ class ClaudeCodeSession:
         self.resumed = resume_session_id is not None
         self.session_id: str = resume_session_id or str(uuid.uuid4())
         self.config_dir = Path(config_dir).expanduser() if config_dir else default_config_dir()
-        self.run_label = run_label or f"Mises {run_id}"
+        self.run_label = run_label or f"AgentCAD {run_id}"
         self.term_grace_s = term_grace_s
         self.workdir: Path = runtime.workdir(run_id)
         self.init_info: dict | None = None
@@ -714,7 +714,7 @@ class ClaudeCodeSession:
             self.resume_lost = True
             self.runtime.store.append_step(self.run_id, StepKind.DECISION, {
                 "claude_code": "resume_lost", "session_id": self.session_id,
-                "note": "Claude Code no longer has this conversation; Mises starts a fresh "
+                "note": "Claude Code no longer has this conversation; AgentCAD starts a fresh "
                         "session with a recap of the thread"})
             self._fail_turn(MisesError(ErrorCode.NOT_FOUND, "Claude Code session not found",
                                        hint="start a fresh session"))
@@ -789,13 +789,13 @@ class ClaudeCodeSession:
                 bad += [f"agent {a}" for a in agents if a not in allowed_agents]
             if bad:
                 self._abort(f"unexpected tools in Claude Code session: {', '.join(map(str, bad))}"
-                            "; only mcp__mises__* tools and the Mises agents are allowed")
+                            "; only mcp__mises__* tools and the AgentCAD agents are allowed")
                 return
             mises = [s for s in msg.get("mcp_servers") or []
                      if isinstance(s, dict) and s.get("name") == "mises"]
             status = mises[0].get("status") if mises else "missing"
             if status != "connected":
-                self._abort(f"the Mises tools did not connect to Claude Code (mises server: "
+                self._abort(f"the AgentCAD tools did not connect to Claude Code (mises server: "
                             f"{status}); the run cannot act")
                 return
             self._init_ok = True
@@ -842,12 +842,12 @@ class ClaudeCodeSession:
         full = [MISES_TOOL_PREFIX + t for t in ([real] if real else closest_tools(name, known))]
         self.runtime.store.append_step(self.run_id, StepKind.DECISION, {
             "claude_code": "unknown_tool", "name": name, "closest": full, "source": SOURCE})
-        tip = (f"`{full[0]}` (Mises tools are called by their full mcp__mises__ name)" if real
+        tip = (f"`{full[0]}` (AgentCAD tools are called by their full mcp__mises__ name)" if real
                else ", ".join(f"`{t}`" for t in full) or "one of the tools in your list")
         notes = getattr(self.runtime, "tool_notes", None)
         if isinstance(notes, dict):
             notes.setdefault(self.run_id, []).append(
-                f"Mises note: your call to {name!r} failed: there is no tool by that name. Call "
+                f"AgentCAD note: your call to {name!r} failed: there is no tool by that name. Call "
                 f"only the tools you were given, by their exact names; you likely meant {tip}.")
 
     def _abort(self, message: str) -> None:
@@ -874,7 +874,7 @@ class ClaudeCodeSession:
                 elif not (isinstance(name, str) and (name.startswith(MISES_TOOL_PREFIX)
                                                      or name in ALLOWED_BUILTINS)):
                     self._abort(f"Claude Code tried to use {self._tool_allowed(name, None)}, "
-                                "outside the Mises tools")
+                                "outside the AgentCAD tools")
             return
         if ev.get("type") != "content_block_delta":
             return
@@ -902,7 +902,7 @@ class ClaudeCodeSession:
             elif block.get("type") == "tool_use":
                 why = self._tool_allowed(block.get("name"), block.get("input"))
                 if why is not None:
-                    self._abort(f"Claude Code tried to use {why}, outside the Mises tools")
+                    self._abort(f"Claude Code tried to use {why}, outside the AgentCAD tools")
                     return
                 if self._absent(block["name"]):
                     self._note_unknown(block.get("id"), block["name"])

@@ -30,7 +30,7 @@ async def test_svg_has_four_views_dims_holes_title(part):
         assert f">{dim}</text>" in svg
     assert "2x Ø6 THRU" in svg
     assert "PART: bracket" in svg and "MATERIAL: PLA" in svg and "DATE: 2026-10-28" in svg
-    assert ">Mises</text>" in svg
+    assert ">AgentCAD</text>" in svg
     dxf = res.dxf_path.read_text()
     assert dxf.lstrip().startswith("0")
     assert "VIEW_FRONT" in dxf

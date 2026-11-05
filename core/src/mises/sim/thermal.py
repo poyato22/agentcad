@@ -14,7 +14,7 @@ async def _solve(job: FemJob, s, size, d, label, lo, hi):
     mesh = await mesh_level(job, d, size, label, lo)
     cards, step, held = thermal_step(mesh, job.metrics, s)
     frd, _ = await solve_deck(
-        job, d, lambda p: write_deck(p, mesh, job.material, cards, step, "Mises thermal study"),
+        job, d, lambda p: write_deck(p, mesh, job.material, cards, step, "AgentCAD thermal study"),
         label, (lo + hi) / 2, nodes=len(mesh.nodes), elements=len(mesh.tets))
     res = await asyncio.to_thread(parse_frd, frd)
     temps = {n: v[0] for n, v in res.get("NDTEMP", {}).items()}

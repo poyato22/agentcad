@@ -1,4 +1,4 @@
-# Mises Mac app
+# AgentCAD Mac app
 
 Tauri 2 shell + Preact UI over the Python core (`../core`). The shell spawns
 `mises serve --port 0 --exit-on-stdin-eof` (from `<core>/.venv/bin/mises` when it
@@ -45,7 +45,7 @@ scripts/build-dev-app.sh --verify
 MISES_BUNDLE_DEBUG=1 npm run build:app   # debug profile, faster
 ```
 
-Output: `src-tauri/target/release/bundle/macos/Mises.app` (ad-hoc signed, bundle id
+Output: `src-tauri/target/release/bundle/macos/AgentCAD.app` (ad-hoc signed, bundle id
 `app.mises.desktop`, macOS 13+). It is **not** notarized and has no bundled
 Python: the core path is baked in at compile time from `MISES_CORE_DIR` (this
 checkout's `core/`), so the `.app` only works on the machine that built it, with

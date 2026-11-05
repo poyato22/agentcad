@@ -93,7 +93,7 @@ def cfd_solver_status() -> list[dict]:
          "fix": None},
         {"id": "su2", "name": "SU2 (optional CFD solver)",
          "status": "ok" if su2 else "optional_missing", "version": None, "path": su2,
-         "detail": ("found; Mises still uses the built-in solver (SU2 runs are not wired up "
+         "detail": ("found; AgentCAD still uses the built-in solver (SU2 runs are not wired up "
                     "yet)") if su2 else ("not installed; conda-forge has no macOS arm64 build, "
                                          "the built-in solver is used"),
          "fix": None if su2 else {"kind": "open_url", "label": "SU2 downloads",

@@ -87,7 +87,7 @@ export function AboutSection({ data }: SectionProps): JSX.Element {
     <SectionBox title="About">
       <Card title="Versions">
         <dl class="profile-dl">
-          <dt class="label">Mises app</dt><dd>{app}</dd>
+          <dt class="label">AgentCAD app</dt><dd>{app}</dd>
           <dt class="label">Core</dt><dd>{data.status?.core_version ?? "unknown"}</dd>
           <dt class="label">Your Claude Code</dt><dd>{claude}</dd>
         </dl>

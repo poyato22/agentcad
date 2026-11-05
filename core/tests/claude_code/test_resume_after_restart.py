@@ -65,11 +65,11 @@ async def test_interrupted_runs_continue_on_the_next_start(rt, claude_bin, signe
         assert "--resume" in _argvs(rt2, rid)[-1]          # its stored session, not a new one
         assert _users(rt2, rid) == ["hello"]                # no user bubble for the continuation
         sent = _sent(rt2, rid)[-1]
-        assert sent.startswith("Mises note: your last turn stopped (the app restarted")
+        assert sent.startswith("AgentCAD note: your last turn stopped (the app restarted")
         note = [s.payload["continuation"] for s in rt2.store.steps(rid, [StepKind.DECISION])
                 if "continuation" in s.payload]
         assert note == [{"cause": Runtime.RESTART_CAUSE, "auto": True,
-                         "text": f"Mises continued after: {Runtime.RESTART_CAUSE}"}]
+                         "text": f"AgentCAD continued after: {Runtime.RESTART_CAUSE}"}]
     assert f"sub-agents {child}" in _sent(rt2, lead)[-1]
     assert "sub-agents" not in _sent(rt2, child)[-1]
 

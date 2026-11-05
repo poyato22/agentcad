@@ -50,7 +50,7 @@ export async function resolveCoreInfo(): Promise<CoreInfo> {
   if (import.meta.env.DEV || import.meta.env.MODE === "test") {
     return devCoreInfo(import.meta.env.VITE_MISES_URL, import.meta.env.VITE_MISES_TOKEN);
   }
-  throw new Error("Mises core unavailable: not running inside the Mises app");
+  throw new Error("AgentCAD core unavailable: not running inside the AgentCAD app");
 }
 
 /** Dev/test only: build CoreInfo from VITE_MISES_URL (http://127.0.0.1:<port>) and VITE_MISES_TOKEN. */

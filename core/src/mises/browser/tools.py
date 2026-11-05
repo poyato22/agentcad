@@ -61,7 +61,7 @@ from .snapshot import (BLOCKED_STATUSES, SnapshotStore, blocked_reason, build, n
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = "Mises-agent-browser/0.1 (+parts lookup; GET only)"
+USER_AGENT = "AgentCAD-agent-browser/0.1 (+parts lookup; GET only)"
 PAGE_TYPES = ("text/html", "application/xhtml+xml", "application/json", "application/ld+json",
               "text/plain", "text/markdown", "text/x-markdown", "text/csv", "application/xml",
               "text/xml", "application/pdf")
@@ -490,7 +490,7 @@ def _search_needs_approval(ctx: ToolContext, args: SearchArgs) -> str | None:
             continue
         why = suspicious_shape(f"https://{s['domain']}/") or _cap_reason(ctx, s["domain"])
         if why:
-            raise MisesError(ErrorCode.INVALID_INPUT, f"Mises won't search {s['domain']}: {why}",
+            raise MisesError(ErrorCode.INVALID_INPUT, f"AgentCAD won't search {s['domain']}: {why}",
                              hint="search a suggested site or a plain domain instead")
     return None
 
@@ -563,7 +563,7 @@ def _open_needs_approval(ctx: ToolContext, args: OpenArgs) -> str | None:
     is refused with a hint (the agent opens a plainer page or searches instead)."""
     _url, why = open_plan(ctx, args.url)
     if why:
-        raise MisesError(ErrorCode.INVALID_INPUT, f"Mises won't {why}",
+        raise MisesError(ErrorCode.INVALID_INPUT, f"AgentCAD won't {why}",
                          hint="open the site's plain product or search page, or use web_search")
     return None
 
@@ -573,7 +573,7 @@ async def _open_preview(ctx: ToolContext, args: OpenArgs) -> dict:
     u = urlsplit(url)
     return {"domain": _host(url), "url": url, "path": u.path or "/",
             "allow_domain": _host(url), "query_dropped": url != args.url,
-            "note": "Mises will GET exactly this URL once (no cookies, no forms) and keep a"
+            "note": "AgentCAD will GET exactly this URL once (no cookies, no forms) and keep a"
                     " readable snapshot; its text reaches the agent as untrusted data."}
 
 

@@ -237,7 +237,7 @@ test("data_about_and_run_setup_again", async ({ page }) => {
   await nav(page, "Setup").click();
   await panel(page).getByRole("button", { name: "Run setup again" }).click();
   await expect(panel(page)).toHaveCount(0);
-  await expect(page.getByRole("dialog", { name: "Set up Mises" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Set up AgentCAD" })).toBeVisible();
 });
 
 test("visual_rules_blue_only_on_the_selected_section", async ({ page }) => {

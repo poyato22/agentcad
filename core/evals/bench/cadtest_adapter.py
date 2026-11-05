@@ -12,7 +12,7 @@ snippet, any exception = fail). Scores follow the official definitions:
 - pr (per sample): every cadtest passed.
 A missing or unreadable STEP fails every cadtest (an invalid sample).
 
-Runs in its own process with its own CadQuery install, never inside Mises' environment.
+Runs in its own process with its own CadQuery install, never inside AgentCAD's environment.
 """
 import json
 import signal

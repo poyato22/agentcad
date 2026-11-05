@@ -34,7 +34,7 @@ def test_acp_agents_get_the_harness_rules():
     from mises.acp_host.session import acp_rules_block
     from mises.agent.prompts import RESPONSE_RULES
     block = acp_rules_block()
-    assert block.startswith("<mises-rules>") and "# Mises harness rules" in block
+    assert block.startswith("<mises-rules>") and "# AgentCAD harness rules" in block
     assert RESPONSE_RULES.strip() in block
 
 

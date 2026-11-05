@@ -12,7 +12,7 @@ const ARM_WAIT_MS = 450;
 const TASK = "make the plate 6 mm thick";
 const HASH = "5c0e1a7d9b3f2e4c6a8d0b1f3e5c7a9d2b4f6e8a0c1d3e5f7a9b1c3d5e7f9a0b";
 
-const wizard = (page: Page) => page.getByRole("dialog", { name: "Set up Mises" });
+const wizard = (page: Page) => page.getByRole("dialog", { name: "Set up AgentCAD" });
 const heading = (page: Page, name: string) => page.getByRole("heading", { name, exact: true });
 
 async function scenario(signedIn = false): Promise<Record<string, unknown>> {

@@ -26,7 +26,7 @@ export function EditButton({ text, rowKey }: { text: string; rowKey: string }): 
 }
 
 /** Continue: the core carries `run` on from where it stopped with an internal continuation
- *  (shown as "Mises continued after: <cause>"). Never re-sends your message. */
+ *  (shown as "AgentCAD continued after: <cause>"). Never re-sends your message. */
 export function ContinueButton({ run, cause }: { run: AgentRun | null; cause: string | null }): JSX.Element | null {
   const [state, setState] = useState<{ busy: boolean; error: string | null; sent: boolean }>({ busy: false, error: null, sent: false });
   if (!run) return null;
@@ -42,7 +42,7 @@ export function ContinueButton({ run, cause }: { run: AgentRun | null; cause: st
   return (
     <span class="cv-retry">
       <Button variant="default" class="cv-retry-btn" disabled={state.busy || state.sent} data-continue onClick={() => void go()}
-        title="Mises carries the run on from where it stopped">
+        title="AgentCAD carries the run on from where it stopped">
         {state.busy ? "Continuing…" : "Continue"}
       </Button>
       {state.sent && <span class="faint" role="status">continuing</span>}

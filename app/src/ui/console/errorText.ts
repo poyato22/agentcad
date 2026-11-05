@@ -27,7 +27,7 @@ const FALLBACK: Partial<Record<ErrorKind, { title: string; cause: string; hint: 
   },
   network: {
     title: "Claude Code couldn't reach Anthropic",
-    cause: "There is no network route to Anthropic: offline, DNS, a firewall, or a proxy Mises doesn't know about.",
+    cause: "There is no network route to Anthropic: offline, DNS, a firewall, or a proxy AgentCAD doesn't know about.",
     hint: "Check the connection, then retry. Behind a proxy, set HTTPS_PROXY in Profile & settings → Claude Code → Network.",
   },
 };

@@ -36,7 +36,7 @@ async def _solve(job: FemJob, s, size, d, label, lo, hi, ref: dict):
         frd, dat = await solve_deck(
             job, d, lambda p: write_deck(p, mesh, job.material, setup.cards,
                                          buckle_step(setup, s.n_modes, k),
-                                         "Mises buckling study"),
+                                         "AgentCAD buckling study"),
             label, (lo + hi) / 2, nodes=len(mesh.nodes), elements=len(mesh.tets))
         return frd, [r[1] for r in await asyncio.to_thread(parse_dat_table, dat, BUCKLE_HEADER,
                                                            2)]

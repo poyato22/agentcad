@@ -61,7 +61,7 @@ def acp_rules_block() -> str:
     rules = RULES.strip().replace(
         "Stay inside the edit and read scope listed at the end of this prompt.",
         "Stay inside the run's edit and read scope; the harness enforces it.")
-    return ("<mises-rules>\nRules from Mises for this session (they apply to every turn):\n\n"
+    return ("<mises-rules>\nRules from AgentCAD for this session (they apply to every turn):\n\n"
             + SECTION_SEP.join([rules, RESPONSE_RULES.strip()]) + "\n</mises-rules>")
 from ..types import ErrorCode, MisesError, StepKind
 
@@ -258,7 +258,7 @@ class AcpSession:
             client_capabilities=ClientCapabilities(
                 fs=FileSystemCapabilities(read_text_file=False, write_text_file=False),
                 terminal=False),
-            client_info=Implementation(name="mises", title="Mises", version="0.1.0"))
+            client_info=Implementation(name="mises", title="AgentCAD", version="0.1.0"))
         self.agent_info = _dump(init.agent_info) if init.agent_info else None
         new = await self._conn.new_session(cwd=str(self.workdir),
                                            mcp_servers=self.mcp_servers())

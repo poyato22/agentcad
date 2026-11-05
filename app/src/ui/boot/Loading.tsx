@@ -77,7 +77,7 @@ export function Loading({ timeoutMs = LOADING_TIMEOUT_MS, onRetry = restartCore 
         <DragStrip />
         <div class="boot-stack" role="alertdialog" aria-label="Core didn't start">
           <CubeMark size={72} muted />
-          <h1 class="boot-title">Mises couldn't start the core</h1>
+          <h1 class="boot-title">AgentCAD couldn't start the core</h1>
           <p class="boot-msg">{message}</p>
           <div class="boot-actions">
             <button type="button" class="boot-btn boot-btn-primary" onClick={() => { setTimedOut(false); setShowLog(false); setAttempt((n) => n + 1); onRetry(); }}>Retry</button>

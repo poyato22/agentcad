@@ -444,7 +444,7 @@ def spec_from_dxf(raw: dict, *, thickness_mm: float | None = None) -> tuple[Draw
         dims.append({"id": "T", "kind": "thickness", "value": t,
                      "text": "(upload form)" if source == "form" else "(note)"})
     if raw.get("truncated"):
-        notes.append("the DXF has more entities than Mises reads; only the first ones were used")
+        notes.append("the DXF has more entities than AgentCAD reads; only the first ones were used")
     skipped = raw.get("skipped") if isinstance(raw.get("skipped"), dict) else {}
     spec = DrawingSpec.model_validate({
         "units": "mm", "thickness": t, "outline": _segments(main["outer"]), "cutouts": cutouts,

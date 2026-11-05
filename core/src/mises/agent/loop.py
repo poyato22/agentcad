@@ -253,7 +253,7 @@ class AgentLoop:
                     streak = (key, count)
                     if count == self.config.max_repeat_errors:
                         # P11 F9: stuck: a strategy-switch note first, with the last error
-                        note = (f"Mises note: {key[0]} failed with {key[1]} {count} times in a "
+                        note = (f"AgentCAD note: {key[0]} failed with {key[1]} {count} times in a "
                                 f"row (last: {results[c.id].content[:300]}). Switch strategy: "
                                 "do not repeat it; try a different approach or tool, simplify, "
                                 "or ask the user one specific question.")

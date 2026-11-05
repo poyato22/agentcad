@@ -13,25 +13,25 @@ from pathlib import Path
 from .report import _pct, build_report, collect, summarise
 
 PREAMBLE = """\
-**Headline (held-out TEST, never looked at while tuning Mises):** Mises leads on image→part (CADBench), \
+**Headline (held-out TEST, never looked at while tuning AgentCAD):** AgentCAD leads on image→part (CADBench), \
 is level-to-slightly-ahead on text→part (CADTestBench) and on the physics-graded suite, at 4–8× the cost \
 per task and 1.5–2.5× the agent time. Baseline = the same Claude Code model (Sonnet 5.5, Think High) with \
 a plain build123d prompt and one sandboxed exec tool; one attempt per task for both.
 
-How to read: *n* tasks, paired; *Mises − baseline* is the mean per-task difference with a 95% paired \
-bootstrap CI; win/loss counts are per task. Splits: DEV sets were used to find and test Mises fixes; \
+How to read: *n* tasks, paired; *AgentCAD − baseline* is the mean per-task difference with a 95% paired \
+bootstrap CI; win/loss counts are per task. Splits: DEV sets were used to find and test AgentCAD fixes; \
 TEST sets were drawn after (next items of the same seed-pinned rankings, disjoint from DEV) and run once \
-with the final Mises. Mises-Physics (20 tasks) was written before any tuning, split 5 DEV / 15 TEST. \
-Mises-Functional (20) was never tuned on; its Mises runs are from the first pass (pre-fix Mises).
+with the final AgentCAD. AgentCAD-Physics (20 tasks) was written before any tuning, split 5 DEV / 15 TEST. \
+AgentCAD-Functional (20) was never tuned on; its AgentCAD runs are from the first pass (pre-fix AgentCAD).
 """
 
 HISTORY_NOTES = {
     "round0_first_pass": "main @ 4bf7af07 + harness; all DEV suites, both systems",
     "round1_after_2_fixes": "chat-attached images checkable by reference_photo_check; multi-solid "
-                            "warning. Mises re-run on all 60 CADBench + the 19 CADTestBench it failed",
+                            "warning. AgentCAD re-run on all 60 CADBench + the 19 CADTestBench it failed",
     "round2_dev": "units rule + unit-slip guard, schema titles dropped, zero-solid warning, "
                   "photo mismatch hints (reverted: no gain), designer verify-every-requirement "
-                  "(reverted: no gain). Mises re-run on DEV CADBench 60 + CADTestBench 50",
+                  "(reverted: no gain). AgentCAD re-run on DEV CADBench 60 + CADTestBench 50",
 }
 
 
@@ -56,7 +56,7 @@ def main(root: Path, out: Path) -> None:
     doc = build_report(root / "report", out, label="Claude Sonnet 5.5 · held-out tasks",
                        history=hist, preamble=PREAMBLE)
     lines = (out / "benchmarks.md").read_text().splitlines()
-    lines += ["", "## DEV iteration history (Mises headline / baseline headline, paired wins-losses)",
+    lines += ["", "## DEV iteration history (AgentCAD headline / baseline headline, paired wins-losses)",
               "", "| Round | What changed | CADBench IoU | CADTestBench pass | CADTestBench all-pass wins | Physics/Functional |",
               "|---|---|---|---|---|---|"]
     for key in ("round0_first_pass", "round1_after_2_fixes", "round2_dev"):
@@ -65,7 +65,7 @@ def main(root: Path, out: Path) -> None:
         other = h.get("functional") or h.get("physics_dev")
         f = lambda x: (f"{_pct(x['mises'])} / {_pct(x['baseline'])} "  # noqa: E731
                        f"({x['paired']['mises_better']}-{x['paired']['baseline_better']})") if x else "–"
-        strict = (f"{ct['paired'].get('strict_mises_only', '–')} Mises-only / "
+        strict = (f"{ct['paired'].get('strict_mises_only', '–')} AgentCAD-only / "
                   f"{ct['paired'].get('strict_baseline_only', '–')} baseline-only") if ct else "–"
         lines.append(f"| {key} | {HISTORY_NOTES[key]} | {f(cb)} | {f(ct)} | {strict} | {f(other)} |")
     (out / "benchmarks.md").write_text("\n".join(lines) + "\n")

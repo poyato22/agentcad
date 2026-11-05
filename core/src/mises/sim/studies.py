@@ -99,7 +99,7 @@ CAVEATS_WIND = [
     "a periodic tunnel, at a reduced effective Reynolds number.",
     "The boundary layer is not resolved: drag is the resolved pressure drag plus a flat-plate "
     "skin-friction estimate; the raw lattice total is reported as cd_lattice_total.",
-    "Validated on a sphere and a flat plate (see the Mises C7 report); expect 10-30% error on "
+    "Validated on a sphere and a flat plate (see the AgentCAD C7 report); expect 10-30% error on "
     "other shapes, more on streamlined bodies whose drag is mostly friction.",
 ]
 CAVEATS_WIND_OPENFOAM = [
@@ -1103,7 +1103,7 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int,
     results["convergence_band_pct"] = (None if r.get("convergence_band") is None
                                        else round(100 * r["convergence_band"], 1))
     results["convergence"] = {"history": r.get("history", []), "converged": r.get("converged")}
-    solver = ({"name": "Mises lattice-Boltzmann", "version": "D3Q19 1.0",
+    solver = ({"name": "AgentCAD lattice-Boltzmann", "version": "D3Q19 1.0",
                "method": "BGK + Smagorinsky LES, half-way bounce-back, momentum exchange",
                "fidelity": "low fidelity"} if lbm else
               {"name": "empirical shape-class table", "version": "1.0",
@@ -1268,7 +1268,7 @@ def static_summary(rec: dict) -> str:
     s = (f"GUIDE ONLY - {sv['name']} {sv['version']}, fine mesh {mesh['fine']['size_mm']:.2g} mm "
          f"(coarse {mesh['coarse']['size_mm']:.2g} mm), material {m['name']}{basis} {model}, "
          f"strength x{m['knockdown']:.3g} FDM knock-down: {target_name(rec)} max von "
-         f"Mises {r['max_von_mises_mpa']:.3g} MPa (error band "
+         f"AgentCAD {r['max_von_mises_mpa']:.3g} MPa (error band "
          f"{'n/a' if band is None else format(band, '.1%')}), max displacement "
          f"{r['max_displacement_mm']:.3g} mm, safety factor {_num(r.get('safety_factor'), '.2f')}"
          f"; {fixture}")

@@ -53,5 +53,5 @@ if __name__ == "__main__":
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
     if a.home.resolve() == (Path.home() / "Library" / "Application Support" / "Mises").resolve():
-        raise SystemExit("point --home at a copy, never the live Mises home")
+        raise SystemExit("point --home at a copy, never the live AgentCAD home")
     dump(a.home, a.project, a.out)

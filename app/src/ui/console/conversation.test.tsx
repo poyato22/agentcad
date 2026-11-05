@@ -159,14 +159,14 @@ describe("conversation view (default)", () => {
     approvals.value = new Map([["apu", approval("apu", "ui1")]]);
     render(<ConsolePane />);
     await frame();
-    const needs = screen.getByRole("button", { name: "You (Mises) needs you · 1 waiting" });
+    const needs = screen.getByRole("button", { name: "You (AgentCAD) needs you · 1 waiting" });
     expect(needs.textContent).toBe("1");
     fireEvent.click(needs);
     await frame();
     expect(selectedRunId.value).toBe("ui1");
     expect(document.querySelector('[data-approval="apu"]')).toBeTruthy();
     // a thread that isn't the lead's names whose it is in the header
-    expect(document.querySelector("[data-conversation-head] [data-run-label]")?.textContent).toBe("You (Mises)");
+    expect(document.querySelector("[data-conversation-head] [data-run-label]")?.textContent).toBe("You (AgentCAD)");
   });
 
   it("there_is_no_button_bar_and_no_menu_in_the_conversation_header", async () => {

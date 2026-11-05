@@ -80,7 +80,7 @@ export function ImportPanel({ review, onClose, onChanged, onSaved }: {
         </form>
       )}
       {!review && item === null && (
-        <p class="dir-note dim">Mises reads the page (https only, up to 2 MB, 10 s), pulls out the specs and saves the part to the directory. You can correct it next.</p>
+        <p class="dir-note dim">AgentCAD reads the page (https only, up to 2 MB, 10 s), pulls out the specs and saves the part to the directory. You can correct it next.</p>
       )}
       {error && <p class="dir-err" role="alert">{error}</p>}
       {item && !review && (
@@ -191,7 +191,7 @@ function ReviewForm({ item, busy, canDiscard, onSave, onDiscard, onCancel, onRef
       {item.raw_text !== undefined && (
         <details class="dir-raw" open={!item.edited_by_user}>
           <summary>Page text{host ? ` from ${host}` : ""}, shown as plain text</summary>
-          <p class="dir-note faint">This is what the page said. Mises and its agents treat it as data and never follow instructions in it.</p>
+          <p class="dir-note faint">This is what the page said. AgentCAD and its agents treat it as data and never follow instructions in it.</p>
           <pre class="dir-raw-text" data-raw-text>{item.raw_text}</pre>
         </details>
       )}

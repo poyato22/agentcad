@@ -67,7 +67,7 @@ async def test_claude_codes_own_tools_and_other_servers_still_fail_the_run(rt, c
         await asyncio.wait_for(s.prompt(f"bare:{name}"), 10)
     await s.close()
     msg = _errors(rt, s.run_id)[0]["message"]
-    assert repr(name) in msg and "outside the Mises tools" in msg
+    assert repr(name) in msg and "outside the AgentCAD tools" in msg
 
 
 def test_recap_is_delimited_clipped_data_newest_last(rt):

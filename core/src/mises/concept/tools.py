@@ -364,7 +364,7 @@ class PitchArgs(BaseModel):
                   "shoulder:hip'), 2-3 CMF swatches, trade-offs (mass delta, part count, "
                   "molding, cost tier, risk, what the user gives up), and recommended + reason "
                   "on at most one. Exactly one option is the honest-engineering `baseline`. "
-                  "Mises builds each massing and shows front/side silhouettes and a 3/4 sketch. "
+                  "AgentCAD builds each massing and shows front/side silhouettes and a 3/4 sketch. "
                   "Each option's massing is checked for interference first, as in "
                   "concept_sketch: overlapping volumes refuse the pitch and return the clashes. "
                   "The user picks one or mixes them ('A's torso + B's legs'); then "

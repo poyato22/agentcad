@@ -122,7 +122,7 @@ class ApprovalService:
         if not self._decided_here(a):
             self._reject_untrusted(a)
             raise MisesError(ErrorCode.NEEDS_APPROVAL,
-                             "approval was not decided through Mises; ignored",
+                             "approval was not decided through AgentCAD; ignored",
                              hint="request a new approval")
         if time.time() >= a.expires_at:
             self.store.cas_approval(approval_id, from_status="approved", to_status="expired")

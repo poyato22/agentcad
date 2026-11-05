@@ -114,7 +114,7 @@ def test_continue_carries_the_run_on_without_the_users_words(client):
     note = [u for u in users if "system_note" in u]
     assert note and note[0]["system_note"]["kind"] == "continuation"
     assert [s["payload"]["continuation"]["text"] for s in steps
-            if "continuation" in s["payload"]] == ["Mises continued after: the tools hung"]
+            if "continuation" in s["payload"]] == ["AgentCAD continued after: the tools hung"]
     assert client.post("/runs/nope/continue", headers=AUTH).status_code == 404
 
 

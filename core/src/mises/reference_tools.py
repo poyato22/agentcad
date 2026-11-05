@@ -56,7 +56,7 @@ def script_for(fmt: str) -> str:
         load = ('shape = import_stl(str(HERE / "reference.stl"))\n'
                 '    try:\n        shape = Solid(shape)\n'
                 '    except Exception:  # an open mesh stays a shell\n        pass')
-    return ("# Mises reference part: the imported manufacturer model. Not edited, not printed.\n"
+    return ("# AgentCAD reference part: the imported manufacturer model. Not edited, not printed.\n"
             "from pathlib import Path\nHERE = Path(__file__).parent\nVARS = {}\n\n\n"
             f"def build(v: dict):\n    {load}\n    return shape\n")
 

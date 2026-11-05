@@ -358,7 +358,7 @@ describe("ConsolePane", () => {
 describe("cards of the app's own ui run", () => {
   afterEach(() => { resetOffListRuns(); });
 
-  it("a print card on the ui run (left out of GET /runs) is labelled You (Mises), not agent", async () => {
+  it("a print card on the ui run (left out of GET /runs) is labelled You (AgentCAD), not agent", async () => {
     const uiRun = { ...run("ui1"), agent: "you", provider: "ui", model: "ui", task: "external agent: you" };
     const getRun = vi.fn(async () => uiRun);
     bindClient({ getRun } as unknown as CoreClient);
@@ -366,7 +366,7 @@ describe("cards of the app's own ui run", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(getRun).toHaveBeenCalledTimes(1);
     expect(getRun).toHaveBeenCalledWith("ui1");
-    expect(labelOf("ui1")).toBe("You (Mises)");
+    expect(labelOf("ui1")).toBe("You (AgentCAD)");
     labelOf("ui1");
     expect(getRun).toHaveBeenCalledTimes(1);
   });

@@ -114,6 +114,6 @@ def build_mcp_server(runtime: Runtime) -> Server:
         return types.CallToolResult(content=content, is_error=not out.ok)
 
     return Server("mises", version="0.1.0",
-                  instructions="Mises CAD tools. Every call passes the Mises gate; "
-                               "irreversible calls wait for a human approval in the Mises app.",
+                  instructions="AgentCAD CAD tools. Every call passes the AgentCAD gate; "
+                               "irreversible calls wait for a human approval in the AgentCAD app.",
                   on_list_tools=list_tools, on_call_tool=call_tool)

@@ -1,4 +1,4 @@
-"""Mises-Functional: 20 auto-checked engineering tasks (research note section 6).
+"""AgentCAD-Functional: 20 auto-checked engineering tasks (research note section 6).
 
 Five categories x 4 tasks: fits/mates (F), mechanisms (K, swept), structural FEA (S,
 CalculiX), manufacturability (P), edit regression (E, two messages). Each task is a prompt

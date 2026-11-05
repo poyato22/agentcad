@@ -123,7 +123,7 @@ async def test_finish_notes_the_starting_agent_through_b3s_deliver_note(monkeypa
     await asyncio.sleep(0)
     run_id, text, meta, defer = sent[0]
     assert run_id == "r1" and "(to_0123456789ab) finished" in text and not defer
-    assert text.startswith("[Mises system note, not from the user]") and '(data): "ok"' in text
+    assert text.startswith("[AgentCAD system note, not from the user]") and '(data): "ok"' in text
     assert meta == {"kind": "sim_finished", "job": "topopt", "id": "to_0123456789ab",
                     "topopt_id": "to_0123456789ab", "status": "done"}
     assert jobs.note_lead(None, rec) is False

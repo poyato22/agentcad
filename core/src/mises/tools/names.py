@@ -14,7 +14,8 @@ import re
 from collections.abc import Iterable
 
 # decorations a model puts in front of a Mises tool's name
-_PREFIXES = ("mcp__mises__", "mises__", "mises.", "mises:", "mises/", "functions.")
+_PREFIXES = ("mcp__mises__", "mises__", "mises.", "mises:", "mises/",
+             "agentcad__", "agentcad.", "agentcad:", "agentcad/", "functions.")
 
 
 def _norm(name: str) -> str:

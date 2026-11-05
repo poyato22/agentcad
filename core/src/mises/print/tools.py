@@ -50,7 +50,7 @@ def _bad(msg: str, hint: str | None = None) -> MisesError:
 def home_of(ctx) -> Path:
     rt = (getattr(ctx, "services", None) or {}).get("runtime")
     if rt is None:
-        raise MisesError(ErrorCode.DENIED, "no Mises app is attached to this run")
+        raise MisesError(ErrorCode.DENIED, "no AgentCAD app is attached to this run")
     return Path(rt.home)
 
 

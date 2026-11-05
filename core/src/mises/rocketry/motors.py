@@ -314,7 +314,7 @@ def resolve(name: str | None, eng: str | None, home: Path | None) -> Motor:
     if m is None:
         known = ", ".join(sorted({x.designation for x in library(home)}))
         raise MisesError(
-            ErrorCode.NOT_FOUND, f"no thrust curve for {name!r} in Mises",
+            ErrorCode.NOT_FOUND, f"no thrust curve for {name!r} in AgentCAD",
             hint=f"known: {known}. Fetch it with rocket_motor (action 'fetch'), or open its "
                  "RASP (.eng) file on thrustcurve.org and pass the text as motor_eng.")
     return m

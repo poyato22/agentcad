@@ -378,7 +378,7 @@ function AttachmentThumb({ a }: { a: Attachment }): JSX.Element {
       <button type="button" class="cmd-att-x" aria-label={`Remove ${a.name}`} onClick={() => removeAttachment(a.id)}>×</button>
       {a.drawing && (
         <button type="button" class="cmd-att-make" data-testid="make-part-from-drawing"
-          title="Import it as a drawing: Mises makes the part and checks its dimensions"
+          title="Import it as a drawing: AgentCAD makes the part and checks its dimensions"
           onClick={() => { startImport(a.file, activeBuildId.peek()); removeAttachment(a.id); }}>
           Make a part from this drawing
         </button>

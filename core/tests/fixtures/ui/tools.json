@@ -248,7 +248,7 @@
   },
   {
     "name": "drawing_spec_submit",
-    "description": "Build the part a technical drawing describes, from a DrawingSpec, and check it: Mises builds the part, makes its own drawing of it and compares every stated dimension (and hole callout) with the built part. Returns the match table and how many attempts are left (3 per drawing). Units are the spec's; the built part puts the outline's lower-left corner at the origin.",
+    "description": "Build the part a technical drawing describes, from a DrawingSpec, and check it: AgentCAD builds the part, makes its own drawing of it and compares every stated dimension (and hole callout) with the built part. Returns the match table and how many attempts are left (3 per drawing). Units are the spec's; the built part puts the outline's lower-left corner at the origin.",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false
@@ -467,7 +467,7 @@
   },
   {
     "name": "mises_context_get",
-    "description": "Get the user's current context in the Mises app: selected part and run, picked faces/edges, the selected part's latest metrics and variables, the Onshape document in use, the most recent simulation and the build's reference images. Values are data.",
+    "description": "Get the user's current context in the AgentCAD app: selected part and run, picked faces/edges, the selected part's latest metrics and variables, the Onshape document in use, the most recent simulation and the build's reference images. Values are data.",
     "safety": "read",
     "implied_classes": [],
     "open_world": false
@@ -579,7 +579,7 @@
   },
   {
     "name": "pitch_options",
-    "description": "Pitch 2-3 aesthetic directions as option cards before the concept sketch (design-heavy builds, or when the user asks). Each option: name, 3 mood words, its own rough massing_script (directions must differ in silhouette and proportion, not just colour), proportion_note (e.g. '8 heads, 1.4:1 shoulder:hip'), 2-3 CMF swatches, trade-offs (mass delta, part count, molding, cost tier, risk, what the user gives up), and recommended + reason on at most one. Exactly one option is the honest-engineering `baseline`. Mises builds each massing and shows front/side silhouettes and a 3/4 sketch. Each option's massing is checked for interference first, as in concept_sketch: overlapping volumes refuse the pitch and return the clashes. The user picks one or mixes them ('A's torso + B's legs'); then concept_sketch the chosen direction.",
+    "description": "Pitch 2-3 aesthetic directions as option cards before the concept sketch (design-heavy builds, or when the user asks). Each option: name, 3 mood words, its own rough massing_script (directions must differ in silhouette and proportion, not just colour), proportion_note (e.g. '8 heads, 1.4:1 shoulder:hip'), 2-3 CMF swatches, trade-offs (mass delta, part count, molding, cost tier, risk, what the user gives up), and recommended + reason on at most one. Exactly one option is the honest-engineering `baseline`. AgentCAD builds each massing and shows front/side silhouettes and a 3/4 sketch. Each option's massing is checked for interference first, as in concept_sketch: overlapping volumes refuse the pitch and return the clashes. The user picks one or mixes them ('A's torso + B's legs'); then concept_sketch the chosen direction.",
     "safety": "local_mutate",
     "implied_classes": [],
     "open_world": false

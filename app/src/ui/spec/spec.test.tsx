@@ -140,7 +140,7 @@ describe("spec card", () => {
     expect(container.querySelector("[data-tally]")!.textContent).toBe("2 pass · 4 not checked");
   });
 
-  it("an agent-written goal renders as Mises markup, not literal asterisks (M-5)", async () => {
+  it("an agent-written goal renders as AgentCAD markup, not literal asterisks (M-5)", async () => {
     await start({ spec: "fixture" });
     const c = new SpecController(() => client);
     await c.load();

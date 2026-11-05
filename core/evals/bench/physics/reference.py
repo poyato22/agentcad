@@ -1,4 +1,4 @@
-"""Hand-made reference designs for the Mises-Physics graders: each shows its task is feasible
+"""Hand-made reference designs for the AgentCAD-Physics graders: each shows its task is feasible
 and that the grader passes a correct design (checker self-test only; never shown to either
 system).
 

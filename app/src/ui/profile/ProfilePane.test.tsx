@@ -606,6 +606,6 @@ describe("Data, Setup and About", () => {
     const about = screen.getByRole("region", { name: "About" });
     expect(about.textContent).toContain("0.3.0");
     expect(about.textContent).toContain("2.1.4");
-    expect(within(about).getByText("Mises app")).toBeTruthy();
+    expect(within(about).getByText("AgentCAD app")).toBeTruthy();
   });
 });

@@ -1,7 +1,7 @@
 [project]
 name = "mises"
 version = "0.1.0"
-description = "Mises harness core"
+description = "AgentCAD harness core"
 requires-python = ">=3.13"
 dependencies = [
   "pydantic>=2.12", "anthropic>=2.3", "openai>=3.37", "mcp>=2.3",
