@@ -174,7 +174,7 @@ export type StudySolvers = z.infer<typeof studySolversSchema>;
 
 /** `sim_progress` event data (core studies.run_study progress()). */
 export const studyProgressSchema = z.looseObject({
-  sim_id: z.string(), part_id: z.string().nullable(), type: z.string().optional(), stage: z.string(),
+  sim_id: z.string(), part_id: z.string(), type: z.string().optional(), stage: z.string(),
   phase: z.string().optional(), pct: z.number().optional(), detail: z.string().optional(),
   /** The tool call that runs the study (absent on cores before A8 fix round 1). */
   call_id: z.string().nullish(), step_id: z.number().nullish(),
