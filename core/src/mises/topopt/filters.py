@@ -1,6 +1,7 @@
 """The density filter chain: design variables x -> physical densities xPhys.
 
-x --density filter--> [mirror symmetry] --> [extrusion] --> [AM overhang] --> xPhys
+x --density filter--> [mirror symmetry] --> [extrusion] --> [projection] --> [AM overhang]
+--> xPhys
 
 Every stage is differentiable; `Chain.backward` maps a sensitivity with respect to xPhys back to
 one with respect to x (the transpose of each stage, in reverse order). Flat element arrays use
@@ -25,6 +26,7 @@ AXES = {"x": 0, "y": 1, "z": 2}
 OVERHANG_P = 40.0
 OVERHANG_EPS = 1e-4
 OVERHANG_X0 = 0.5
+PROJECT_ETA = 0.5
 
 
 def density_filter(n: tuple[int, int, int], rmin: float,
@@ -155,6 +157,17 @@ class Chain:
     mirrors: list[np.ndarray] = field(default_factory=list)
     columns: np.ndarray | None = None      # extrusion column ids (-1 outside)
     overhang: Overhang | None = None
+    beta: float = 0.0                      # Heaviside projection sharpness (0: off)
+
+    def _project(self, v: np.ndarray) -> np.ndarray:
+        b = self.beta
+        d = math.tanh(b * PROJECT_ETA) + math.tanh(b * (1 - PROJECT_ETA))
+        return (math.tanh(b * PROJECT_ETA) + np.tanh(b * (v - PROJECT_ETA))) / d
+
+    def _project_grad(self, v: np.ndarray) -> np.ndarray:
+        b = self.beta
+        d = math.tanh(b * PROJECT_ETA) + math.tanh(b * (1 - PROJECT_ETA))
+        return b / np.cosh(np.clip(b * (v - PROJECT_ETA), -300, 300)) ** 2 / d
 
     def _extrude(self, v: np.ndarray) -> np.ndarray:
         c = self.columns
@@ -174,6 +187,9 @@ class Chain:
 
     def forward(self, x: np.ndarray) -> np.ndarray:
         v = self._linear((self.H @ x) / self.Hs)
+        if self.beta > 0:
+            self._v = v
+            v = self._project(v)
         if self.overhang is not None:
             v = self.overhang.forward(v)
         return v
@@ -181,6 +197,8 @@ class Chain:
     def backward(self, g: np.ndarray) -> np.ndarray:
         if self.overhang is not None:
             g = self.overhang.backward(g)
+        if self.beta > 0:
+            g = g * self._project_grad(self._v)
         # mirror averaging and column averaging are symmetric projections (self-adjoint);
         # applied in reverse order
         if self.columns is not None:
