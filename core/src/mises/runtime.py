@@ -380,6 +380,29 @@ class Runtime:
             return True
         return True
 
+    @staticmethod
+    def _pid_started_at(pid: int) -> float | None:
+        """When a process started (epoch seconds), None when that cannot be told."""
+        import datetime
+        import subprocess
+        try:
+            out = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True,
+                                 text=True, timeout=5, env={"LC_ALL": "C", "PATH": "/bin:/usr/bin"}
+                                 ).stdout.strip()
+            return datetime.datetime.strptime(out, "%a %b %d %H:%M:%S %Y").timestamp()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
+
+    @classmethod
+    def _still_owner(cls, pid: int, last_active: float) -> bool:
+        """The run's owner is still alive. A reboot hands low pids to new processes: one that
+        started after the run's last activity cannot be the process that was driving it (a
+        reused pid left a dead lead "running" for ever, never continued)."""
+        if not cls._pid_alive(pid):
+            return False
+        started = cls._pid_started_at(pid)
+        return started is None or started <= last_active + 1.0
+
     def _fail_orphaned_runs(self) -> list[str]:
         """Fail runs left "running" by a process that is gone (crash, kill -9, power loss):
         stop_reason "interrupted", reservations released, pending approvals rejected. Runs
@@ -390,7 +413,8 @@ class Runtime:
         self._interrupted_last: dict[str, float] = {}
         for run in self.store.running_runs(include_queued=True):
             pid = run.owner_pid
-            if pid is not None and (pid == os.getpid() or self._pid_alive(pid)):
+            last_active = float(run.last_activity_at or run.updated_at or run.created_at or 0)
+            if pid is not None and (pid == os.getpid() or self._still_owner(pid, last_active)):
                 continue
             self._interrupted_last[run.id] = float(run.last_activity_at or run.updated_at
                                                    or run.created_at or 0)

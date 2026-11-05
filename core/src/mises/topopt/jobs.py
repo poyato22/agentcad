@@ -18,6 +18,7 @@ deflection target); an unverified or failing variant is marked and never ranked 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import json
 import math
@@ -45,14 +46,20 @@ RECORD = "record.json"
 WORKER_MODULE = "mises.topopt.worker"
 TARGET_ELEMENTS = 50_000
 MAX_FILTER_VOXELS = 6.0
-#: a variant's peak memory, measured (DOG demo: 160k elements used 4.2-4.6 GB and every
-#: variant was stopped at the 4096 MB budget; 110k still reached 4.1 GB): ~1 GB + ~30 kB/element
-BASE_MB, KB_PER_ELEMENT = 1000.0, 30.0
-MAX_ELEMENTS = 80_000
+#: a variant's peak memory: measured on the block-CSR solver (drone frame: 216k design-space
+#: elements in a 746k grid peaked at 2.5 GB in the solver, and 4.7 GB with its 3-voxel filter and the surface stage). Only design-space elements cost matrix memory;
+#: the grid costs vectors and the prolongations.
+BASE_MB, KB_PER_ELEMENT, KB_PER_CELL = 700.0, 16.0, 0.25
+#: design-space elements a variant may hold, and the grid around them
+MAX_ELEMENTS = 500_000
+MAX_CELLS = 3_000_000
 LOW_VF = 0.15
+CRISP_UNDER_VF = 0.25
 MAX_PARALLEL = 3
 VARIANT_TIMEOUT_S = 3600.0
+MAX_VARIANT_TIMEOUT_S = 4 * 3600.0
 MEMORY_MB = 4096.0
+MAX_MEMORY_MB = 11264.0
 POLL_S = 0.5
 SAVE_EVERY_S = 2.0
 DEFAULT_SWEEP = (0.15, 0.25, 0.35)
@@ -218,12 +225,29 @@ def _voxel(space_volume: float, bbox: dict, vf: float, res: float | None,
     def cells(hh: float) -> int:
         return math.prod(4 * math.ceil(math.ceil(s / hh - 1e-6) / 4) for s in size)
 
-    if cells(h) > MAX_ELEMENTS:
+    def over(hh: float) -> bool:
+        return space_volume / hh ** 3 > MAX_ELEMENTS or cells(hh) > MAX_CELLS
+
+    if over(h):
         h0 = h
-        while cells(h) > MAX_ELEMENTS:
+        while over(h):
             h = round(h * 1.05 + 0.01, 2)
-        warnings.append(f"{h0:g} mm voxels would exceed {MAX_ELEMENTS} elements: using {h:g} mm")
+        warnings.append(f"{h0:g} mm voxels would exceed {MAX_ELEMENTS} design-space elements "
+                        f"or {MAX_CELLS} grid cells: using {h:g} mm")
     return h
+
+
+def variant_memory_mb(space_volume: float, bbox: dict, h: float) -> float:
+    """A variant's watchdog budget, sized from its grid (never under MEMORY_MB)."""
+    cells = math.prod(math.ceil(s / h) for s in bbox["size"])
+    need = BASE_MB + (KB_PER_ELEMENT * space_volume / h ** 3 + KB_PER_CELL * cells) / 1024
+    return max(MEMORY_MB, min(MAX_MEMORY_MB, 1.3 * need))
+
+
+def variant_timeout_s(space_volume: float, h: float) -> float:
+    """A large grid takes hours, not the hour a default run is allowed."""
+    return min(MAX_VARIANT_TIMEOUT_S, max(VARIANT_TIMEOUT_S,
+                                          3600.0 * space_volume / h ** 3 / 50_000))
 
 
 def _variant_name(delta: dict, vf: float, r_mm: float, mf: dict) -> str:
@@ -243,7 +267,8 @@ def plan(ctx, args: TopoptRunArgs) -> dict:
     """Validate everything that can be checked before anything runs; returns the job plan:
     material, base metrics and one resolved worker spec per variant."""
     part_dir, metrics = _metrics(ctx, args.part_id)
-    faces = [f.face for f in args.fixtures] + [ld.face for c in args.load_cases for ld in c.loads]
+    faces = [f.face for f in args.fixtures if f.face]
+    faces += [ld.face for c in args.load_cases for ld in c.loads if ld.face]
     faces += [f for r in args.keep for f in r.faces]
     _check_faces(faces, metrics)
     home = home_of(ctx)
@@ -287,6 +312,9 @@ def plan(ctx, args: TopoptRunArgs) -> dict:
             warnings.append(f"a {float(r_mm):g} mm filter radius is over {MAX_FILTER_VOXELS} voxels "
                             f"of {h0:g} mm: using {h:g} mm voxels")
         r_el = min(MAX_FILTER_VOXELS, max(1.2, float(r_mm) / h))
+        crisp = delta.get("crisp", args.crisp)
+        crisp = vf < CRISP_UNDER_VF if crisp is None else bool(crisp)
+        surface = delta.get("surface", args.surface) or ("fine" if crisp else "draft")
         reg = []
         for k, r in enumerate(args.keep):
             reg.append({**r.model_dump(exclude_none=True),
@@ -307,9 +335,10 @@ def plan(ctx, args: TopoptRunArgs) -> dict:
             "overhang_dir": mf.overhang.build_dir if mf.overhang else None,
             "fixtures": [f.model_dump() for f in args.fixtures],
             "load_cases": [{"name": c.name, "weight": c.weight,
-                            "loads": [{"face": ld.face, "newtons": ld.newtons,
+                            "loads": [{"face": ld.face, "box": ld.box, "newtons": ld.newtons,
                                        "direction": _dir(ld.direction)} for ld in c.loads]}
                            for c in args.load_cases],
+            "crisp": crisp, "surface": surface,
             "keep": reg, "keep_out": kout,
             "face_list": metrics.get("face_list") or [], "face_tags": metrics.get("face_tags"),
             "preview_every": 5}
@@ -319,12 +348,17 @@ def plan(ctx, args: TopoptRunArgs) -> dict:
             "max_iter": spec["max_iter"], "preview": None, "volume_fraction": vf,
             "resolution_mm": h, "filter_radius_mm": round(r_el * h, 3),
             "manufacturing": mfd, "warnings": warnings, "error": None, "verified": False,
-            "passes": None, "rank": None, "pareto": False, "spec": spec})
+            "passes": None, "rank": None, "pareto": False, "spec": spec,
+            "memory_mb": variant_memory_mb(space_volume, bbox, h),
+            "timeout_s": variant_timeout_s(space_volume, h)})
     return {"part_dir": part_dir, "metrics": metrics, "material": mat, "variants": variants,
             "others": others}
 
 
-def _dir(name: str) -> list[float]:
+def _dir(name) -> list[float]:
+    if not isinstance(name, str):
+        norm = math.sqrt(sum(c * c for c in name))
+        return [float(c) / norm for c in name]
     v = [0.0, 0.0, 0.0]
     v["xyz".index(name[1])] = 1.0 if name[0] == "+" else -1.0
     return v
@@ -489,8 +523,9 @@ async def _run_variant(ctx_events, rec: dict, v: dict, d: Path, args: TopoptRunA
     try:
         rc, _, err = await run_sandboxed(
             [sys.executable, "-I", "-m", WORKER_MODULE, str(vdir.resolve())], vdir,
-            timeout_s=VARIANT_TIMEOUT_S, what="the topology optimizer",
-            memory_limit_mb=MEMORY_MB,
+            timeout_s=float(v.get("timeout_s") or VARIANT_TIMEOUT_S),
+            what="the topology optimizer",
+            memory_limit_mb=float(v.get("memory_mb") or MEMORY_MB),
             env={"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
                  "VECLIB_MAXIMUM_THREADS": "1"})
     finally:
@@ -612,29 +647,33 @@ def note_lead(rt, rec: dict) -> bool:
     return True
 
 
-def parallel_variants() -> int:
-    """Variants run at once: at most MAX_PARALLEL, one per MEMORY_MB of usable memory (each
+def parallel_variants(memory_mb: float = MEMORY_MB) -> int:
+    """Variants run at once: at most MAX_PARALLEL, one per memory_mb of usable memory (each
     worker's watchdog budget) and half the heavy-worker slots (a variant's worker, then its
     mesher and solver, hold a slot for minutes: renders and studies keep the rest)."""
     from .. import hardware
     from ..heavy import heavy_limit
-    by_mem = int(hardware.usable_memory_gb() * 1024 // MEMORY_MB)
+    by_mem = int(hardware.usable_memory_gb() * 1024 // memory_mb)
     return max(1, min(MAX_PARALLEL, by_mem, heavy_limit() // 2))
 
 
 async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict, save) -> None:
     from ..sim.ccx import find_ccx
     ccx = find_ccx() if args.verify else None
-    sem = asyncio.Semaphore(min(parallel_variants(), len(rec["variants"])))
+    mem = max((float(v.get("memory_mb") or MEMORY_MB) for v in rec["variants"]), default=MEMORY_MB)
+    sem = asyncio.Semaphore(min(parallel_variants(mem), len(rec["variants"])))
 
     async def one(v: dict) -> None:
+        if v["status"] == "done":        # a resumed job keeps what already finished
+            return
         async with sem:
             if rec["status"] == "cancelled":
                 return
             try:
                 await _run_variant(events, rec, v, d, args, plan_, ccx, save)
             except asyncio.CancelledError:
-                v.update(status="cancelled", phase="cancelled", error="cancelled")
+                if rec["topopt_id"] in _cancel_requested:
+                    v.update(status="cancelled", phase="cancelled", error="cancelled")
                 raise
             except SimError as e:
                 v.update(status="failed", phase="failed", error=e.message)
@@ -655,30 +694,37 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
         rec["status"] = ("done" if any(v["status"] == "done" for v in rec["variants"])
                          else "failed")
     except asyncio.CancelledError:
+        if rec["topopt_id"] not in _cancel_requested:
+            # the core is shutting down, nobody cancelled this: leave it unfinished on disk so
+            # the next start carries it on (resume_interrupted)
+            rec["status"] = "running"
+            save()
+            raise
         rec["status"] = "cancelled"
         for v in rec["variants"]:
             if v["status"] in ("queued", "running"):
                 v.update(status="cancelled", phase="cancelled")
         raise
     finally:
-        pareto, best = rank(rec["variants"], min_safety_factor=args.min_safety_factor,
-                            max_deflection_mm=args.max_deflection_mm)
-        rec.update(pareto=pareto, recommended=best, finished_at=time.time())
-        rec["summary"] = summary(rec)
-        save()
-        # mark the background Job finished FIRST, so an exception in _publish cannot leave it
-        # listed as running in GET /jobs for the life of the process (FW-core M-8)
-        from .. import jobs as bg
-        job = bg.get(rec["topopt_id"])
-        if job is not None and job.status == "running":
-            job.status = rec["status"]
-            job.summary = rec.get("summary") or ""
-            job.finished_at = time.time()
-        _publish(events, rec, "topopt_finished", {
-            "run_id": rec.get("run_id"), "status": rec["status"], "summary": rec["summary"],
-            "recommended": best, "pareto": pareto})
-        # a user's cancel starts no note turn (deferred); a Stop sends none (note_lead)
-        note_lead(plan_.get("runtime"), rec)
+        if rec["status"] != "running":
+            pareto, best = rank(rec["variants"], min_safety_factor=args.min_safety_factor,
+                                max_deflection_mm=args.max_deflection_mm)
+            rec.update(pareto=pareto, recommended=best, finished_at=time.time())
+            rec["summary"] = summary(rec)
+            save()
+            # mark the background Job finished FIRST, so an exception in _publish cannot leave it
+            # listed as running in GET /jobs for the life of the process (FW-core M-8)
+            from .. import jobs as bg
+            job = bg.get(rec["topopt_id"])
+            if job is not None and job.status == "running":
+                job.status = rec["status"]
+                job.summary = rec.get("summary") or ""
+                job.finished_at = time.time()
+            _publish(events, rec, "topopt_finished", {
+                "run_id": rec.get("run_id"), "status": rec["status"], "summary": rec["summary"],
+                "recommended": best, "pareto": pareto})
+            # a user's cancel starts no note turn (deferred); a Stop sends none (note_lead)
+            note_lead(plan_.get("runtime"), rec)
 
 
 async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
@@ -734,6 +780,65 @@ async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
     # shows the new generative run at once (B3 follow-up, core side)
     _publish(events, rec, "topopt_progress", {"status": rec["status"], "started": True})
     return rec
+
+
+def _launch(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict) -> None:
+    tid = rec["topopt_id"]
+
+    def save() -> None:
+        write_record(d, rec)
+
+    async def body() -> None:
+        try:
+            await _run_job(events, rec, d, args, plan_, save)
+        finally:
+            _active.pop(tid, None)
+            _cancel_requested.discard(tid)
+
+    _active[tid] = asyncio.ensure_future(body())
+    from .. import jobs as bg
+    bg.register(bg.Job(id=tid, kind="topopt", run_id=rec.get("run_id"),
+                       label=f"generative design of {args.part_id}", task=_active[tid],
+                       cancel=lambda: cancel(tid), build_id=rec.get("project_id"),
+                       part_id=args.part_id, scope=[args.part_id]))
+
+
+def resume_interrupted(runtime) -> list[str]:
+    """The core restarted mid-run (a reboot, a crash): carry on every generative design job it
+    left unfinished, from each variant's checkpoint, rather than leaving the lead to find an
+    "interrupted" record and spend the hour again. Finished variants stay as they are."""
+    home = Path(runtime.home)
+    out: list[str] = []
+    if not root(home).is_dir():
+        return out
+    for d in root(home).iterdir():
+        if not TOPOPT_ID_RE.fullmatch(d.name) or d.name in _active:
+            continue
+        try:
+            rec = json.loads((d / RECORD).read_text())
+            if rec.get("status") not in ("queued", "running"):
+                continue
+            cls = TopoptGenerateArgs if rec.get("tool") == "topopt_generate" else TopoptRunArgs
+            args = cls.model_validate(rec["args"])
+            part_dir = home / "parts" / args.part_id
+            if not (part_dir / "model.step").exists():
+                raise FileNotFoundError(f"{args.part_id} has no model.step")
+            others = {r.part_id: home / "parts" / r.part_id
+                      for r in [*args.keep, *args.keep_out] if r.kind == "part"}
+            plan_ = {"part_dir": part_dir, "others": others, "metrics": {},
+                     "material": get_material(rec["material"]["name"], home),
+                     "variants": rec["variants"], "runtime": runtime}
+        except (OSError, ValueError, KeyError, SimError) as e:
+            rec_status = {"status": "interrupted", "error": f"could not resume: {e}"}
+            with contextlib.suppress(OSError, ValueError):
+                write_record(d, {**json.loads((d / RECORD).read_text()), **rec_status})
+            continue
+        for v in rec["variants"]:
+            if v["status"] != "done":
+                v.update(status="queued", phase="queued", error=None)
+        _launch(runtime.events, rec, d, args, plan_)
+        out.append(d.name)
+    return out
 
 
 def cancel(topopt_id: str) -> bool:

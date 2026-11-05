@@ -309,7 +309,13 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
 
     async def _resume_interrupted():
         """Runs the restart interrupted mid-turn carry on by themselves once Claude Code can
-        reach the Mises tools (attach_mcp follows the server's start)."""
+        reach the Mises tools (attach_mcp follows the server's start). Generative design jobs
+        go first, so a continued lead finds them running, not "interrupted"."""
+        from ..topopt import jobs as _topopt_jobs
+        try:
+            _topopt_jobs.resume_interrupted(runtime)
+        except Exception:  # noqa: BLE001 - never crash the server over it
+            log.warning("resuming generative design jobs failed", exc_info=True)
         if not runtime.interrupted:
             return
         for _ in range(600):

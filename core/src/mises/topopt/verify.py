@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from ..sim.ccx import run_ccx
+from ..sim.fem import MAX_SOLVE_NODES
 from ..sim.deck import cload_lines, model_cards, _lines16
 from ..sim.materials import Material
 from ..sim.mesh import Mesh, Surface, consistent_loads, load_mesh, mesh_step
@@ -37,6 +38,7 @@ SOLVE_TIMEOUT_S = 900.0
 # the final STL is within 0.05 mm of the B-rep and the original face tessellation within
 # ~0.05 mm of its surface: a boundary triangle is on an original face within this distance
 MATCH_TOL_MM = 0.12
+REMESH_TRIES = 3
 
 
 def weld_stl(src: Path, dst: Path) -> dict:
@@ -67,6 +69,21 @@ def select_boundary(mesh: Mesh, face_tris: np.ndarray, tol: float = MATCH_TOL_MM
     return [t for t, ok in zip(tris, (d <= tol).all(1)) if ok]
 
 
+def select_in_box(mesh: Mesh, box: list, tol: float = MATCH_TOL_MM) -> list:
+    """The mesh's boundary triangles with every corner inside a box."""
+    tris = [t for s in mesh.surfaces for t in s.tris]
+    corners = np.array([[mesh.nodes[n] for n in t[:3]] for t in tris], float)
+    b = np.asarray(box, float)
+    ok = ((corners >= b[:3] - tol) & (corners <= b[3:] + tol)).all((1, 2))
+    return [t for t, y in zip(tris, ok) if y]
+
+
+def _select(mesh: Mesh, row: dict) -> list:
+    if row.get("box"):
+        return select_in_box(mesh, row["box"])
+    return select_boundary(mesh, np.array(row["tris"]))
+
+
 def setup(mesh: Mesh, bc: dict) -> tuple[Mesh, dict]:
     """A mesh whose surfaces are the fixture / load groups (tags 1..), and the plan."""
     surfaces: list[Surface] = []
@@ -79,7 +96,7 @@ def setup(mesh: Mesh, bc: dict) -> tuple[Mesh, dict]:
     fixed: set[int] = set()
     plan = {"fixtures": [], "cases": []}
     for fx in bc["fixtures"]:
-        sel = select_boundary(mesh, np.array(fx["tris"]))
+        sel = _select(mesh, fx)
         if not sel:
             raise SimError("bad_setup", f"the fixture face {fx['face']} is not on the variant",
                            hint="keep the fixture face inside the design space")
@@ -88,7 +105,7 @@ def setup(mesh: Mesh, bc: dict) -> tuple[Mesh, dict]:
     for case in bc["loads"]:
         rows = []
         for ld in case["loads"]:
-            sel = select_boundary(mesh, np.array(ld["tris"]))
+            sel = _select(mesh, ld)
             if not sel:
                 raise SimError("bad_setup", f"the load face {ld['face']} is not on the variant",
                                hint="keep the load face inside the design space")
@@ -134,6 +151,13 @@ async def verify(job: Path, material: Material, ccx: str, *, size_mm: float,
         # for ~5k faces); the STL path below keeps OCCT's long boolean-cut slivers as tet
         # faces, which stiffens the model by ~10%
         mesh = await mesh_step(job / "part.step", d, size_mm, timeout_s=MESH_TIMEOUT_S)
+        # the same cap as every study: a skeletal body's surface sets its node count, far over
+        # the volume estimate, and CalculiX dies of a bus error past it (403k nodes on a frame)
+        for _ in range(REMESH_TRIES):
+            if len(mesh.nodes) <= MAX_SOLVE_NODES:
+                break
+            size_mm = round(size_mm * (len(mesh.nodes) / MAX_SOLVE_NODES) ** (1 / 3) * 1.05, 3)
+            mesh = await mesh_step(job / "part.step", d, size_mm, timeout_s=MESH_TIMEOUT_S)
         mesher = "gmsh OCC (STEP)"
     except SimError:
         surf = await asyncio.to_thread(weld_stl, job / "part.stl", d / "welded.stl")

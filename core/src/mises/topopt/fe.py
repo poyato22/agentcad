@@ -5,9 +5,9 @@ Grid convention (used by every topopt module): nx * ny * nz cubic elements of si
 e = i + nx * (j + ny * k), so a flat element array reshapes to (nz, ny, nx); node
 n = i + Nx * (j + Ny * k) with N = n + 1; dof = 3 * node + axis.
 
-The coarse operators are Galerkin (P^T A P), smoothing is symmetric damped Jacobi (3 pre- and 3
-post-sweeps, so the preconditioner is symmetric and CG stays valid) and the coarsest grid is
-solved directly with SuperLU. Each level halves every axis that divides and keeps >= 2
+The coarse operators are Galerkin (P^T A P, summed per coarse element), smoothing is Chebyshev-
+accelerated Jacobi (3 pre- and 3 post-sweeps of one polynomial, so the preconditioner is
+symmetric and CG stays valid) and the coarsest grid is solved directly with SuperLU. Each level halves every axis that divides and keeps >= 2
 elements; a thin axis stays (semi-coarsening: level_dims).
 """
 from __future__ import annotations
@@ -18,8 +18,9 @@ import scipy.sparse.linalg as spla
 
 CORNERS = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
                     [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]])
-JACOBI_W = 0.6
 SWEEPS = 3
+CHEB_RATIO = 4.0
+POWER_ITERS = 8
 
 
 def hex8_ke(nu: float) -> np.ndarray:
@@ -65,10 +66,14 @@ def node_coords(n: tuple[int, int, int], h: float, origin) -> np.ndarray:
 
 
 class Level:
-    """One grid level: element dofs and the CSR pattern, so assembly is one bincount."""
+    """One grid level over the elements that exist: `el` (the design space; a void element has
+    no stiffness and a node touching none is inactive, an identity row). The matrix is block
+    CSR (3x3 per node pair, 27 per node), with the pattern built from the node adjacency and
+    each element's 64 node-pair blocks located once, so assembly needs no sort of the 576 x ne
+    element entries (they took ~30 kB per element, and capped the grid at 80k elements)."""
 
     def __init__(self, n: tuple[int, int, int], h: float, ke1: np.ndarray,
-                 fixed_dofs: np.ndarray):
+                 fixed_dofs: np.ndarray, elements: np.ndarray | None = None):
         nx, ny, nz = n
         self.n = n
         self.h = h
@@ -76,37 +81,89 @@ class Level:
         self.nn = int(np.prod(self.N))
         self.ndof = 3 * self.nn
         Nx, Ny = self.N[0], self.N[1]
-        i, j, k = element_grid(n)
-        nodes = np.stack([(i + c[0]) + Nx * ((j + c[1]) + Ny * (k + c[2])) for c in CORNERS], 1)
-        self.edof = (3 * nodes[:, :, None] + np.arange(3)).reshape(-1, 24)
+        ne = nx * ny * nz
+        self.el = np.arange(ne) if elements is None else np.flatnonzero(elements)
+        e = self.el
+        i, j, k = e % nx, (e // nx) % ny, e // (nx * ny)
+        nodes = np.stack([(i + c[0]) + Nx * ((j + c[1]) + Ny * (k + c[2])) for c in CORNERS],
+                         1).astype(np.int32)
+        self.nodes = nodes
+        self.edof = (3 * nodes[:, :, None] + np.arange(3, dtype=np.int32)).reshape(-1, 24)
         self.ke = ke1 * h
-        rows = np.repeat(self.edof, 24, axis=1).ravel()
-        cols = np.tile(self.edof, (1, 24)).ravel()
-        key = rows.astype(np.int64) * self.ndof + cols
-        uk, self.inv = np.unique(key, return_inverse=True)
-        r, c = uk // self.ndof, uk % self.ndof
-        self.fixed = fixed_dofs
-        self.free = ~fixed_dofs
-        # the pattern keeps only what a fixed dof leaves: its identity diagonal (a part whose
-        # design space fills a third of its grid has most dofs fixed: matvecs shrink with it)
-        zero = fixed_dofs[r] | fixed_dofs[c]
-        self.n_entries = len(uk)
-        self.kept = np.flatnonzero(~zero | (r == c))
-        r, c, zero = r[self.kept], c[self.kept], zero[self.kept]
-        self.diag_fixed = np.flatnonzero(zero)
-        indptr = np.zeros(self.ndof + 1, np.int64)
-        np.add.at(indptr, r + 1, 1)
-        self.indptr = np.cumsum(indptr)
-        self.indices = c.astype(np.int32)
-        self.nnz = len(r)
-        self.kev = self.ke.ravel()
+        m = len(e)
+        C = sp.csr_matrix((np.ones(8 * m, np.int8), nodes.ravel(),
+                           np.arange(0, 8 * m + 1, 8, dtype=np.int64)), shape=(m, self.nn))
+        self.active_nodes = np.bincount(nodes.ravel(), minlength=self.nn) > 0
+        G = (C.T @ C).tocsr()
+        G = (G + sp.eye(self.nn, format="csr", dtype=G.dtype)).tocsr()
+        G.sort_indices()
+        self.indptr = G.indptr.astype(np.int32)
+        self.indices = G.indices.astype(np.int32)
+        self.nblocks = len(self.indices)
+        del C
+        rows = np.repeat(np.arange(self.nn, dtype=np.int64), np.diff(self.indptr))
+        keys = rows * self.nn + self.indices
+        # pos[e, a, b]: the block of the element's node pair (a, b); a node pair class (a, b)
+        # never repeats a block, so each class adds without a bincount
+        self.pos = np.empty((m, 64), np.int32)
+        for a in range(8):
+            for b in range(8):
+                self.pos[:, 8 * a + b] = np.searchsorted(
+                    keys, nodes[:, a].astype(np.int64) * self.nn + nodes[:, b])
+        # a fixed dof, and every dof of an inactive node, keeps only its identity diagonal
+        self.fixed = np.asarray(fixed_dofs, bool) | np.repeat(~self.active_nodes, 3)
+        self.free = ~self.fixed
+        fx = self.fixed.reshape(-1, 3)
+        touched = fx[rows].any(1) | fx[self.indices].any(1)
+        tb = np.flatnonzero(touched)
+        if len(tb):
+            rr, cc = fx[rows[tb]], fx[self.indices[tb]]
+            zero = rr[:, :, None] | cc[:, None, :]
+            bi, ri, ci = np.nonzero(zero)
+            self.zero_at = (tb[bi], ri, ci)
+        else:
+            self.zero_at = None
+        dn, da = np.nonzero(fx)
+        self.diag_block = np.searchsorted(keys, dn.astype(np.int64) * self.nn + dn)
+        self.diag_axis = da
+        self.diag_all = np.searchsorted(keys, np.arange(self.nn, dtype=np.int64) * self.nn
+                                        + np.arange(self.nn))
 
-    def assemble(self, Ee: np.ndarray) -> sp.csr_matrix:
-        """K(E) with identity rows / columns on the fixed dofs."""
-        data = np.bincount(self.inv, weights=(Ee[:, None] * self.kev[None, :]).ravel(),
-                           minlength=self.n_entries)[self.kept]
-        data[self.diag_fixed] = 1.0
-        return sp.csr_matrix((data, self.indices, self.indptr), shape=(self.ndof, self.ndof))
+    def _matrix(self, data: np.ndarray) -> sp.bsr_matrix:
+        if self.zero_at is not None:
+            data[self.zero_at] = 0.0
+        data[self.diag_block, self.diag_axis, self.diag_axis] = 1.0
+        # a coarse dof whose every fine neighbour is fixed has no stiffness left
+        dd = data[self.diag_all]
+        idx = np.arange(3)
+        zn, za = np.nonzero(dd[:, idx, idx] <= 0)
+        if len(zn):
+            data[self.diag_all[zn], za, za] = 1.0
+        return sp.bsr_matrix((data, self.indices, self.indptr), shape=(self.ndof, self.ndof),
+                             blocksize=(3, 3), copy=False)
+
+    def assemble(self, Ee: np.ndarray) -> sp.bsr_matrix:
+        """K(E) with identity rows / columns on the fixed dofs; Ee is over every grid element
+        of the level (void elements ignored)."""
+        Ea = np.asarray(Ee)[self.el]
+        data = np.zeros((self.nblocks, 3, 3))
+        for a in range(8):
+            for b in range(8):
+                data[self.pos[:, 8 * a + b]] += (Ea[:, None, None]
+                                                 * self.ke[3 * a:3 * a + 3, 3 * b:3 * b + 3])
+        return self._matrix(data)
+
+    def assemble_elements(self, Ke: np.ndarray) -> sp.bsr_matrix:
+        """The same from one 24x24 stiffness per element of `el` (m, 576)."""
+        Ke = Ke.reshape(-1, 24, 24)
+        data = np.zeros((self.nblocks, 3, 3))
+        for a in range(8):
+            for b in range(8):
+                data[self.pos[:, 8 * a + b]] += Ke[:, 3 * a:3 * a + 3, 3 * b:3 * b + 3]
+        return self._matrix(data)
+
+    def diagonal(self, A: sp.bsr_matrix) -> np.ndarray:
+        return A.data[self.diag_all][:, np.arange(3), np.arange(3)].ravel()
 
 
 def prolong_1d(nc: int) -> sp.csr_matrix:
@@ -124,6 +181,13 @@ def prolong_1d(nc: int) -> sp.csr_matrix:
 
 
 MIN_COARSE_DOFS = 2000
+
+
+def _coarse_fixed(fx: np.ndarray, nf: tuple[int, int, int], halved: list[bool]) -> np.ndarray:
+    """A coarse dof is fixed when its coincident fine dof is."""
+    g = fx.reshape(nf[2] + 1, nf[1] + 1, nf[0] + 1, 3)
+    sl = tuple(slice(None, None, 2 if hv else 1) for hv in reversed(halved))
+    return g[sl].ravel().astype(bool)
 
 
 def _halve(d: int) -> bool:
@@ -165,71 +229,170 @@ def choose_levels(n: tuple[int, int, int], cap: int = 3) -> int:
     return lv
 
 
+def _child_interpolation(m: tuple[int, int, int], l: tuple[int, int, int]) -> np.ndarray:
+    """24x24: the fine element at position l inside its coarse element, trilinear."""
+    Pl = np.zeros((24, 24))
+    for a, ca in enumerate(CORNERS):
+        xi = (np.array(l) + ca) / np.array(m, float)
+        for b, cb in enumerate(CORNERS):
+            w = np.prod(np.where(cb == 1, xi, 1 - xi))
+            Pl[3 * a:3 * a + 3, 3 * b:3 * b + 3] = w * np.eye(3)
+    return Pl
+
+
+def child_stiffness(ke: np.ndarray, m: tuple[int, int, int]) -> np.ndarray:
+    """The Galerkin stiffness of each fine element inside one coarse element: a coarse element
+    holding m[0] x m[1] x m[2] fine ones interpolates them trilinearly, so P^T ke P is one fixed
+    24x24 matrix per fine position (prod m, 24, 24), and P^T A P is their density-weighted sum,
+    coarse element by coarse element (no sparse triple product over the fine matrix)."""
+    mx, my, mz = m
+    out = np.empty((mx * my * mz, 24, 24))
+    for lk in range(mz):
+        for lj in range(my):
+            for li in range(mx):
+                Pl = _child_interpolation(m, (li, lj, lk))
+                out[li + mx * (lj + my * lk)] = Pl.T @ ke @ Pl
+    return out
+
+
 class MGCG:
-    """CG on the fine grid, preconditioned by one multigrid V-cycle per iteration."""
+    """CG on the fine grid, preconditioned by one multigrid V-cycle per iteration. `elements`
+    (bool over the grid) lists the elements that exist: only they cost memory or time, so a
+    skeletal design space inside a large grid solves at the price of its own elements."""
 
     def __init__(self, n: tuple[int, int, int], h: float, nu: float, fixed_dofs: np.ndarray,
-                 levels: int = 3):
+                 levels: int = 3, elements: np.ndarray | None = None):
         dims = level_dims(n, levels)          # raises when the grid cannot take `levels`
         ke1 = hex8_ke(nu)
         self.levels: list[Level] = []
         self.P: list[sp.csr_matrix] = []
         self.fixed_c: list[np.ndarray] = []
-        fx = fixed_dofs
-        for lv in range(levels):
-            # only the fine level is assembled from ke (the coarse ones are Galerkin), so a
-            # semi-coarsened level's nominal h does not matter
-            lev = Level(dims[lv], h * 2 ** lv, ke1, fx)
+        self.coarsen: list[tuple] = []
+        nx, ny, nz = n
+        exists = np.ones(nx * ny * nz, bool) if elements is None else np.asarray(elements, bool)
+        fine_e = np.flatnonzero(exists)
+        fi, fj, fk = fine_e % nx, (fine_e // nx) % ny, fine_e // (nx * ny)
+        fine = Level(n, h, ke1, fixed_dofs, exists)
+        self.levels.append(fine)
+        fx = np.asarray(fixed_dofs, bool)
+        m = np.ones(3, np.int64)
+        for lv in range(1, levels):
+            cn = dims[lv]
+            halved = [c != f for c, f in zip(cn, dims[lv - 1])]
+            m = m * np.array([2 if hv else 1 for hv in halved])
+            ci, cj, ck = fi // m[0], fj // m[1], fk // m[2]
+            cx, cy = cn[0], cn[1]
+            ce = ci + cx * (cj + cy * ck)
+            present = np.zeros(int(np.prod(cn)), bool)
+            present[ce] = True
+            fx = _coarse_fixed(fx, dims[lv - 1], halved)
+            lev = Level(cn, h * 2 ** lv, ke1, fx, present)
             self.levels.append(lev)
-            if lv + 1 < levels:
-                cn = dims[lv + 1]
-                half = [c != f for c, f in zip(cn, dims[lv])]
-                p1 = [prolong_1d(c) if hv else sp.eye(c + 1, format="csr")
-                      for c, hv in zip(cn, half)]
-                Pn = sp.kron(p1[2], sp.kron(p1[1], p1[0]))
-                Pd = sp.kron(Pn, sp.eye(3)).tocsr()
-                Pd = sp.diags(lev.free.astype(float)) @ Pd
-                # a coarse node is fixed when its coincident fine node is
-                Nf = lev.N
-                ii, jj, kk = np.meshgrid(*(np.arange(0, m, 2 if hv else 1)
-                                           for m, hv in zip(Nf, half)), indexing="ij")
-                fine = (ii + Nf[0] * (jj + Nf[1] * kk)).transpose(2, 1, 0).ravel()
-                fx = fx[(3 * fine[:, None] + np.arange(3)).ravel()]
-                Pd = (Pd @ sp.diags((~fx).astype(float))).tocsr()
-                Pd.eliminate_zeros()
-                self.P.append(Pd)
-                self.fixed_c.append(fx.astype(float))
-        self.A: list[sp.csr_matrix] = []
+            lid = np.full(int(np.prod(cn)), -1, np.int64)
+            lid[lev.el] = np.arange(len(lev.el))
+            local = (fi % m[0]) + m[0] * ((fj % m[1]) + m[1] * (fk % m[2]))
+            T = child_stiffness(fine.ke, tuple(int(x) for x in m)).reshape(-1, 576)
+            # (coarse elements x child positions) holding the children's moduli at set_density
+            W = sp.csr_matrix((np.arange(1, len(fine_e) + 1, dtype=float),
+                               (lid[ce], local)), shape=(len(lev.el), T.shape[0]))
+            W.sort_indices()
+            # a fine element with a fixed dof drops that row from its interpolation (exact
+            # Galerkin at the fixture, which is what the whole structure hangs from): only
+            # these few elements differ from the fixed child matrices
+            hit = np.flatnonzero(fine.fixed[fine.edof].any(1))
+            ft = tuple(int(x) for x in m)
+            D = np.empty((len(hit), 576))
+            for q, f_ in enumerate(hit):
+                keep = (~fine.fixed[fine.edof[f_]]).astype(float)
+                Pl = _child_interpolation(ft, (int(fi[f_] % m[0]), int(fj[f_] % m[1]),
+                                               int(fk[f_] % m[2])))
+                keb = fine.ke * keep[:, None] * keep[None, :]
+                D[q] = (Pl.T @ keb @ Pl).ravel() - T[local[f_]]
+            self.coarsen.append((W, W.data.astype(np.int64) - 1, T, hit, lid[ce[hit]], D))
+            prev = self.levels[lv - 1]
+            p1 = [prolong_1d(c) if hv else sp.eye(c + 1, format="csr")
+                  for c, hv in zip(cn, halved)]
+            Pn = sp.kron(p1[2], sp.kron(p1[1], p1[0]))
+            Pd = sp.kron(Pn, sp.eye(3)).tocsr()
+            Pd = (sp.diags(prev.free.astype(float)) @ Pd
+                  @ sp.diags(lev.free.astype(float))).tocsr()
+            Pd.eliminate_zeros()
+            self.P.append(Pd)
+            self.fixed_c.append(lev.fixed.astype(float))
+            fx = lev.fixed & np.repeat(lev.active_nodes, 3)   # only the real ones go on down
+        self.A: list[sp.bsr_matrix] = []
+        self._power: dict[int, np.ndarray] = {}
 
     @property
     def fine(self) -> Level:
         return self.levels[0]
 
     def set_density(self, Ee: np.ndarray, refactor: bool = True) -> None:
-        """Assemble the fine operator for element moduli Ee and the Galerkin coarse ones.
-        refactor=False keeps the previous coarsest-grid LU (a slightly stale but fixed, SPD
-        coarse solve: CG stays valid). The SuperLU factorization of a 2-level cycle's coarse
-        grid is most of an iteration's cost, and the density moves little between iterations."""
-        self.A = [self.levels[0].assemble(Ee)]
-        for lv in range(1, len(self.levels)):
-            P = self.P[lv - 1]
-            self.A.append((P.T @ self.A[lv - 1] @ P + sp.diags(self.fixed_c[lv - 1])).tocsr())
-        self.dinv = [1.0 / A.diagonal() for A in self.A]
+        """Assemble the fine operator for element moduli Ee and the coarse ones (Galerkin, per
+        coarse element: child_stiffness). refactor=False keeps the previous coarsest-grid LU (a
+        slightly stale but fixed, SPD coarse solve: CG stays valid)."""
+        fine = self.levels[0]
+        self.A = [fine.assemble(Ee)]
+        Ea = np.asarray(Ee)[fine.el]
+        for lv, (W, order, T, hit, owner, D) in enumerate(self.coarsen, 1):
+            W = W.copy()
+            W.data = Ea[order]
+            Ke = W @ T
+            np.add.at(Ke, owner, Ea[hit][:, None] * D)
+            self.A.append(self.levels[lv].assemble_elements(Ke))
+        self.dinv = [1.0 / lev.diagonal(A) for lev, A in zip(self.levels, self.A)]
+        self.lam = [self._lambda_max(lv) for lv in range(len(self.A) - 1)]
         if refactor or getattr(self, "coarse", None) is None:
             self.coarse = spla.splu(self.A[-1].tocsc())
+
+    def _lambda_max(self, lv: int) -> float:
+        """The largest eigenvalue of D^-1 A, by power iteration from the last estimate's
+        vector. A cut-cell boundary pushes it to 4-5, where a fixed damped Jacobi with w = 0.6
+        amplifies the high modes it should remove: CG took 75-300 iterations instead of 8."""
+        v = self._power.get(lv)
+        if v is None:
+            v = np.random.default_rng(lv).normal(size=self.A[lv].shape[0])
+        lam = 1.0
+        A, dinv = self.A[lv], self.dinv[lv]
+        for _ in range(POWER_ITERS):
+            v = dinv * (A @ v)
+            lam = float(np.linalg.norm(v))
+            v /= lam
+        self._power[lv] = v
+        return lam
+
+    def _smooth(self, lv: int, b: np.ndarray, x: np.ndarray | None) -> np.ndarray:
+        """SWEEPS steps of Chebyshev-accelerated Jacobi on [lambda_max / CHEB_RATIO, 1.1
+        lambda_max]; the same polynomial before and after, so the cycle stays symmetric."""
+        A, dinv = self.A[lv], self.dinv[lv]
+        hi = 1.1 * self.lam[lv]
+        lo = self.lam[lv] / CHEB_RATIO
+        theta, delta = (hi + lo) / 2, (hi - lo) / 2
+        sigma = theta / delta
+        rho = 1 / sigma
+        if x is None:
+            r = dinv * b
+            x = np.zeros_like(b)
+        else:
+            r = dinv * (b - A @ x)
+        d = r / theta
+        for k in range(SWEEPS):
+            x = x + d
+            if k == SWEEPS - 1:
+                break
+            r = r - dinv * (A @ d)
+            rho1 = 1 / (2 * sigma - rho)
+            d = rho1 * rho * d + 2 * rho1 / delta * r
+            rho = rho1
+        return x
 
     def vcycle(self, lv: int, b: np.ndarray) -> np.ndarray:
         if lv == len(self.A) - 1:
             return self.coarse.solve(b)
-        A, dinv, w = self.A[lv], self.dinv[lv], JACOBI_W
-        x = w * dinv * b          # the first pre-sweep from x = 0
-        for _ in range(SWEEPS - 1):
-            x += w * dinv * (b - A @ x)
-        r = b - A @ x
+        x = self._smooth(lv, b, None)
+        r = b - self.A[lv] @ x
         x += self.P[lv] @ self.vcycle(lv + 1, self.P[lv].T @ r)
-        for _ in range(SWEEPS):
-            x += w * dinv * (b - A @ x)
-        return x
+        return self._smooth(lv, b, x)
 
     def solve(self, b: np.ndarray, x0: np.ndarray | None = None, tol: float = 1e-6,
               maxit: int = 200) -> tuple[np.ndarray, int]:

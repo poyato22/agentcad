@@ -28,6 +28,11 @@ FINAL_SMOOTH = 10
 SEAM_SMOOTH = 25          # extra fairing iterations in the band around the cut planes
 SEAM_BAND = 1.5           # voxels
 STL_TOL, STL_ANG = 0.05, 0.3
+FINE_SIGMA = 0.7          # voxels: the crisp field regains a sub-voxel surface
+BRIDGE_SIGMA = 1.0        # the Gaussian plus the element-to-node averaging, as one Gaussian
+FINE_SMOOTH = 30
+FINE_EDGE_VOXELS = 1.6
+FINE_MAX_TRIS = 40_000
 
 
 class TopoptError(Exception):
@@ -106,6 +111,10 @@ def tributary_weights(pts: np.ndarray, tris: np.ndarray, h: float) -> np.ndarray
 
 # ---- the problem
 
+def _box_label(box: list) -> str:
+    return "box[" + ",".join(f"{c:g}" for c in box) + "]"
+
+
 def _region_mask(r: dict, centres: np.ndarray, grid: vx.Grid, job: Path, shape, bbox,
                  spec: dict, tol: float) -> np.ndarray:
     k = r["kind"]
@@ -146,6 +155,7 @@ def build_problem(spec: dict, job: Path, shape) -> tuple[simp.Problem, vx.Grid, 
     for r in spec.get("keep_out") or []:
         keep_out |= _region_mask(r, centres, grid, job, shape, bbox, spec, tol)
     keep_out &= space
+    keep_in &= space
     nodes = grid.nodes()
     nn = len(nodes)
     # nodes of at least one design-space element (BC nodes must carry material)
@@ -157,7 +167,21 @@ def build_problem(spec: dict, job: Path, shape) -> tuple[simp.Problem, vx.Grid, 
     skin = max(0.75 * h, 1e-6)
     bc: dict = {"fixtures": [], "loads": []}
     fixed = np.zeros((nn, 3), bool)
+
+    def in_box(pts: np.ndarray, box: list) -> np.ndarray:
+        b = np.asarray(box, float)
+        return ((pts >= b[:3] - 1e-9) & (pts <= b[3:] + 1e-9)).all(1)
+
     for fx in spec["fixtures"]:
+        if fx.get("box"):
+            # a held box: its nodes on material; the elements in it stay solid
+            sel = on_space & in_box(nodes, fx["box"])
+            if not sel.any():
+                raise TopoptError(f"fixture box {fx['box']} holds no element at {h:g} mm")
+            fixed[sel] = True
+            keep_in |= space & ~keep_out & in_box(centres, fx["box"])
+            bc["fixtures"].append({"face": _box_label(fx["box"]), "box": fx["box"]})
+            continue
         tri = face_tris(resolve_faces(shape, fx["face"], bbox, spec.get("face_list"),
                                       spec.get("face_tags")), tol)
         fd = vx.FaceDistance(tri, max_edge=h)
@@ -172,6 +196,18 @@ def build_problem(spec: dict, job: Path, shape) -> tuple[simp.Problem, vx.Grid, 
         f = np.zeros(3 * nn)
         rows = []
         for ld in case["loads"]:
+            if ld.get("box"):
+                sel = np.flatnonzero(on_space & in_box(nodes, ld["box"]) & ~fixed.any(1))
+                if len(sel) == 0:
+                    raise TopoptError(f"load box {ld['box']} holds no free element at {h:g} mm")
+                d = np.asarray(ld["direction"], float)
+                d = d / np.linalg.norm(d)
+                for a in range(3):
+                    f[3 * sel + a] += ld["newtons"] * d[a] / len(sel)
+                keep_in |= space & ~keep_out & in_box(centres, ld["box"])
+                rows.append({"face": _box_label(ld["box"]), "newtons": ld["newtons"],
+                             "direction": d.tolist(), "box": ld["box"]})
+                continue
             tri = face_tris(resolve_faces(shape, ld["face"], bbox, spec.get("face_list"),
                                           spec.get("face_tags")), tol)
             fd = vx.FaceDistance(tri, max_edge=h)
@@ -320,17 +356,46 @@ def run(job: Path, progress=None) -> dict:
                         filter_radius=float(spec["filter_radius"]), max_iter=max_iter,
                         mirror_axes=tuple(spec.get("mirror_axes") or ()),
                         extrusion_axis=spec.get("extrusion_axis"),
-                        overhang_dir=spec.get("overhang_dir"))
+                        overhang_dir=spec.get("overhang_dir"),
+                        crisp=bool(spec.get("crisp")))
     t = time.perf_counter()
+
+    def save_checkpoint(state_: dict) -> None:
+        tmp = job / "checkpoint.tmp.npz"
+        np.savez(tmp, **state_)
+        os.replace(tmp, job / "checkpoint.npz")
+
+    resume = None
+    if (job / "checkpoint.npz").exists():
+        try:
+            with np.load(job / "checkpoint.npz") as c:
+                resume = {"x": c["x"], "it": int(c["it"]), "stage": int(c["stage"])}
+        except (OSError, ValueError, KeyError):
+            resume = None
     try:
-        res = simp.optimize(p, opts, on_iter=on_iter)
+        res = simp.optimize(p, opts, on_iter=on_iter, resume=resume, checkpoint=save_checkpoint)
     except simp.InfeasibleProblem as e:
         raise TopoptError(str(e)) from None
     times["optimize"] = time.perf_counter() - t
     np.save(job / "density.npy", res.x)
     prog(phase="geometry", it=res.iters, max_iter=max_iter, preview=state["preview"], pct=82.0)
     t = time.perf_counter()
-    F = geo.nodal_field(res.x, p.n, p.void)
+    fine = spec.get("surface") == "fine"
+    # one printed body: a mount left floating is joined back along the densest path
+    xs, level = res.x, 0.5
+    if spec.get("crisp"):
+        xs, level = geo.volume_preserving(xs, p.space, opts.volume_fraction)
+    xs = geo.thicken_thin(xs, p.n, p.space & ~p.keep_out) if fine else xs
+    xs, bridged = geo.bridge_islands(xs, p.n, p.space & ~p.keep_out, p.keep_in,
+                                     sigma=BRIDGE_SIGMA if fine else 0.0)
+    F = geo.nodal_field(xs, p.n, p.void, grow_from=p.keep_in if fine else None)
+    if fine:
+        # smoothing must not push a strut through a wall it hugs: the exact boolean would then
+        # slice it lengthwise and leave it ending in air. Nodes with no design-space element
+        # stay void, so the surface stays inside and the booleans only trim
+        walls = geo.nodal_field(np.ones_like(xs), p.n, p.void, grow_from=p.keep_in) == 0.0
+        F = geo.smooth_field(F, FINE_SIGMA)
+        F[walls] = 0.0
     F, filled = geo.disambiguate(F)
     V, T = geo.surface_nets(F, p.h, grid.origin - p.h)
     if len(T) == 0:
@@ -351,8 +416,14 @@ def run(job: Path, progress=None) -> dict:
     # stair-steps would leave a saw-tooth outline on the exact faces; fair a band around them
     seam = vx.FaceDistance(vx.tris_of(space_solid(spec, shape), max(0.02, 0.05 * p.h)),
                            max_edge=p.h)
+    if fine:
+        # the triangle budget follows the surface: edges of ~1.6 voxels on a strut, however
+        # much strut there is
+        area = sum(geo.mesh_area(c[0], c[1]) for c in bodies)
+        target = int(np.clip(area / (0.433 * (FINE_EDGE_VOXELS * p.h) ** 2),
+                             target, FINE_MAX_TRIS))
     for Vc, Tc, _vol in bodies:
-        Vc = geo.taubin(Vc, Tc, FINAL_SMOOTH)
+        Vc = geo.taubin(Vc, Tc, FINE_SMOOTH if fine else FINAL_SMOOTH)
         band = seam(Vc, cutoff=SEAM_BAND * p.h) <= SEAM_BAND * p.h
         if band.any():
             Vc = geo.taubin(Vc, Tc, SEAM_SMOOTH, mask=band)
@@ -408,6 +479,8 @@ def run(job: Path, progress=None) -> dict:
         "history": [{k: r[k] for k in ("it", "c", "vf", "ch", "cg")} for r in res.history],
         "evolution": list(state["evo"]),
         "mesh_raw": raw, "mesh": dec, "ambiguous_cells_filled": filled,
+        "bridged_islands": bridged, "crisp": bool(spec.get("crisp")), "iso_level": level,
+        "surface": spec.get("surface"),
         "cavities_filled": cavities, "specks_dropped": len(specks),
         "faces": len(part.faces()), "volume_mm3": float(part.volume),
         "space_volume_mm3": space_vol,

@@ -18,6 +18,7 @@ from . import fe, filters
 CG_FALLBACK_ITERS = 80     # a V-cycle this slow cannot see thin members: drop to 2 levels
 REFACTOR_EVERY = 3
 MIN_ITERS = 15
+CHECKPOINT_EVERY = 5
 
 
 @dataclass
@@ -45,6 +46,11 @@ class Problem:
     def void(self) -> np.ndarray:
         return ~self.space | self.keep_out
 
+    @property
+    def solver_elements(self) -> np.ndarray:
+        """The elements the FE model holds: a void one adds nothing but cost."""
+        return self.space & ~self.keep_out
+
 
 @dataclass
 class Options:
@@ -60,6 +66,8 @@ class Options:
     mirror_axes: tuple[int, ...] = ()
     extrusion_axis: int | None = None
     overhang_dir: str | None = None     # "z", "-z", "x", ...
+    crisp: bool = False                 # Heaviside projection with continuation
+    beta_steps: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0)
 
 
 @dataclass
@@ -92,7 +100,7 @@ def chain_for(p: Problem, o: Options) -> filters.Chain:
 
 
 def _solver(p: Problem, levels: int) -> fe.MGCG:
-    return fe.MGCG(p.n, p.h, p.nu, p.fixed_dofs, levels=levels)
+    return fe.MGCG(p.n, p.h, p.nu, p.fixed_dofs, levels=levels, elements=p.solver_elements)
 
 
 def _solve_all(mg: fe.MGCG, p: Problem, U: list, tol: float) -> tuple[list, int]:
@@ -107,7 +115,11 @@ def _solve_all(mg: fe.MGCG, p: Problem, U: list, tol: float) -> tuple[list, int]
 
 
 def optimize(p: Problem, o: Options = Options(),
-             on_iter: Callable[[int, dict, np.ndarray], None] | None = None) -> DensityResult:
+             on_iter: Callable[[int, dict, np.ndarray], None] | None = None,
+             resume: dict | None = None,
+             checkpoint: Callable[[dict], None] | None = None) -> DensityResult:
+    """resume: a dict `checkpoint` was given earlier ({x, it, stage}): carry on from there.
+    A restart then costs at most CHECKPOINT_EVERY iterations, not the hour already spent."""
     t0 = time.perf_counter()
     ne = p.ne
     active, keep_in, void = p.active, p.keep_in, p.void
@@ -125,6 +137,11 @@ def optimize(p: Problem, o: Options = Options(),
     levels = fe.choose_levels(p.n, 3)
     mg = _solver(p, levels)
     E0, Emin = p.E, p.E * o.emin_rel
+    stages = o.beta_steps if o.crisp else ()
+    if stages:
+        chain.beta = stages[0]
+    stage_len = max(1, o.max_iter // (len(stages) + 1)) if stages else 0
+    stage = 0
     x = np.zeros(ne)
     x[active] = np.clip((target - keep_in.sum()) / active.sum(), 0.01, 1.0)
     x[keep_in] = 1.0
@@ -135,6 +152,13 @@ def optimize(p: Problem, o: Options = Options(),
         xp[void] = 0.0
         return xp
 
+    start_it = 0
+    if resume is not None:
+        x = np.asarray(resume["x"], float).copy()
+        start_it = int(resume["it"])
+        stage = int(resume["stage"])
+        if stages:
+            chain.beta = stages[stage]
     xPhys = physical(x)
     U: list = [None] * len(p.loads)
     hist: list[dict] = []
@@ -143,7 +167,7 @@ def optimize(p: Problem, o: Options = Options(),
     ke = mg.fine.ke
     cg_ref: int | None = None
     cg_prev = 0
-    for it in range(o.max_iter):
+    for it in range(start_it, max(o.max_iter, start_it + 1)):
         Ee = Emin + xPhys ** o.penal * (E0 - Emin)
         ts = time.perf_counter()
         # a 2-level cycle's coarse LU is the expensive part: refresh it every REFACTOR_EVERY
@@ -166,11 +190,12 @@ def optimize(p: Problem, o: Options = Options(),
         tsolve = time.perf_counter() - ts
         c = 0.0
         dc = np.zeros(ne)
+        el = mg.fine.el
         for (_f, w), u in zip(p.loads, U):
             Ue = u[mg.fine.edof]
-            ce = np.einsum("ij,jk,ik->i", Ue, ke, Ue)
-            c += w * float(Ee @ ce)
-            dc -= w * o.penal * (E0 - Emin) * xPhys ** (o.penal - 1) * ce
+            ce = ((Ue @ ke) * Ue).sum(1)
+            c += w * float(Ee[el] @ ce)
+            dc[el] -= w * o.penal * (E0 - Emin) * xPhys[el] ** (o.penal - 1) * ce
         dc[keep_in | void] = 0.0
         dv = np.ones(ne)
         dv[keep_in | void] = 0.0
@@ -181,10 +206,12 @@ def optimize(p: Problem, o: Options = Options(),
         l1, l2 = 0.0, 1e9
         xold = x.copy()
         xn = x
+        # a sharp projection turns a large design step into a jump in xPhys
+        move = o.move if chain.beta < 4 else o.move / 2
         while (l2 - l1) / (l1 + l2 + 1e-30) > 1e-4:
             lm = 0.5 * (l1 + l2)
             xn = np.clip(x * np.sqrt(np.maximum(-dc, 0) / (dv * lm)),
-                         np.maximum(0.0, x - o.move), np.minimum(1.0, x + o.move))
+                         np.maximum(0.0, x - move), np.minimum(1.0, x + move))
             xn[keep_in], xn[void] = 1.0, 0.0
             if physical(xn).sum() > target:
                 l1 = lm
@@ -198,10 +225,21 @@ def optimize(p: Problem, o: Options = Options(),
         hist.append(row)
         if on_iter is not None:
             on_iter(it, row, xPhys)
+        if checkpoint is not None and (it + 1) % CHECKPOINT_EVERY == 0:
+            checkpoint({"x": x, "it": it + 1, "stage": stage})
         cs = [r["c"] for r in hist[-6:]]
         dcrel = (max(abs(cs[q + 1] - cs[q]) for q in range(len(cs) - 1)) / c
                  if len(cs) > 5 else 1.0)
-        if it + 1 >= MIN_ITERS and (ch < o.xtol or dcrel < o.ctol):
+        settled = it + 1 >= MIN_ITERS and (ch < o.xtol or dcrel < o.ctol)
+        if stages and stage + 1 < len(stages):
+            # continuation: the next sharpness when this one has settled or used its share
+            if settled or (it + 1) >= (stage + 1) * stage_len:
+                stage += 1
+                chain.beta = stages[stage]
+                xPhys = physical(x)
+                hist[-1]["beta"] = chain.beta
+            continue
+        if settled and (not stages or (it + 1) >= (stage + 1) * stage_len):
             converged = True
             break
     # crisp check: threshold at 0.5 and re-solve with the same voxel model
