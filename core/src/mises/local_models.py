@@ -343,8 +343,8 @@ async def start_ollama(base_url: str, home: Path, *, wait_s: float = START_WAIT_
         except OSError as e:
             return {"ok": False, "error": "start_failed",
                     "hint": f"could not run {binary} serve: {type(e).__name__}"}
-    note = ("Started `ollama serve` in the background; it keeps running after Mises quits "
-            "(stop it with `pkill ollama`). Log: logs/ollama.log in the Mises data folder")
+    note = ("Started `ollama serve` in the background; it keeps running after AgentCAD quits "
+            "(stop it with `pkill ollama`). Log: logs/ollama.log in the AgentCAD data folder")
     deadline = time.monotonic() + wait_s
     while True:
         if await is_running(base_url):

@@ -447,7 +447,7 @@ class Runtime:
         done: list[str] = []
         for rid in sorted(ids, key=depth, reverse=True):
             kids = [k for k in done if self.store.get_run(k).parent_id == rid]
-            extra = (f"Mises continued your sub-agents {', '.join(kids)} too; collect them with "
+            extra = (f"AgentCAD continued your sub-agents {', '.join(kids)} too; collect them with "
                      "agent_wait and agent_result." if kids else None)
             try:
                 await self.continue_run(rid, self.RESTART_CAUSE, auto=True, extra=extra)
@@ -640,9 +640,9 @@ class Runtime:
             await self._mcp_autostart()
         if self.mcp_endpoint is None:
             raise MisesError(ErrorCode.DENIED,
-                             "Claude Code runs need the Mises server: it is how Claude Code "
-                             "reaches the Mises tools",
-                             hint="open the Mises app or run `mises serve`, then retry")
+                             "Claude Code runs need the AgentCAD server: it is how Claude Code "
+                             "reaches the AgentCAD tools",
+                             hint="open the AgentCAD app or run `mises serve`, then retry")
         return self.mcp_endpoint
 
     # ---- the user's Claude Code: status, sign-in
@@ -1668,7 +1668,7 @@ class Runtime:
             tried.append({"cause": cause, "action": action})
             self._recovery_note(rid, cause, action, len(tried))
             done = self._turn_actions(rid, turn_from)
-            note = (f"Mises note: your previous session stopped ({cause}) and Mises {action}. "
+            note = (f"AgentCAD note: your previous session stopped ({cause}) and AgentCAD {action}. "
                     "Carry on with the user's request from where you left off; check what "
                     "is already built before you redo anything."
                     + (" Already done in this turn (do not repeat them): " + "; ".join(done)
@@ -1819,7 +1819,7 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         if run.status == "running" and run_id not in self._external:
-            raise MisesError(ErrorCode.INVALID_INPUT, "run is driven by another Mises process",
+            raise MisesError(ErrorCode.INVALID_INPUT, "run is driven by another AgentCAD process",
                              hint="continue it there, or cancel it first")
         if not run.session_ref:
             raise MisesError(ErrorCode.INVALID_INPUT,
@@ -1935,7 +1935,7 @@ class Runtime:
             raise MisesError(ErrorCode.NOT_FOUND, f"unknown run: {run_id}") from None
         if not run.external:
             raise MisesError(ErrorCode.INVALID_INPUT, "not an external run",
-                             hint="use send() for runs Mises drives itself")
+                             hint="use send() for runs AgentCAD drives itself")
         if run.status == "running" and run_id in self._external:
             return False
         self.store.update_run(run_id, status="running", owner_pid=os.getpid())
@@ -2351,7 +2351,7 @@ class Runtime:
             stop = {"done": "end_turn", "cancelled": "cancelled", "failed": "error"}.get(status)
             if stop is None:
                 raise MisesError(ErrorCode.NOT_FOUND, f"run {run_id} is not driven here",
-                                 hint="it is running in another Mises process")
+                                 hint="it is running in another AgentCAD process")
             # its answer is the last turn's reply as stored (agent_wait releases a child's
             # session before agent_result reads it)
             text = ((self._released_text.get(run_id) or self._stored_reply(run_id))
@@ -2547,7 +2547,7 @@ class Runtime:
     @staticmethod
     def continuation_text(cause: str) -> str:
         """The internal message that carries a run on. Plain words (no safety-filter bait)."""
-        return (f"Mises note: your last turn stopped ({cause.rstrip('.')}). Carry on with the "
+        return (f"AgentCAD note: your last turn stopped ({cause.rstrip('.')}). Carry on with the "
                 "user's request from where you left off. Check what is already built before "
                 "you redo anything. Any approval you were waiting for was cancelled: ask again "
                 "only if the action is still needed.")
@@ -2591,7 +2591,7 @@ class Runtime:
         if self.run_busy(run_id):
             return "it is still working"
         if self._auto_continues(run_id) >= self.AUTO_CONTINUES:
-            return f"Mises already continued it {self.AUTO_CONTINUES} times for this message"
+            return f"AgentCAD already continued it {self.AUTO_CONTINUES} times for this message"
         if budget_mod.usd_exhausted(self.store, run_id) is not None:
             return "its budget for this message is spent"
         return None
@@ -2599,7 +2599,7 @@ class Runtime:
     async def continue_run(self, run_id: str, cause: str, *, auto: bool = False,
                            extra: str | None = None) -> dict:
         """Carry a stopped run on with an internal continuation (never the user's message
-        again, never a user bubble): a `continuation` decision step ("Mises continued after:
+        again, never a user bubble): a `continuation` decision step ("AgentCAD continued after:
         <cause>") and a turn that is not a new user turn, so budgets keep their window. A
         Claude Code run resumes its session (else a fresh one with a recap). `auto`: Mises
         decided it by itself, bounded by auto_continue_blocked; the app's Continue is not."""
@@ -2617,7 +2617,7 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         text = self.continuation_text(cause) + (f"\n{extra}" if extra else "")
-        body = {"cause": cause, "auto": auto, "text": f"Mises continued after: {cause}"}
+        body = {"cause": cause, "auto": auto, "text": f"AgentCAD continued after: {cause}"}
         self.note_hold.discard(run_id)
         self._sending.add(run_id)
         try:
@@ -2672,7 +2672,7 @@ class Runtime:
             self._stalled.add(rid)
             newly.append(rid)
             # P11 F9: no progress: the model's next Mises tool result carries a strategy note
-            note = (f"Mises note: this turn has made no progress for {round(idle)} s. If a "
+            note = (f"AgentCAD note: this turn has made no progress for {round(idle)} s. If a "
                     "call keeps failing or waiting, switch strategy: try a different approach "
                     "or tool, simplify, or ask the user one specific question.")
             self.tool_notes.setdefault(rid, []).append(note)

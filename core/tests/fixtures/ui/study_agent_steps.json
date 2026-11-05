@@ -1774,7 +1774,7 @@
           "solver": {
             "fidelity": "low fidelity",
             "method": "BGK + Smagorinsky LES, half-way bounce-back, momentum exchange",
-            "name": "Mises lattice-Boltzmann",
+            "name": "AgentCAD lattice-Boltzmann",
             "version": "D3Q19 1.0"
           },
           "stale": null,
@@ -1798,7 +1798,7 @@
         "handles": [],
         "ok": true,
         "step_kind": "sim_run",
-        "summary": "GUIDE ONLY - low fidelity (preview) \u00b7 \u00b140% (validated), Mises lattice-Boltzmann, lattice 8 cells across, Re_eff 8e+03: cube Cd 1.147, Cl -0.000, drag 0.0281 N, lift -1.34e-07 N at Re 1.35e+04; drag = resolved pressure drag + a flat-plate skin-friction estimate (Cd 0.034); convergence band 6.4% (unsteadiness, not accuracy); warnings: LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04); drag includes a flat-plate skin-friction estimate (Cd 0.034) added to the resolved pressure drag; the lattice cannot resolve the boundary layer; the drag did not settle within the run (iterations); raise iterations or timeout_s; tunnel blockage 11.1% inflates drag; raise domain_multiplier",
+        "summary": "GUIDE ONLY - low fidelity (preview) \u00b7 \u00b140% (validated), AgentCAD lattice-Boltzmann, lattice 8 cells across, Re_eff 8e+03: cube Cd 1.147, Cl -0.000, drag 0.0281 N, lift -1.34e-07 N at Re 1.35e+04; drag = resolved pressure drag + a flat-plate skin-friction estimate (Cd 0.034); convergence band 6.4% (unsteadiness, not accuracy); warnings: LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04); drag includes a flat-plate skin-friction estimate (Cd 0.034) added to the resolved pressure drag; the lattice cannot resolve the boundary layer; the drag did not settle within the run (iterations); raise iterations or timeout_s; tunnel blockage 11.1% inflates drag; raise domain_multiplier",
         "warnings": [
           "LOW FIDELITY (PREVIEW, \u00b140% validated model error at refinement 1): lattice of 8 cells across the body at an effective Reynolds number of 8e+03 (real 1.35e+04)",
           "drag includes a flat-plate skin-friction estimate (Cd 0.034) added to the resolved pressure drag; the lattice cannot resolve the boundary layer",

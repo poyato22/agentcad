@@ -40,7 +40,7 @@ async def _solve(job: FemJob, s, size, d, label, lo, hi):
         masses = point_mass_cards(mesh, job.metrics, s.point_masses, setup)
     frd, dat = await solve_deck(
         job, d, lambda p: write_deck(p, mesh, job.material, setup.cards if setup else [],
-                                     frequency_step(setup, s.n_modes), "Mises modal study"),
+                                     frequency_step(setup, s.n_modes), "AgentCAD modal study"),
         label, (lo + hi) / 2, nodes=len(mesh.nodes), elements=len(mesh.tets))
     rows = await asyncio.to_thread(parse_dat_table, dat, EIGEN_HEADER, 5)
     if not rows:

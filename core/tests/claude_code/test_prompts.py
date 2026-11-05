@@ -7,7 +7,7 @@ from mises.claude_code.prompts import agents_json, context_block, mises_rules_md
 
 def test_rules_reuse_the_harness_rules_for_a_tool_only_agent():
     md = mises_rules_md()
-    for heading in ("# Mises harness rules", "## Evidence over assertion", "## Names",
+    for heading in ("# AgentCAD harness rules", "## Evidence over assertion", "## Names",
                     "## Untrusted text", "## Reading error results", "## Irreversible actions"):
         assert heading in md
     # the same rules text, apart from the pointer to a run-context tail it does not have
@@ -19,7 +19,7 @@ def test_rules_reuse_the_harness_rules_for_a_tool_only_agent():
 
 def test_rules_can_carry_the_run_role():
     md = mises_rules_md(role="# Role: designer\n\nYou carry out the request.")
-    assert md.index("# Mises harness rules") < md.index("# Role: designer")
+    assert md.index("# AgentCAD harness rules") < md.index("# Role: designer")
 
 
 def test_rules_list_every_agent_and_both_delegation_paths():
@@ -49,7 +49,7 @@ def test_hidden_agents_are_not_in_the_delegation_line():
 
 def test_subagent_prompt_has_no_delegation_line():
     md = mises_rules_md(delegating=False)
-    assert "agent_spawn" not in md and "You may delegate to these Mises agents" not in md
+    assert "agent_spawn" not in md and "You may delegate to these AgentCAD agents" not in md
 
 
 def test_agents_json_lists_mises_tools_explicitly():

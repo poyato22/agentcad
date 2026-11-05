@@ -311,7 +311,7 @@ numbers, not only the form:
    (free-standing builds), `dyn_rom_sweep` (no collisions through the range of motion),
    `dyn_to_fem` on the most loaded links (it runs the CalculiX studies and returns each link's
    safety factor; it runs in the background, so `job_wait` its job and read the results before
-   you claim done) and `assembly_health` when this Mises has it. Give every moving joint an
+   you claim done) and `assembly_health` when this AgentCAD has it. Give every moving joint an
    actuator: a joint with none cannot be judged and does not pass. Revise and re-run until they
    pass: a failing joint gets a stronger actuator, a reduction or a shorter lever; a failing link
    a thicker section or a stiffer material; a tipping robot a wider stance or a lower CoM.

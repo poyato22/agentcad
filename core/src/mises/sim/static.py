@@ -81,7 +81,7 @@ async def solve_cases(job: FemJob, size: float, d: Path, label: str, lo: float, 
             cards, step = setup.cards + model.cards, nlm.nonlinear_step(setup, nonlinear, model)
         frd, _ = await solve_deck(
             job, cd, lambda p, c=cards, st=step: write_deck(
-                p, mesh, job.material, c, st, "Mises static study", plastic,
+                p, mesh, job.material, c, st, "AgentCAD static study", plastic,
                 model.moved if model is not None else None),
             label, lo + span * (i + 0.5), allow_partial=model is not None,
             nodes=len(mesh.nodes), elements=len(mesh.tets), case=case.name)

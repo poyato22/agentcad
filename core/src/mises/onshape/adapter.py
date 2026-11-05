@@ -182,7 +182,7 @@ class OnshapeAdapter:
                 return BranchInfo(DocRef(did=ref.did, wvm="w", wvmid=ws["id"], eid=ref.eid),
                                   created=False, microversion=ws.get("microversion"))
         base = base_microversion or await self.microversion(ref, run_id)
-        body = {"name": name, "description": "Mises agent branch", "microversionId": base,
+        body = {"name": name, "description": "AgentCAD agent branch", "microversionId": base,
                 "fromHistory": True}
         if ref.wvm == "v":
             body["versionId"] = ref.wvmid

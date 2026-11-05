@@ -200,7 +200,7 @@ def mount_path(case: Path, job_root: Path | None = None) -> Path:
     real = case.resolve()
     if ":" in str(real) or "," in str(real):
         raise SimError("bad_setup", "the study folder path contains ':' or ','",
-                       hint="move the Mises home to a plain path")
+                       hint="move the AgentCAD home to a plain path")
     return real
 
 

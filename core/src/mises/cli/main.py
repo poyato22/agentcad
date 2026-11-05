@@ -12,7 +12,7 @@ from ..providers.registry import DEFAULT_MODEL, VENDORS
 
 
 def _parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="mises", description="Mises: an AI CAD agent harness")
+    ap = argparse.ArgumentParser(prog="mises", description="AgentCAD: an AI CAD agent harness")
     sub = ap.add_subparsers(dest="cmd", metavar="COMMAND")
 
     p = sub.add_parser("chat", help="interactive chat with a CAD agent")

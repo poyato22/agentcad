@@ -42,11 +42,11 @@ async def test_continue_sends_an_internal_message_not_the_users_again(rt, claude
         await rt.continue_run(rid, "Claude Code exited (code 3)")
         res = await asyncio.wait_for(rt.wait(rid), 30)
     assert res.stop_reason == "end_turn", res.error
-    assert res.final_text.startswith("echo: Mises note: your last turn stopped (Claude Code exited")
+    assert res.final_text.startswith("echo: AgentCAD note: your last turn stopped (Claude Code exited")
     assert _users(rt, rid) == ["flaky:exit:9"]                  # no user bubble for it
     assert "flaky:exit:9" not in _sent(rt, rid)[-1]
     assert _continuations(rt, rid) == [{"cause": "Claude Code exited (code 3)", "auto": False,
-                                        "text": "Mises continued after: Claude Code exited "
+                                        "text": "AgentCAD continued after: Claude Code exited "
                                                 "(code 3)"}]
     assert rt.store.get_run(rid).turn_started_at == turn0       # budget window not reset
     assert rt.store.get_run(rid).status == "done"

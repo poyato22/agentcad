@@ -41,7 +41,7 @@ def server_url_and_token() -> tuple[str, str]:
         info = json.loads(path.read_text())
         return f"http://127.0.0.1:{int(info['port'])}/mcp", str(info["token"])
     except (OSError, ValueError, KeyError) as e:
-        raise RuntimeError(f"no running Mises server ({path}: {e})") from None
+        raise RuntimeError(f"no running AgentCAD server ({path}: {e})") from None
 
 
 async def run_stdio_proxy(url: str, token: str, run_id: str) -> None:
@@ -66,7 +66,7 @@ async def run_stdio_proxy(url: str, token: str, run_id: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="mises-mcp-stdio",
-                                 description="stdio MCP proxy to the local Mises server")
+                                 description="stdio MCP proxy to the local AgentCAD server")
     ap.add_argument("--run", required=True, help="run id to bind tool calls to")
     args = ap.parse_args(argv)
     try:

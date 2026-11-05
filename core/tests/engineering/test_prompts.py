@@ -15,7 +15,7 @@ def test_every_builtin_prompt_carries_response_rules():
     for name in builtins:
         p = build_system_prompt(defs[name], POLICY, ["mirror_measure"])
         assert marker in p, f"{name} prompt missing RESPONSE_RULES"
-        assert "Mises markup" in p and "[[part:" in p
+        assert "AgentCAD markup" in p and "[[part:" in p
 
 
 def test_engineer_is_a_builtin_offered_every_tool():

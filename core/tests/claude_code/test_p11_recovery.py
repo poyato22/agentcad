@@ -44,7 +44,7 @@ async def test_a_run_level_failure_recovers_with_a_visible_note(rt, claude_bin, 
         rid, res = await _run(rt, f"flaky:{mode}:{n}")
     assert res.stop_reason == "end_turn", res.error
     assert res.final_text.startswith(f"recovered after {n}")
-    assert "Mises note: your previous session stopped" in res.final_text   # told to carry on
+    assert "AgentCAD note: your previous session stopped" in res.final_text   # told to carry on
     notes = _notes(rt, rid)
     assert [x["attempt"] for x in notes] == list(range(1, n + 1))
     assert notes[0]["text"].startswith("Recovered: ") and notes[0]["of"] == 3

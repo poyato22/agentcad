@@ -989,7 +989,7 @@ def _drawing(part_dir: Path, args: dict, nonce: str) -> None:
         (tb_x + 3, margin + 14.5, f"MATERIAL: {material}", 3.2, "start", ""),
         (tb_x + 62, margin + 14.5, f"DATE: {date}", 3.2, "start", ""),
         (tb_x + 3, margin + 4.0, f"SCALE {_scale_text(scale)}   UNITS mm", 3.0, "start", ""),
-        (tb_x + 62, margin + 4.0, "Mises", 3.6, "start", ""),
+        (tb_x + 62, margin + 4.0, "AgentCAD", 3.6, "start", ""),
         (margin + 3, margin + _TITLE_H - 6, "HOLES" if notes else "NO HOLES", 3.2, "start", ""),
         (margin + 3, margin + 3, f"OVERALL {_fmt(w)} x {_fmt(d)} x {_fmt(h)} mm", 3.0, "start", ""),
     ]
@@ -1306,7 +1306,7 @@ def _assembly_glb(path: Path, items) -> None:
         meshes.append({"primitives": [{"attributes": {"POSITION": pos_acc}, "indices": idx_acc}]})
         nodes.append({"name": name, "mesh": len(meshes) - 1, "matrix": _col_major(matrix)})
 
-    gltf = {"asset": {"version": "2.0", "generator": "Mises assembly"},
+    gltf = {"asset": {"version": "2.0", "generator": "AgentCAD assembly"},
             "scene": 0, "scenes": [{"nodes": list(range(len(nodes)))}],
             "nodes": nodes, "meshes": meshes, "accessors": accessors, "bufferViews": views,
             "buffers": [{"byteLength": len(buf)}]}

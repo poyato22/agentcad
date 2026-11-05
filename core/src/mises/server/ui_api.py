@@ -50,7 +50,7 @@ BEST = {
                                  "loop)",
 }
 MOONSHOT_NOTES = {
-    "moonshot/kimi-k3.1-pro": "Strong coder, untested on CAD in Mises; thinking always on",
+    "moonshot/kimi-k3.1-pro": "Strong coder, untested on CAD in AgentCAD; thinking always on",
     "moonshot/kimi-k3.1-pro-highspeed": "Kimi K3.1 Pro, 2-3x faster, costs more",
     "moonshot/kimi-k3": "Kimi K3: 1M-token context, thinking always on",
 }

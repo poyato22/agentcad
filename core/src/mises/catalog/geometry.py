@@ -39,7 +39,7 @@ _DENSITY = {"fastener": STEEL_G_CM3, "bearing": STEEL_G_CM3}
 _FILL = {"bearing": 0.7}
 META = "part.json"
 
-_HEADER = '''# Mises catalog part from item {item_id}
+_HEADER = '''# AgentCAD catalog part from item {item_id}
 # {geometry_note}
 # Edit VARS to resize; the envelope keeps its mounting holes.
 '''

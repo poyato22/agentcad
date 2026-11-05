@@ -196,7 +196,7 @@ def agent_sandbox_profile(home: Path, workdir: Path) -> str:
     if any(_unsafe(str(x)) for x in (home, workdir, h, w)):
         raise ValueError("path contains characters unsafe for a sandbox profile")
     if not w.is_relative_to(h) or w == h:
-        raise ValueError("the agent workdir must be inside the Mises home")
+        raise ValueError("the agent workdir must be inside the AgentCAD home")
     lookups = " ".join(f'(literal "{d}")' for d in [h, *w.parents] if d.is_relative_to(h))
     return (
         "(version 1)\n(allow default)\n"
@@ -233,7 +233,7 @@ def claude_sandbox_profile(home: Path, workdir: Path, claude_config_dir: Path,
         if _unsafe(str(path)) or _unsafe(str(r)):
             raise ValueError("path contains characters unsafe for a sandbox profile")
         if h.is_relative_to(r) or r.is_relative_to(h):
-            raise ValueError(f"{r} overlaps the Mises home; refusing to allow it")
+            raise ValueError(f"{r} overlaps the AgentCAD home; refusing to allow it")
         extra.append(f'(allow {rule} (subpath "{r}"))\n')
     return base + "".join(extra)
 

@@ -698,7 +698,7 @@ async def rocket_flight(ctx: ToolContext, args: FlightArgs) -> ToolOutput:
 
 class MotorArgs(BaseModel):
     action: Literal["list", "get", "fetch", "save"] = Field(
-        "list", description="list: every curve Mises has; get: one curve's numbers; fetch: "
+        "list", description="list: every curve AgentCAD has; get: one curve's numbers; fetch: "
         "download a curve from ThrustCurve.org (or its OpenRocket mirror) into your library; "
         "save: keep a RASP .eng text you opened (e.g. on thrustcurve.org)")
     name: str | None = Field(None, max_length=40, description="designation, e.g. 'F39T', "
@@ -757,7 +757,7 @@ async def _get(ctx: ToolContext, url: str, types=("application/json", "text/plai
         _charge(ctx, 1)
     http = (ctx.services or {}).get("browser_http") or (ctx.services or {}).get(
         "catalog_http") or {}
-    page = await fetch(url, types=types, user_agent="Mises-rocketry/0.1",
+    page = await fetch(url, types=types, user_agent="AgentCAD-rocketry/0.1",
                        accept="application/json,text/plain;q=0.9",
                        redirect_ok=lambda host: host.lower() in FETCH_HOSTS, **http)
     return page.text
@@ -821,7 +821,7 @@ async def _fetch_mirror(ctx: ToolContext, name: str, mfr: str | None) -> tuple[s
 
 
 @tool("rocket_motor", safety=SafetyClass.READ, open_world=True, timeout_s=60,
-      description="Rocket motor thrust curves (RASP .eng). list: the curves Mises has "
+      description="Rocket motor thrust curves (RASP .eng). list: the curves AgentCAD has "
                   "(bundled public-domain F44W, F52C, F67C, G25W, G40W, plus any you "
                   "fetched); get: one motor's impulse, thrust, burn time, masses, delays; "
                   "fetch: download a curve by designation from ThrustCurve.org (falls back to "

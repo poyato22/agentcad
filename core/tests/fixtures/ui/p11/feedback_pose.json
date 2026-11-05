@@ -43,7 +43,7 @@
    ],
    "pose_check": {
     "agrees": false,
-    "note": "the app drew this instance up to 360 mm from where Mises has it (model_bbox, from the part's geometry and the solved pose): the drawn mesh is out of date, not the model. Answer from model_bbox, and rebuild the part to refresh what the user sees.",
+    "note": "the app drew this instance up to 360 mm from where AgentCAD has it (model_bbox, from the part's geometry and the solved pose): the drawn mesh is out of date, not the model. Answer from model_bbox, and rebuild the part to refresh what the user sees.",
     "offset_mm": 360.0
    },
    "text": "what is this doing here",

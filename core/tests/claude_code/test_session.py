@@ -82,7 +82,7 @@ async def test_start_passes_exactly_the_documented_flags(rt, claude_bin):
         "--setting-sources=",
         "--append-system-prompt-file", str(wd / "mises-rules.md"),
         "--agents", str(wd / "claude-agents.json"), "--session-id", s.session_id,
-        "--model", "sonnet", "--name", f"Mises {s.run_id}"]
+        "--model", "sonnet", "--name", f"AgentCAD {s.run_id}"]
     srv = mcp["mcpServers"]
     assert list(srv) == ["mises"]
     assert srv["mises"]["command"] == sys.executable
@@ -97,7 +97,7 @@ async def test_start_passes_exactly_the_documented_flags(rt, claude_bin):
     tools = agents["designer"]["tools"]
     assert "mcp__mises__mirror_part_list" in tools and "mcp__mises__orchestrator_run" not in tools
     assert all(t.startswith("mcp__mises__") and "*" not in t for t in tools)
-    assert "Mises harness rules" in (wd / "mises-rules.md").read_text()
+    assert "AgentCAD harness rules" in (wd / "mises-rules.md").read_text()
     # the token file is gone once the session is closed
     assert not (wd / "claude-mcp.json").exists()
     env_keys = set(_log(rt, s.run_id)[0]["env_keys"])
@@ -402,7 +402,7 @@ async def test_mises_server_missing_fails(rt, claude_bin):
 async def test_builtin_tool_use_fails_the_run(rt, claude_bin):
     s, mcp_gone = await _aborted_run(rt, None, "rogue")
     msg = _errors(rt, s.run_id)[0]["message"]
-    assert "'Bash'" in msg and "outside the Mises tools" in msg
+    assert "'Bash'" in msg and "outside the AgentCAD tools" in msg
     assert mcp_gone
 
 

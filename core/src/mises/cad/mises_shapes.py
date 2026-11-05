@@ -1234,7 +1234,7 @@ class Archetype:
     `.hardpoints` {name: (x, y, z)}; `.axes` {name: ((x, y, z), (dx, dy, dz))} joint axes;
     `.envelopes` {name: Solid} the actuator/component volumes the covers must clear;
     `.units` the proportion read (e.g. head heights). `.compound(roles=None)` returns one shape
-    for build() (only the given roles when set). Make each part its own Mises part for real
+    for build() (only the given roles when set). Make each part its own AgentCAD part for real
     builds; `.part(name)` returns one."""
 
     def __init__(self, kind: str, units: dict):

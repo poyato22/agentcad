@@ -325,7 +325,7 @@ async def system_check(runtime, probes: Probes | None = None) -> list[dict]:
     info, auth = await p.claude()
     if not info.path:
         rows.append(_row("claude", "Claude Code CLI", "missing",
-                         detail="the coding agent underneath Mises is not installed",
+                         detail="the coding agent underneath AgentCAD is not installed",
                          fix={"kind": "open_url", "label": "Install the CLI", "url": CLAUDE_URL}))
     elif not auth.signed_in:
         rows.append(_row("claude", "Claude Code CLI", "error", version=info.version, path=info.path,

@@ -82,7 +82,7 @@
   "caveats": [
     "Guide only, LOW FIDELITY: a coarse lattice-Boltzmann (LES) solution on a voxelized part in a periodic tunnel, at a reduced effective Reynolds number.",
     "The boundary layer is not resolved: drag is the resolved pressure drag plus a flat-plate skin-friction estimate; the raw lattice total is reported as cd_lattice_total.",
-    "Validated on a sphere and a flat plate (see the Mises C7 report); expect 10-30% error on other shapes, more on streamlined bodies whose drag is mostly friction."
+    "Validated on a sphere and a flat plate (see the AgentCAD C7 report); expect 10-30% error on other shapes, more on streamlined bodies whose drag is mostly friction."
   ],
   "urls": {
     "record": "/sims/sim_f22720d97fca",
@@ -92,7 +92,7 @@
     "section": "/sims/sim_f22720d97fca/section"
   },
   "solver": {
-    "name": "Mises lattice-Boltzmann",
+    "name": "AgentCAD lattice-Boltzmann",
     "version": "D3Q19 1.0",
     "method": "BGK + Smagorinsky LES, half-way bounce-back, momentum exchange",
     "fidelity": "low fidelity"

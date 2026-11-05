@@ -69,7 +69,7 @@ motors with the target apogee / time window (tune_mass gives the ballast). Re-we
 parts with mass_overrides_g (a raw egg is ~57-60 g; a chute, cord and wadding are not solid \
 plastic). Iterate fins, ballast, motor and chute until the margin is 1-2 cal (never < 1), \
 flutter >= 1.5x max speed, the apogee and time are on target and the descent suits the payload.
-- A curve Mises lacks: `rocket_motor` fetch, or web_open its .eng on thrustcurve.org and save it.
+- A curve AgentCAD lacks: `rocket_motor` fetch, or web_open its .eng on thrustcurve.org and save it.
 - Every rocket report states the static margin (cal), apogee (ft and m), time to apogee, flight \
 time and descent rate against the targets, on the named motor.
 
@@ -103,7 +103,7 @@ user approves the sketch or skips it. `mixed`: your first deliverable is one `co
 - Later, pitch again only for a genuinely open look decision (e.g. the head), at most 2 options.
 
 {engineering}{rocketry}## Tell the user
-- Mises shows a card whenever a part is created, an agent is spawned, or something is added to \
+- AgentCAD shows a card whenever a part is created, an agent is spawned, or something is added to \
 the assembly or the parts list. Still say it in one short line ("Spawned designer: Design motor \
 mount.").
 - Report back in short messages: what is done, what is next, what the user must decide.
@@ -839,7 +839,7 @@ def pose_check(drawn: dict, model: dict) -> dict:
     agrees = off <= max(POSE_TOL_MM, POSE_TOL_SHARE * diag)
     out = {"agrees": agrees, "offset_mm": round(off, 1)}
     if not agrees:
-        out["note"] = (f"the app drew this instance up to {round(off)} mm from where Mises has "
+        out["note"] = (f"the app drew this instance up to {round(off)} mm from where AgentCAD has "
                        "it (model_bbox, from the part's geometry and the solved pose): the "
                        "drawn mesh is out of date, not the model. Answer from model_bbox, and "
                        "rebuild the part to refresh what the user sees.")
@@ -853,7 +853,7 @@ def feedback_message(location: dict, text: str, nonce: str | None = None) -> str
     body = json.dumps({**location, "note": text}, sort_keys=True).replace("<", "\\u003c")
     where = (" In the assembly: `instance` / `instance_id` is the placed copy they clicked and "
              "`world_point` the spot in assembly mm; `model_bbox` is that instance's world box "
-             "as Mises has it, `drawn_bbox` the box the app drew, `pose_check` whether they "
+             "as AgentCAD has it, `drawn_bbox` the box the app drew, `pose_check` whether they "
              "agree. Check the instance's pose and box before you answer." if
              location.get("instance_id") else
              (" They clicked empty space in the assembly: `world_point` is that spot in assembly "

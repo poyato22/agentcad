@@ -35,7 +35,7 @@ class SaveArgs(cal.CalibrationInput):
 def _need_home(ctx: ToolContext) -> Path:
     home = _home(ctx)
     if home is None:
-        raise MisesError(ErrorCode.INVALID_INPUT, "no Mises home for calibrations")
+        raise MisesError(ErrorCode.INVALID_INPUT, "no AgentCAD home for calibrations")
     return home
 
 

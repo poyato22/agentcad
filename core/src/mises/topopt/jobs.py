@@ -600,7 +600,7 @@ def note_lead(rt, rec: dict) -> bool:
     verb = {"done": "finished", "cancelled": "was cancelled by the user"}.get(rec["status"],
                                                                              "failed")
     summary = " ".join(str(rec.get("summary") or "").split())[:400].replace('"', "'")
-    text = (f"[Mises system note, not from the user] {label} ({rec['topopt_id']}) {verb}. "
+    text = (f"[AgentCAD system note, not from the user] {label} ({rec['topopt_id']}) {verb}. "
             f"Result summary (data): \"{summary}\". Read it with topopt_result "
             f"{rec['topopt_id']}.")
     meta = {"kind": "sim_finished", "job": "topopt", "id": rec["topopt_id"],

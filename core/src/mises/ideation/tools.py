@@ -86,7 +86,7 @@ class IdeateArgs(BaseModel):
                   "suspension, aerodynamic drag, autorotation, pneumatic, fluid/granular "
                   "damping, origami/kirigami structures, rolling/spinning, staged/sacrificial, "
                   "shells), each scored 0..1 on feasibility, novelty and rule compliance; mark "
-                  "the obvious answer `conventional`. Mises scores them, flags concepts this "
+                  "the obvious answer `conventional`. AgentCAD scores them, flags concepts this "
                   "build already tried, and shortlists the 3 most different strong ones (one "
                   "per family): pitch those with pitch_options (set each option's `concept`).")
 async def ideate_concepts(ctx: ToolContext, args: IdeateArgs) -> ToolOutput:

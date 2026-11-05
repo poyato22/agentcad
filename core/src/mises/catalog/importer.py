@@ -45,7 +45,7 @@ RETRY_WAIT_MAX_S = 6.0      # a longer Retry-After is capped (the second answer 
 _RETRY_STATUSES = {429, 502, 503, 504}
 RAW_TEXT_MAX = 20_000
 SPECS_MAX = 100
-USER_AGENT = "Mises-parts-directory/0.1"
+USER_AGENT = "AgentCAD-parts-directory/0.1"
 _REDIRECTS = {301, 302, 303, 307, 308}
 _TYPES = ("text/html", "application/xhtml+xml", "application/json", "application/ld+json",
           "text/plain", "text/markdown", "text/x-markdown", "text/csv", "application/xml",
@@ -287,7 +287,7 @@ async def _fetch(start: str, transport, resolve: Resolver, opts: _Opts | None = 
                                        " the site")
                         why = opts.redirect_guard(url) if opts.redirect_guard else None
                         if why:
-                            raise _bad(f"the page redirects to {to}, which Mises won't open"
+                            raise _bad(f"the page redirects to {to}, which AgentCAD won't open"
                                        f" ({why})", "open the site's plain page instead")
                         continue
                     if not resp.is_success:
