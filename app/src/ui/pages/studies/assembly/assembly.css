@@ -14,7 +14,7 @@
 .asy-head h3 { margin: 0; flex: 1; font-size: 15px; }
 .asy-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 0; }
 .asy-metrics dd { margin: 0; font-variant-numeric: tabular-nums; }
-.asy-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.asy-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .asy-fem { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .asy-notes { margin: 0; padding-left: 18px; }
 .st-agent-asm { margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

@@ -1,6 +1,8 @@
 // A walk study names its joints: the per-joint table shows the part each joint moves, its actuator,
 // the peak and the use of stall as a bar against the 60% rule (the knee at 85% reads as a fail).
 import { cleanup, render, screen } from "@testing-library/preact";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { assemblyStudyRecordSchema } from "../../../../api/assemblyStudies";
 import { JointTable, when } from "./AssemblyStudies";
@@ -41,5 +43,12 @@ describe("JointTable", () => {
   it("history rows say when each study ran", () => {
     expect(when(1793792304)).toMatch(/\d{1,2}:\d{2}/);
     expect(when(Number.NaN)).toBe("");
+  });
+});
+
+describe("assembly.css", () => {
+  it("lets a study's charts share the full width (auto-fit: no empty tracks squeezing them)", () => {
+    const css = readFileSync(resolve(import.meta.dirname, "assembly.css"), "utf8");
+    expect(css).toMatch(/\.asy-charts \{[^}]*repeat\(auto-fit,/);
   });
 });
