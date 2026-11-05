@@ -116,3 +116,33 @@ def test_streamlines_refuse_a_study_without_velocity(tmp_path):
     save_grid(path, np.zeros(3), 1.0, {"speed": np.zeros((4, 4, 4), np.float32)}, {"speed": "m/s"})
     with pytest.raises(ValueError, match="no velocity"):
         Fields(path).streamlines()
+
+
+def test_openfoam_samples_fill_a_grid_that_traces_streamlines(tmp_path):
+    from mises.sim.cfd.foam_parse import volume_samples
+    from mises.sim.cfd.openfoam import volume_arrays
+    # a 10 mm grid with a hole the sampler left out (the body), uniform 10 m/s along +x
+    shape = (40, 20, 20)
+    rows = [[i * 0.01, j * 0.01, k * 0.01, 10.0, 0.0, 0.0]
+            for i in range(shape[0]) for j in range(shape[1]) for k in range(shape[2])
+            if not (18 <= i < 22 and 8 <= j < 12 and 8 <= k < 12)]
+    f = tmp_path / "volume_U.xy"
+    f.write_text("# x y z U_x U_y U_z\n" + "\n".join(" ".join(map(str, r)) for r in rows))
+    vel, solid = volume_arrays(volume_samples(f), np.zeros(3), 0.01, shape)
+    assert solid[20, 10, 10] and not solid[0, 0, 0]
+    assert vel[0, 0, 0, 0] == 10.0 and vel[0, 20, 10, 10] == 0.0
+    save_grid(tmp_path / "f.npz", np.zeros(3), 10.0, {"velocity": vel}, {"velocity": "m/s"},
+              solid=solid)
+    assert Fields(tmp_path / "f.npz").streamlines(16)["lines"]
+
+
+def test_the_volume_grid_is_capped_and_stays_in_the_domain():
+    from types import SimpleNamespace
+
+    from mises.sim.cfd.foam_case import VOLUME_MAX_POINTS, volume_grid
+    plan = SimpleNamespace(lo=np.zeros(3), hi=np.array([0.8, 0.2, 0.2]), d_ref_m=0.2,
+                           dom_lo=np.array([-0.1, -1.0, -1.0]), dom_hi=np.array([3.0, 1.0, 1.0]))
+    o, h, shape = volume_grid(plan)
+    assert o[0] == -0.1                                   # clipped to the domain
+    assert np.prod(shape) <= 1.1 * VOLUME_MAX_POINTS
+    assert o[1] + (shape[1] - 1) * h <= 1.0
