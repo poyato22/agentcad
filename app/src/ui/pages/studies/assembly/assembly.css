@@ -30,3 +30,4 @@
 .asy-bar b { position: absolute; top: -3px; bottom: -3px; width: 1px; background: rgba(255, 255, 255, 0.55); }
 tr[data-status="warn"] .asy-bar i { background: var(--amber); }
 tr[data-status="fail"] .asy-bar i { background: var(--red); }
+.asy-when { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 12px; }

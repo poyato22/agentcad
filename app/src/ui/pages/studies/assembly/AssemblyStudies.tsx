@@ -50,6 +50,12 @@ function defaults(schema: Record<string, unknown>): Record<string, unknown> {
 const kindSig = signal<AssemblyStudyKind | null>(null);
 const valuesSig = signal<Partial<Record<AssemblyStudyKind, Record<string, unknown>>>>({});
 /** Tests: a fresh setup. */
+/** When a past study ran (the history's rows are otherwise all "Walk · fail"). */
+export function when(ts: number): string {
+  const d = new Date(ts * 1000);
+  return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+}
+
 export function resetAssemblySide(): void { kindSig.value = null; valuesSig.value = {}; }
 
 export function AssemblySide({ c, projectId, initialKind }: { c: AssemblyStudiesController; projectId: string | null; initialKind?: AssemblyStudyKind | null }): JSX.Element {
@@ -125,9 +131,10 @@ export function AssemblySide({ c, projectId, initialKind }: { c: AssemblyStudies
         <ul class="asy-history" aria-label="Assembly studies">
           {c.history.value.map((h) => (
             <li key={h.study_id}>
-              <button type="button" class="asy-hist" aria-pressed={c.record.value?.study_id === h.study_id} onClick={() => { void c.select(h.study_id); }}>
+              <button type="button" class="asy-hist" data-study-id={h.study_id} aria-pressed={c.record.value?.study_id === h.study_id} onClick={() => { void c.select(h.study_id); }}>
                 <Led tone={h.status === "running" ? "blue" : verdictTone(h.verdict === "not_checked" ? null : h.verdict)} />
                 <span>{h.name}</span><span class="faint">{h.status === "running" ? `${h.phase ?? "running"}…` : h.status === "done" ? h.verdict ?? "" : h.status}</span>
+                <span class="faint asy-when">{when(h.created_at)}</span>
               </button>
             </li>
           ))}

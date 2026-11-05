@@ -3,7 +3,7 @@
 import { cleanup, render, screen } from "@testing-library/preact";
 import { afterEach, describe, expect, it } from "vitest";
 import { assemblyStudyRecordSchema } from "../../../../api/assemblyStudies";
-import { JointTable } from "./AssemblyStudies";
+import { JointTable, when } from "./AssemblyStudies";
 
 afterEach(cleanup);
 
@@ -36,5 +36,10 @@ describe("JointTable", () => {
   it("a record without joints still parses (older cores)", () => {
     const rec = assemblyStudyRecordSchema.parse({ study_id: "as_2", project_id: "b1", kind: "walk", name: "Walk", status: "done", verdict: "pass", created_at: 1 });
     expect(rec.joints).toEqual([]);
+  });
+
+  it("history rows say when each study ran", () => {
+    expect(when(1793792304)).toMatch(/\d{1,2}:\d{2}/);
+    expect(when(Number.NaN)).toBe("");
   });
 });
