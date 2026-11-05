@@ -50,11 +50,17 @@ const femRowSchema = z.looseObject({
   part_id: z.string().nullish(), name: z.string().nullish(), sim_id: z.string().nullish(),
   safety_factor: z.number().nullish(), status: verdict, reason: z.string().nullish(),
 });
+const jointRowSchema = z.looseObject({
+  joint_id: z.string(), label: z.string().nullish(), actuator: z.string().nullish(),
+  peak_nm: z.number().nullish(), use_of_stall: z.number().nullish(), status: verdict,
+});
+export type AssemblyJointRow = z.infer<typeof jointRowSchema>;
 const list = <T>(s: z.ZodType<T>) => z.array(z.unknown()).catch([]).transform((xs) => xs.flatMap((x) => { const r = s.safeParse(x); return r.success ? [r.data] : []; }));
 
 export const assemblyStudyRecordSchema = assemblyStudySummarySchema.extend({
   settings: z.record(z.string(), z.unknown()).catch({}),
   checks: list(checkSchema), metrics: list(metricSchema), charts: list(studyChartSchema),
+  joints: list(jointRowSchema),
   playback: z.looseObject({ steps: list(playbackStepSchema), loop: z.boolean().catch(false), caption: z.string().catch("") }).nullish().catch(null),
   notes: z.array(z.string()).catch([]), accuracy: z.array(z.string()).catch([]),
   fem: z.looseObject({

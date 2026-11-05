@@ -7,7 +7,7 @@
 import type { JSX } from "preact";
 import { signal } from "@preact/signals";
 import { useEffect, useMemo } from "preact/hooks";
-import type { AssemblyKind, AssemblyStudyKind, AssemblyStudyRecord } from "../../../../api/assemblyStudies";
+import type { AssemblyJointRow, AssemblyKind, AssemblyStudyKind, AssemblyStudyRecord } from "../../../../api/assemblyStudies";
 import { Button } from "../../../common/Button";
 import { Led } from "../../../common/Led";
 import { StudyChart } from "../charts/StudyChart";
@@ -143,6 +143,37 @@ const fmt = (v: number | string | null | undefined, unit?: string): string => {
   return unit ? `${s} ${unit}` : s;
 };
 
+/** Each joint vs its actuator: the part it moves, the actuator, the peak and the share of stall
+ *  as a bar against the 60% margin rule (a study's "which joint is over" at a glance). */
+export function JointTable({ rows }: { rows: readonly AssemblyJointRow[] }): JSX.Element {
+  const sorted = [...rows].sort((a, b) => (a.label ?? a.joint_id).localeCompare(b.label ?? b.joint_id));
+  return (
+    <table class="asy-joints" data-testid="asy-joints" aria-label="Joints vs actuators">
+      <thead><tr><th>joint (part it moves)</th><th>actuator</th><th class="num">peak</th><th>use of stall</th></tr></thead>
+      <tbody>
+        {sorted.map((r) => {
+          const use = r.use_of_stall;
+          return (
+            <tr key={r.joint_id} data-status={r.status} data-testid="asy-joint">
+              <td><Led tone={verdictTone(r.status === "not_checked" ? null : r.status)} /> {r.label ?? r.joint_id}</td>
+              <td class="faint">{r.actuator ?? "none"}</td>
+              <td class="num">{r.peak_nm != null ? `${r.peak_nm.toFixed(2)} N m` : "n/a"}</td>
+              <td class="asy-use">
+                {use != null ? (
+                  <>
+                    <span class="asy-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, use * 100)}%` }} /><b style={{ left: "60%" }} /></span>
+                    <span class="num">{Math.round(use * 100)} %</span>
+                  </>
+                ) : <span class="faint">not checked</span>}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 export function AssemblyResult({ c }: { c: AssemblyStudiesController }): JSX.Element | null {
   const rec: AssemblyStudyRecord | null = c.record.value;
   if (c.recordError.value) return <p class="tone-red text">Could not open the study: {c.recordError.value}</p>;
@@ -173,6 +204,7 @@ export function AssemblyResult({ c }: { c: AssemblyStudiesController }): JSX.Ele
           ))}
         </ul>
       )}
+      {rec.joints.length > 0 && <JointTable rows={rec.joints} />}
       <div class="asy-charts">{rec.charts.slice(0, 4).map((ch) => <StudyChart key={ch.id} chart={ch} height={180} />)}</div>
       {fem && (
         <div class="asy-fem" data-testid="asy-fem" data-status={fem.status ?? ""}>
