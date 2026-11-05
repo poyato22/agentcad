@@ -142,12 +142,12 @@ def smooth_field(F: np.ndarray, sigma: float) -> np.ndarray:
 
 def drop_thin(x: np.ndarray, n: tuple[int, int, int], keep_in: np.ndarray,
               iso: float = 0.5) -> np.ndarray:
-    """Remove what a 3-voxel cross cannot sweep: membranes and hairs one voxel thick, which the
+    """Remove what a 2-voxel cube cannot sweep: membranes and hairs one voxel thick, which the
     smoothed surface turns into ragged fins. Nothing under 3 voxels is trustworthy in the voxel
     model anyway (thin_member_pct); CalculiX verifies what stays."""
-    from scipy.ndimage import binary_opening, generate_binary_structure
+    from scipy.ndimage import binary_opening
     grid = element_grid3(x, n)
-    opened = binary_opening(grid > iso, structure=generate_binary_structure(3, 1))
+    opened = binary_opening(grid > iso, structure=np.ones((2, 2, 2), bool))
     out = grid.copy()
     out[(grid > iso) & ~opened & ~element_grid3(keep_in, n)] = 0.0
     return np.ascontiguousarray(out.transpose(2, 1, 0)).ravel()
