@@ -66,7 +66,7 @@ class Options:
     extrusion_axis: int | None = None
     overhang_dir: str | None = None     # "z", "-z", "x", ...
     crisp: bool = False                 # Heaviside projection with continuation
-    beta_steps: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0, 16.0)
+    beta_steps: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0)
 
 
 @dataclass

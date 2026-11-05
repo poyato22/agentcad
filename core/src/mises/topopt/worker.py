@@ -29,6 +29,7 @@ SEAM_SMOOTH = 25          # extra fairing iterations in the band around the cut 
 SEAM_BAND = 1.5           # voxels
 STL_TOL, STL_ANG = 0.05, 0.3
 FINE_SIGMA = 0.7          # voxels: the crisp field regains a sub-voxel surface
+BRIDGE_SIGMA = 1.0        # the Gaussian plus the element-to-node averaging, as one Gaussian
 FINE_SMOOTH = 30
 FINE_EDGE_VOXELS = 1.6
 FINE_MAX_TRIS = 40_000
@@ -370,7 +371,7 @@ def run(job: Path, progress=None) -> dict:
     # one printed body: a mount left floating is joined back along the densest path
     xs = geo.drop_thin(res.x, p.n, p.keep_in) if fine else res.x
     xs, bridged = geo.bridge_islands(xs, p.n, p.space & ~p.keep_out, p.keep_in,
-                                     sigma=FINE_SIGMA if fine else 0.0)
+                                     sigma=BRIDGE_SIGMA if fine else 0.0)
     F = geo.nodal_field(xs, p.n, p.void, grow_from=p.keep_in if fine else None)
     if fine:
         F = geo.smooth_field(F, FINE_SIGMA)
