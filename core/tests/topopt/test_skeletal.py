@@ -164,8 +164,23 @@ def test_a_speck_without_a_mount_is_not_bridged():
     x = np.zeros(ne)
     x[(i < 6) & (j == 4) & (k == 4)] = 1.0
     x[(i == 18) & (j == 4) & (k == 4)] = 1.0
-    xs, bridges = geo.bridge_islands(x, n, np.ones(ne, bool), np.zeros(ne, bool))
+    xs, bridges = geo.bridge_islands(x, n, np.ones(ne, bool), np.zeros(ne, bool), min_share=0.5)
     assert bridges == 0 and (xs == x).all()
+
+
+def test_a_one_voxel_membrane_goes_a_strut_stays():
+    n = (16, 16, 16)
+    ne = int(np.prod(n))
+    i, j, k = fe.element_grid(n)
+    x = np.zeros(ne)
+    strut = (abs(i - 4) <= 1) & (abs(j - 8) <= 1)
+    fin = (k == 8) & (i > 6)
+    mount = (i == 15) & (j == 2) & (k == 2)
+    x[strut | fin | mount] = 1.0
+    out = geo.drop_thin(x, n, mount)
+    assert (out[strut & (k > 0) & (k < 15)] == 1.0).all()
+    assert out[fin & ~strut].max() == 0.0
+    assert out[mount] == 1.0
 
 
 def test_fixtures_and_loads_take_a_box_and_a_vector():
@@ -208,3 +223,21 @@ def test_only_a_mount_crosses_the_design_space_wall():
     # F[m] averages elements m - 2 and m - 1 along each axis: index 9 straddles the wall (k 7, 8)
     assert F[10, 7, 9] == pytest.approx(1.0)      # the mount crossed
     assert F[4, 7, 9] <= 0.5                      # the strut stops at the wall
+
+
+def test_a_one_voxel_link_does_not_count_when_the_surface_is_smoothed():
+    """Connected as voxels, but the Gaussian erases the link: the two halves must be bridged."""
+    from scipy.ndimage import gaussian_filter, label
+    n = (24, 12, 12)
+    ne = int(np.prod(n))
+    i, j, k = fe.element_grid(n)
+    block = lambda lo, hi: (i >= lo) & (i < hi) & (abs(j - 6) <= 2) & (abs(k - 6) <= 2)
+    x = np.zeros(ne)
+    x[block(2, 9) | block(15, 22)] = 1.0
+    x[(i >= 9) & (i < 15) & (j == 6) & (k == 6)] = 1.0
+    none = np.zeros(ne, bool)
+    assert geo.bridge_islands(x, n, np.ones(ne, bool), none)[1] == 0       # voxels: one body
+    xs, bridges = geo.bridge_islands(x, n, np.ones(ne, bool), none, sigma=0.7)
+    assert bridges == 1
+    smooth = gaussian_filter(geo.element_grid3(xs, n), 0.7, mode="constant") > 0.5
+    assert label(smooth)[1] == 1

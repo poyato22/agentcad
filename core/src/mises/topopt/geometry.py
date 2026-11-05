@@ -140,26 +140,47 @@ def smooth_field(F: np.ndarray, sigma: float) -> np.ndarray:
     return out
 
 
+def drop_thin(x: np.ndarray, n: tuple[int, int, int], keep_in: np.ndarray,
+              iso: float = 0.5) -> np.ndarray:
+    """Remove what a 3-voxel cross cannot sweep: membranes and hairs one voxel thick, which the
+    smoothed surface turns into ragged fins. Nothing under 3 voxels is trustworthy in the voxel
+    model anyway (thin_member_pct); CalculiX verifies what stays."""
+    from scipy.ndimage import binary_opening, generate_binary_structure
+    grid = element_grid3(x, n)
+    opened = binary_opening(grid > iso, structure=generate_binary_structure(3, 1))
+    out = grid.copy()
+    out[(grid > iso) & ~opened & ~element_grid3(keep_in, n)] = 0.0
+    return np.ascontiguousarray(out.transpose(2, 1, 0)).ravel()
+
+
 def bridge_islands(x: np.ndarray, n: tuple[int, int, int], allowed: np.ndarray,
-                   keep_in: np.ndarray, iso: float = 0.5,
-                   radius: float = 1.3) -> tuple[np.ndarray, int]:
-    """Elements > iso form bodies; every body holding a keep region (a mount, a load face) is
-    joined to the largest along the path of highest density through `allowed` elements,
-    thickened to `radius` voxels. Returns (densities, bridges). Bodies with no keep region are
-    left for the speck filter: they carry nothing."""
-    from scipy.ndimage import binary_dilation, generate_binary_structure, label
+                   keep_in: np.ndarray, iso: float = 0.5, radius: float = 1.6,
+                   sigma: float = 0.0, min_share: float = 0.01) -> tuple[np.ndarray, int]:
+    """Elements > iso form bodies (after a Gaussian of sigma voxels, when the surface will be
+    smoothed by it: a one-voxel link connects the voxels but not the final surface, and half a
+    frame fell off that way). Every body holding a keep region (a mount, a load face) or
+    min_share of the largest is joined to the largest along the path of highest density
+    through `allowed` elements, thickened to `radius` voxels. Returns (densities, bridges).
+    Smaller bodies are left for the speck filter: they carry nothing."""
+    from scipy.ndimage import (binary_dilation, gaussian_filter, generate_binary_structure,
+                               label)
     grid = element_grid3(x, n)
     ok = element_grid3(allowed, n)
     keep = element_grid3(keep_in, n)
-    solid = (grid > iso) | keep
-    st = generate_binary_structure(3, 3)
+    seen = grid * ok
+    if sigma > 0:
+        seen = gaussian_filter(seen.astype(float), sigma, mode="constant")
+    solid = (seen > iso) | keep
+    st = generate_binary_structure(3, 1 if sigma > 0 else 3)
     lab, count = label(solid, structure=st)
     if count <= 1:
         return x, 0
     sizes = np.bincount(lab.ravel())
     sizes[0] = 0
     main = int(sizes.argmax())
-    with_keep = set(np.unique(lab[keep]).tolist()) - {0, main}
+    with_keep = set(np.unique(lab[keep]).tolist()) | set(
+        np.flatnonzero(sizes >= min_share * sizes[main]).tolist())
+    with_keep -= {0, main}
     if not with_keep:
         return x, 0
     out = grid.copy()
