@@ -32,6 +32,7 @@ from ..cad import safe_io
 from ..events import Event
 from ..types import (ErrorCode, MisesError, StepKind, ToolOutput, canonical_json, sha256_hex)
 from .assembly_study import ASSEMBLIES_DIR, assemblies_root
+from .assembly_study import STUDY_TYPES as ASSEMBLY_STUDY_TYPES
 from .ccx import INSTALL_HINT, ccx_version, find_ccx
 from .environments import get_environment
 from .materials import Material, custom_material, get_material, with_anisotropy, with_fdm
@@ -514,8 +515,8 @@ def preflight(type_id: str, settings: BaseModel, part_dir: Path | None, home: Pa
 
 
 def _preflight_assembly(type_id: str, dump: dict, assembly: dict) -> None:
-    if type_id != "static":
-        raise SimError("bad_setup", f"assembly studies are static only (not {type_id})",
+    if type_id not in ASSEMBLY_STUDY_TYPES:
+        raise SimError("bad_setup", f"assembly studies are static or wind only (not {type_id})",
                        hint="study each part by part_id for the other study types")
     insts = {i["id"] for i in assembly["instances"]}
     known = {f.get("id") for f in assembly["metrics"].get("face_list") or []}
@@ -987,7 +988,8 @@ async def _dispatch(type_id, job_root, metrics, material, ccx, settings, env, pr
                     wind_limits: dict | None = None) -> dict:
     if type_id == "wind":
         return await _run_wind(job_root, metrics, settings, progress, memory_cap,
-                               limits=wind_limits)
+                               limits=wind_limits,
+                               instances=assembly[1]["instances"] if assembly else None)
     from .fem import FemJob
     job = FemJob(root=job_root, step=job_root / "model.step", metrics=metrics,
                  material=material, ccx=ccx, mesh_settings=settings.mesh,
@@ -1025,15 +1027,23 @@ def wind_payload(s) -> dict:
 
 
 async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int,
-                    limits: dict | None = None) -> dict:
+                    limits: dict | None = None, instances: list[dict] | None = None) -> dict:
     from .cfd import run_wind_job
     from .cfd.setup import read_stl
     from .cfd.validation import PREVIEW_REFINEMENT
-    stl = job_root / "model.stl"
-    if not stl.is_file():
-        raise SimError("bad_setup", "this part has no STL to voxelize",
-                       hint="rebuild it (mirror_part_set_vars with its current vars)")
-    tris = await asyncio.to_thread(read_stl, stl)
+    shells = None
+    if instances is not None:
+        from .assembly_study import assembly_tris
+        try:
+            tris, shells = await asyncio.to_thread(assembly_tris, instances)
+        except ValueError as e:
+            raise SimError("bad_setup", str(e), hint="rebuild the part") from None
+    else:
+        stl = job_root / "model.stl"
+        if not stl.is_file():
+            raise SimError("bad_setup", "this part has no STL to voxelize",
+                           hint="rebuild it (mirror_part_set_vars with its current vars)")
+        tris = await asyncio.to_thread(read_stl, stl)
     progress("setup", phase="mesh", pct=2.0, detail="voxelizing the part")
 
     def prog(d: dict) -> None:
@@ -1043,6 +1053,8 @@ async def _run_wind(job_root: Path, metrics: dict, s, progress, memory_cap: int,
                  detail=f"lattice step {d.get('step')}/{d.get('steps')}{ang}")
     payload = wind_payload(s)
     payload["memory_mb"] = min(int(payload["memory_mb"]), memory_cap)
+    if shells is not None:
+        payload["shells"] = shells
     warnings = []
     for key, label in (("cpus", "OpenFOAM cores"), ("timeout_s", "time limit")):
         top = (limits or {}).get(key)

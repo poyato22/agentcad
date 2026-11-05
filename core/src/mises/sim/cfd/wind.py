@@ -81,6 +81,53 @@ def _finer_grid(lo, hi, ext, s: dict, want: int, time_budget_s: float):
     return g, steps
 
 
+def voxelize_shells(tris_w: np.ndarray, grid, shells: list[int] | None) -> np.ndarray:
+    """Solid cells of one closed mesh, or of several (an assembly's parts). Ray parity is only
+    right per closed shell: parts that touch or overlap would flip each other's cells."""
+    if not shells:
+        return voxelize(tris_w, grid)
+    solid = np.zeros(grid.shape, bool)
+    i = 0
+    for n in shells:
+        solid |= voxelize(tris_w[i:i + n], grid)
+        i += n
+    return solid
+
+
+def outside_fluid(solid: np.ndarray) -> np.ndarray:
+    """Fluid cells the free stream reaches: flooded from the inlet plane. A cavity sealed inside
+    the body (an assembly's bays) stays out."""
+    fluid = ~solid
+    reach = np.zeros_like(fluid)
+    reach[0] = fluid[0]
+    while True:
+        grown = reach.copy()
+        for ax in range(3):
+            lo = [slice(None)] * 3
+            hi = [slice(None)] * 3
+            lo[ax], hi[ax] = slice(None, -1), slice(1, None)
+            grown[tuple(hi)] |= reach[tuple(lo)]
+            grown[tuple(lo)] |= reach[tuple(hi)]
+        grown &= fluid
+        if grown.sum() == reach.sum():
+            return reach
+        reach = grown
+
+
+def wetted_area_mm2(tris_w: np.ndarray, grid, solid: np.ndarray) -> float:
+    """The area of the triangles that face the outside flow: from each centroid, 1.5 cells along
+    its outward normal lands in fluid the free stream reaches. Interior parts and the inside
+    walls of closed bays carry no skin friction."""
+    a, b, c = tris_w[:, 0], tris_w[:, 1], tris_w[:, 2]
+    n = np.cross(b - a, c - a)
+    area = 0.5 * np.linalg.norm(n, axis=1)
+    unit = n / np.maximum(2 * area, 1e-12)[:, None]
+    p = (a + b + c) / 3 + 1.5 * grid.h_mm * unit
+    g = np.clip(np.round((p - grid.origin) / grid.h_mm).astype(int), 0, np.array(grid.shape) - 1)
+    out = outside_fluid(solid)
+    return float(area[out[g[:, 0], g[:, 1], g[:, 2]]].sum())
+
+
 def solve_one(tris_part: np.ndarray, s: dict, direction, up, a_ref_m2: float | None,
               time_budget_s: float, progress=None, should_stop=None, keep_fields: bool = False
               ) -> dict:
@@ -113,7 +160,8 @@ def solve_one(tris_part: np.ndarray, s: dict, direction, up, a_ref_m2: float | N
         return {**base, **empirical(tris_w, s, a_ref, q,
                                     f"the lattice needs ~{est:.0f} s, over the "
                                     f"{time_budget_s:.0f} s budget")}
-    solid = voxelize(tris_w, grid)
+    shells = s.get("shells")
+    solid = voxelize_shells(tris_w, grid, shells)
     thin = _too_thin(solid, grid, frontal, ext, s["refinement"])
     refined_from = None
     if thin is not None:
@@ -122,7 +170,7 @@ def solve_one(tris_part: np.ndarray, s: dict, direction, up, a_ref_m2: float | N
         # and Cd is off by that much. Refine when a finer lattice fits the budgets.
         finer = _finer_grid(lo, hi, ext, s, want, time_budget_s)
         if finer is not None:
-            fsolid = voxelize(tris_w, finer[0])
+            fsolid = voxelize_shells(tris_w, finer[0], shells)
             if _too_thin(fsolid, finer[0], frontal, ext, s["refinement"]) is None:
                 refined_from = grid.cells_across
                 grid, want, solid, thin = finer[0], finer[1], fsolid, None
@@ -142,7 +190,7 @@ def solve_one(tris_part: np.ndarray, s: dict, direction, up, a_ref_m2: float | N
     a_lat = a_ref / (h_m * h_m)
     cp_force = _coeffs(res.force_pressure, a_lat)
     tot = _coeffs(res.force_total, a_lat)
-    wet = surface_area_mm2(tris_part) * 1e-6
+    wet = (wetted_area_mm2(tris_w, grid, solid) if shells else surface_area_mm2(tris_part)) * 1e-6
     cd_f = friction_cd(re, wet, a_ref)
     cd = float(cp_force[0] + cd_f)
     cm = res.moment_pressure / (0.5 * U_LATTICE ** 2 * a_lat * n)

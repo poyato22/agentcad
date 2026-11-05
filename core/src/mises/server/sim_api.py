@@ -31,6 +31,7 @@ from ..cad import safe_io
 from ..cad.tools import PART_ID_RE
 from ..sim import calibration as cal
 from ..sim import studies
+from ..sim.assembly_study import STUDY_TYPES as ASSEMBLY_STUDY_TYPES
 from ..sim.ccx import solver_status
 from ..sim.cfd import cfd_solver_status
 from ..sim.charts import charts
@@ -123,6 +124,7 @@ def _check_sim(sim_id: str) -> None:
 
 
 MAX_SECTION_N = 64
+MAX_STREAMLINES = 400
 
 
 def _finite(**vals: float) -> None:
@@ -359,6 +361,16 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         r = (await run_in_threadpool(f.probe, [[x, y, z]]))[0]
         return {"sim_id": sim_id, "point": [x, y, z], "units": f.units, **r}
 
+    @router.get("/sims/{sim_id}/streamlines")
+    async def streamlines(sim_id: str, n: int = 96):
+        if not 4 <= n <= MAX_STREAMLINES:
+            raise MisesError(ErrorCode.INVALID_INPUT, f"n must be 4..{MAX_STREAMLINES}")
+        f = await run_in_threadpool(_fields, sim_id)
+        try:
+            return await run_in_threadpool(f.streamlines, n)
+        except ValueError as e:
+            raise MisesError(ErrorCode.INVALID_INPUT, str(e)) from None
+
     @router.get("/sims/{sim_id}/section")
     async def section(sim_id: str, axis: Literal["x", "y", "z"], offset: float,
                       channel: str, n: int = 32):
@@ -425,9 +437,10 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
             if (sb.part_id is None) == (sb.project_id is None):
                 raise MisesError(ErrorCode.INVALID_INPUT, "give exactly one of part_id or "
                                  "project_id")
-            if sb.project_id is not None and sb.type != "static":
+            if sb.project_id is not None and sb.type not in ASSEMBLY_STUDY_TYPES:
                 raise MisesError(ErrorCode.INVALID_INPUT, f"{sb.type} studies of an assembly "
-                                 "(project_id) are not supported: assembly studies are static",
+                                 "(project_id) are not supported: assembly studies are static "
+                                 "or wind",
                                  hint="study each part by part_id")
             try:  # bad ranges are rejected here, before a run exists
                 studies.validate_settings(sb.type, sb.settings)
@@ -469,7 +482,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         return _launch(rid, tool, payload)
 
     async def _start_assembly(sb: StartBody) -> JSONResponse:
-        """A static study of a build's assembly: refused before a run exists when the build,
+        """A static or wind study of a build's assembly: refused before a run exists when the build,
         its instances, faces or settings are wrong."""
         from ..sim import assembly_study
         pid = sb.project_id
@@ -488,7 +501,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
         target = await run_in_threadpool(assembly_study.resolve, bare, pid)
         try:
             await run_in_threadpool(
-                studies.preflight, "static", studies.validate_settings("static", sb.settings),
+                studies.preflight, sb.type, studies.validate_settings(sb.type, sb.settings),
                 None, runtime.home, runtime.profile().default_material, target)
         except SimError as e:
             raise _bad(e) from None
@@ -497,7 +510,7 @@ def build_sim_router(runtime: Runtime) -> APIRouter:
             UI_AGENT, provider="ui", model="studies-page",
             edit_scope=(pid, f"project:{pid}", *part_ids), read_scope=(pid, *part_ids),
             allowed_classes={SafetyClass.READ, SafetyClass.LOCAL_MUTATE},
-            task=f"Studies page: static study of build {pid} (assembly)")
+            task=f"Studies page: {sb.type} study of build {pid} (assembly)")
         return _launch(rid, "sim_run", sb.model_dump())
 
     def _launch(rid: str, tool: str, payload: dict) -> JSONResponse:

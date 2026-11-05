@@ -252,6 +252,74 @@ class Fields:
                 "values": _list(out.reshape((n, n) + data.shape[1:]))}
 
 
+    def streamlines(self, n_seeds: int = 96, max_steps: int = 600) -> dict:
+        """Streamlines of a wind study's velocity channel, traced in 3D (RK2 with trilinear
+        interpolation) from a seed plane upstream of the body, returned in part coordinates.
+        Samples are a constant time step apart, so spacing along a line IS the local speed."""
+        if self.kind != "grid" or "velocity" not in self.ch:
+            raise ValueError("this study has no velocity field")
+        vel = self.ch["velocity"]
+        solid = self.solid if self.solid is not None else np.zeros(self.shape, bool)
+        size = np.array(self.shape, dtype=float)
+        idx = np.argwhere(solid)
+        b0, b1 = (idx.min(0).astype(float), idx.max(0).astype(float)) if len(idx) else (
+            size / 3, size / 2)
+        inflow = float(np.sqrt((vel[:, 1] ** 2).sum(0)).max()) or 1.0
+        # the seed plane: clean flow just upstream; seeds wrap the body's frontal outline
+        x0 = max(1.0, b0[0] - max(4.0, 0.15 * (b1[0] - b0[0])))
+        c = 0.5 * (b0[1:] + b1[1:])
+        half = 0.5 * (b1[1:] - b0[1:]) + 1.0
+        side = max(2, int(np.ceil(np.sqrt(n_seeds))))
+        ys, zs = np.meshgrid(np.linspace(-1.25, 1.25, side), np.linspace(-1.25, 1.25, side),
+                             indexing="ij")
+        p = np.stack([np.full(ys.size, x0), c[0] + ys.ravel() * half[0],
+                      c[1] + zs.ravel() * half[1]], axis=1)
+        hi = size - 1.0
+        p[:, 1:] = np.clip(p[:, 1:], 0.0, hi[1:])
+        h = 0.75 / inflow                                   # cells per (m/s): 0.75 cell at inflow
+
+        def at(q: np.ndarray) -> np.ndarray:
+            i = np.clip(np.floor(q).astype(int), 0, np.array(self.shape) - 2)
+            w = q - i
+            out = np.zeros((3, len(q)))
+            for dx in (0, 1):
+                for dy in (0, 1):
+                    for dz in (0, 1):
+                        k = ((w[:, 0] if dx else 1 - w[:, 0]) * (w[:, 1] if dy else 1 - w[:, 1])
+                             * (w[:, 2] if dz else 1 - w[:, 2]))
+                        out += k * vel[:, i[:, 0] + dx, i[:, 1] + dy, i[:, 2] + dz]
+            return out.T
+
+        lines: list[list[np.ndarray]] = [[x.copy()] for x in p]
+        alive = np.arange(len(p))
+        for _ in range(max_steps):
+            if not len(alive):
+                break
+            q = p[alive]
+            mid = np.clip(q + 0.5 * h * at(q), 0.0, hi)
+            nxt = q + h * at(mid)
+            g = np.round(np.clip(nxt, 0.0, hi)).astype(int)
+            ok = (np.all((nxt >= 0) & (nxt <= hi), axis=1)
+                  & ~solid[g[:, 0], g[:, 1], g[:, 2]]
+                  & (np.linalg.norm(nxt - q, axis=1) > 0.01))   # stagnant: stop, do not pile up
+            alive, nxt = alive[ok], nxt[ok]
+            p[alive] = nxt
+            for a, x in zip(alive, nxt):
+                lines[a].append(x)
+        rows, top = [], 0.0
+        for ln in lines:
+            if len(ln) < 8:
+                continue
+            g = np.array(ln)
+            speed = np.linalg.norm(at(g), axis=1)
+            top = max(top, float(speed.max()))
+            world = (self.origin + g * self.h) @ self.rot     # p_part = rot^T p_grid
+            rows.append({"points": np.round(world, 2).tolist(),
+                         "speed": np.round(speed, 3).tolist()})
+        return {"lines": rows, "units": self.units.get("velocity", "m/s"),
+                "dt_s": h * self.h * 1e-3, "speed_max": top, "inflow": inflow}
+
+
 def histogram(values: np.ndarray, bins: int = 20) -> dict:
     v = np.asarray(values, dtype=float)
     v = v[np.isfinite(v)]
