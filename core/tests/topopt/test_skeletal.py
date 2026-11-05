@@ -304,3 +304,16 @@ def test_the_core_carries_on_an_interrupted_job(tmp_path, monkeypatch):
     rec["status"] = "done"
     (d / "record.json").write_text(json.dumps(rec))
     assert jobs.resume_interrupted(rt) == []
+
+
+def test_a_reused_pid_does_not_own_a_run():
+    """After a reboot a run's owner pid can belong to a new process: it started after the run's
+    last activity, so the run is orphaned and gets continued."""
+    import os
+    import time
+
+    from mises.runtime import Runtime
+    me = os.getpid()
+    assert Runtime._still_owner(me, time.time())           # started before: still the owner
+    assert not Runtime._still_owner(me, 1000.0)            # started long after that activity
+    assert not Runtime._still_owner(2 ** 22 - 3, time.time())   # no such process
