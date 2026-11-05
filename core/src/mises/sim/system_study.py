@@ -430,7 +430,9 @@ def _named(td: dict, asm, ctx=None) -> tuple[list[dict], list[dict]]:
 def hydrate_joints(rec: dict, home: Path, asm, *, history=None) -> dict:
     """A record from before the joint table: its table and chart names from its saved dyn_torque
     result (the study run's own folder). Unchanged when there is nothing to read."""
-    if rec.get("joints") or rec.get("kind") not in ("walk", "mechanism"):
+    if rec.get("joints"):
+        return name_text(rec)
+    if rec.get("kind") not in ("walk", "mechanism"):
         return rec
     from ..dyn import run as dyn_run
     rid = next((s.get("result_id") for s in rec.get("sources") or []
@@ -443,8 +445,21 @@ def hydrate_joints(rec: dict, home: Path, asm, *, history=None) -> dict:
     if not rows:
         return rec
     labels = joint_labels(asm, [r.get("joint_id") for r in rows], history=history)
-    return {**rec, "joints": joint_table(rows, labels),
-            "charts": name_series(rec.get("charts") or [], labels)}
+    return name_text({**rec, "joints": joint_table(rows, labels),
+                      "charts": name_series(rec.get("charts") or [], labels)})
+
+
+def name_text(rec: dict) -> dict:
+    """The summary and check reasons read the joints' names where they quoted their ids."""
+    labels = {r["joint_id"]: r["label"] for r in rec.get("joints") or []
+              if isinstance(r, dict) and r.get("joint_id") and r.get("label")}
+    if not labels:
+        return rec
+    pat = re.compile(r"\b(" + "|".join(re.escape(j) for j in labels) + r")\b")
+    sub = (lambda t: pat.sub(lambda m: labels[m.group(1)], t) if isinstance(t, str) else t)
+    return {**rec, "summary": sub(rec.get("summary")),
+            "checks": [{**c, "reason": sub(c.get("reason"))} if isinstance(c, dict) else c
+                       for c in rec.get("checks") or []]}
 
 
 def _torque_checks(td: dict) -> tuple[list[dict], list[dict]]:

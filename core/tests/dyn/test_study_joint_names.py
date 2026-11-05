@@ -47,11 +47,18 @@ def test_old_record_is_hydrated_from_its_saved_result(tmp_path):
     d.mkdir(parents=True)
     (d / f"{rid}.json").write_text(json.dumps({"id": rid, "card": {"rows": ROWS}}))
     rec = {"kind": "walk", "project_id": "quad", "run_id": "run1",
+           "summary": "Walk fail: peaks fl_knee 2.07 N m", "checks": [
+               {"name": "joint torque vs actuators", "reason": "fl_knee: peak 85% of stall"}],
            "sources": [{"tool": "dyn_torque", "result_id": rid}],
            "charts": [{"id": "c", "series": [{"name": "fl_knee", "points": []}]}]}
     out = ss.hydrate_joints(rec, tmp_path, quad.assembly())
     assert [r["label"] for r in out["joints"]] == ["fl shank", "fl thigh"]
     assert out["charts"][0]["series"][0]["name"] == "fl shank"
+    assert out["summary"] == "Walk fail: peaks fl shank 2.07 N m"
+    assert out["checks"][0]["reason"] == "fl shank: peak 85% of stall"
+    # a newer record (table stored) gets the same names in its text
+    again = ss.hydrate_joints({**out, "summary": "peaks fl_knee"}, tmp_path, quad.assembly())
+    assert again["summary"] == "peaks fl shank"
     # nothing saved: the record is returned as it was
     bare = {"kind": "walk", "project_id": "quad", "run_id": "nope", "sources": [], "charts": []}
     assert "joints" not in ss.hydrate_joints(bare, tmp_path, quad.assembly())
