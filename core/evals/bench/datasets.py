@@ -55,7 +55,8 @@ def _rank(seed: int, key: str) -> str:
 def fetch_cadbench(per_family: int = 20, seed: int = 0, cache: Path = CACHE,
                    split: str = "dev") -> list[Task]:
     """split "dev": the first picks of the seed-pinned ranking (the set tuned on); "test": the
-    next ones in the same ranking, disjoint by construction (held out, never tuned on)."""
+    next ones in the same ranking, disjoint by construction (held out, never tuned on);
+    "test2": the slice after that, never run before the round-3 comparison."""
     import pyarrow.parquet as pq
 
     raw, root = cache / "cadbench_raw", cache / "cadbench"
@@ -69,7 +70,8 @@ def fetch_cadbench(per_family: int = 20, seed: int = 0, cache: Path = CACHE,
             ids = pf.read(columns=["file_id", "label"]).to_pylist()
             ids = [r for r in ids if (r["label"] or "") == label]
             ranked = sorted(ids, key=lambda r: _rank(seed, r["file_id"]))
-            pick = ranked[:quota] if split == "dev" else ranked[quota:2 * quota]
+            k = {"dev": 0, "test": 1, "test2": 2}[split]
+            pick = ranked[k * quota:(k + 1) * quota]
             want = {r["file_id"] for r in pick}
             for batch in pf.iter_batches(columns=["file_id", "label", "stl", "step",
                                                   "singleview_image"], batch_size=16):
@@ -83,7 +85,8 @@ def fetch_cadbench(per_family: int = 20, seed: int = 0, cache: Path = CACHE,
                         (d / "gt.step").write_bytes(r["step"])
                     img = r["singleview_image"]["bytes"]
                     (d / "view.png").write_bytes(_to_png(img))
-                    tasks.append(Task("cadbench" if split == "dev" else "cadbench_test",
+                    tasks.append(Task({"dev": "cadbench", "test": "cadbench_test",
+                                       "test2": "cadbench_t2"}[split],
                                       f"{fam}-{_safe(r['file_id'])}",
                                       CADBENCH_PROMPT, [str(d / "view.png")],
                                       {"family": fam, "label": label or "mcb",

@@ -1,5 +1,27 @@
 # AgentCAD CAD benchmarks (2026-11-04)
 
+## Latest: round 3 (2026-11-05), the strongest fair comparison
+
+60 new CADBench image-to-CAD tasks that no system had run, five systems, one attempt each, effort High, on CADBench's own metric. The plan was committed before any run (`results/round3_preregistration.md`). Numbers are in `results/round3_stats.json`.
+
+| System | Mean IoU (95% CI) | Cost per task (list) |
+|---|---|---|
+| **AgentCAD + Opus 5.5** | **86.9%** (81.3–91.9) | $0.58 |
+| Opus 5.5 alone | 83.6% (77.8–89.0) | $0.16 |
+| AgentCAD + Sonnet 5.5 | 74.1% (68.3–79.8) | $0.26 |
+| Fable 5.1 alone | 70.3% (64.3–76.0) | $0.19 |
+| Sonnet 5.5 alone | 60.4% (53.8–66.8) | $0.04 |
+
+| Contrast | Difference (95% CI) | Wins / losses / ties | Result |
+|---|---|---|---|
+| AgentCAD + Sonnet vs Sonnet alone | +13.7 pts (+9.4 to +18.3) | 46 / 13 / 1 | beats |
+| AgentCAD + Sonnet vs Opus alone | -9.5 pts (-13.7 to -5.3) | 10 / 50 / 0 | **loses** |
+| AgentCAD + Opus vs Opus alone | +3.3 pts (+1.6 to +5.1) | 40 / 19 / 1 | beats |
+| AgentCAD + Opus vs Fable alone | +16.6 pts (+11.5 to +21.7) | 53 / 7 / 0 | beats |
+
+The published scores, which comparisons are fair and the limits are in `research/2026-11-05-cad-benchmark-leaderboard.md`. The sections below and `benchmarks.png` are from rounds 0 to 2, on Sonnet 5.5 and the earlier harness metric.
+
+
 **Headline (held-out TEST, never looked at while tuning AgentCAD):** AgentCAD leads on image→part (CADBench), is level-to-slightly-ahead on text→part (CADTestBench) and on the physics-graded suite, at 4–8× the cost per task and 1.5–2.5× the agent time. Baseline = the same Claude Code model (Sonnet 5.5, Think High) with a plain build123d prompt and one sandboxed exec tool; one attempt per task for both.
 
 How to read: *n* tasks, paired; *AgentCAD − baseline* is the mean per-task difference with a 95% paired bootstrap CI; win/loss counts are per task. Splits: DEV sets were used to find and test AgentCAD fixes; TEST sets were drawn after (next items of the same seed-pinned rankings, disjoint from DEV) and run once with the final AgentCAD. AgentCAD-Physics (20 tasks) was written before any tuning, split 5 DEV / 15 TEST. AgentCAD-Functional (20) was never tuned on; its AgentCAD runs are from the first pass (pre-fix AgentCAD).

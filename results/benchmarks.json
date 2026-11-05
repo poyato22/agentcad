@@ -5463,5 +5463,142 @@
    "round1_after_2_fixes": "chat-attached images checkable by reference_photo_check; multi-solid warning. AgentCAD re-run on all 60 CADBench + the 19 CADTestBench it failed",
    "round2_dev": "units rule + unit-slip guard, schema titles dropped, zero-solid warning, photo mismatch hints (reverted: no gain), designer verify-every-requirement (reverted: no gain). AgentCAD re-run on DEV CADBench 60 + CADTestBench 50"
   }
+ },
+ "round3": {
+  "plan": "results/round3_preregistration.md",
+  "date": "2026-11-05",
+  "systems": {
+   "mises@opus": {
+    "n": 60,
+    "official_iou_mean": 0.8689015818574124,
+    "official_iou_mean_ci95": [
+     0.8134903700224252,
+     0.918867607044205
+    ],
+    "official_iou_median": 0.9648409761992296,
+    "mean_usd_list": 0.5807416666666666,
+    "median_seconds": 67.7
+   },
+   "mises@sonnet": {
+    "n": 60,
+    "official_iou_mean": 0.7414835576785687,
+    "official_iou_mean_ci95": [
+     0.6831871551145817,
+     0.7977427835175939
+    ],
+    "official_iou_median": 0.8118919029681062,
+    "mean_usd_list": 0.258895,
+    "median_seconds": 34.25
+   },
+   "baseline@opus": {
+    "n": 60,
+    "official_iou_mean": 0.8360753950101625,
+    "official_iou_mean_ci95": [
+     0.7779674227186641,
+     0.8896580076329093
+    ],
+    "official_iou_median": 0.9327026472819231,
+    "mean_usd_list": 0.16041999999999998,
+    "median_seconds": 39.75
+   },
+   "baseline@fable": {
+    "n": 60,
+    "official_iou_mean": 0.7029835313618062,
+    "official_iou_mean_ci95": [
+     0.6428048687298902,
+     0.7601336952909882
+    ],
+    "official_iou_median": 0.7711877766676198,
+    "mean_usd_list": 0.187865,
+    "median_seconds": 15.5
+   },
+   "baseline@sonnet": {
+    "n": 60,
+    "official_iou_mean": 0.6040920365326875,
+    "official_iou_mean_ci95": [
+     0.5375950048865274,
+     0.6684136765344322
+    ],
+    "official_iou_median": 0.6696444047878676,
+    "mean_usd_list": 0.03776,
+    "median_seconds": 13.25
+   }
+  },
+  "primary_contrasts": [
+   {
+    "a": "mises@sonnet",
+    "b": "baseline@sonnet",
+    "n": 60,
+    "a_mean": 0.7414835576785687,
+    "b_mean": 0.6040920365326875,
+    "mean_diff": 0.13739152114588135,
+    "ci95": [
+     0.09426166936246154,
+     0.18304065189463378
+    ],
+    "p_two_sided": 9.99990000099999e-06,
+    "wins": 46,
+    "losses": 13,
+    "ties": 1,
+    "p_holm": 3.999960000399996e-05,
+    "verdict": "beats"
+   },
+   {
+    "a": "mises@sonnet",
+    "b": "baseline@opus",
+    "n": 60,
+    "a_mean": 0.7414835576785687,
+    "b_mean": 0.8360753950101625,
+    "mean_diff": -0.09459183733159372,
+    "ci95": [
+     -0.13728347557372653,
+     -0.05283798169777667
+    ],
+    "p_two_sided": 9.99990000099999e-06,
+    "wins": 10,
+    "losses": 50,
+    "ties": 0,
+    "p_holm": 3.999960000399996e-05,
+    "verdict": "loses"
+   },
+   {
+    "a": "mises@opus",
+    "b": "baseline@opus",
+    "n": 60,
+    "a_mean": 0.8689015818574124,
+    "b_mean": 0.8360753950101625,
+    "mean_diff": 0.03282618684724995,
+    "ci95": [
+     0.016181648635628404,
+     0.05076342311093925
+    ],
+    "p_two_sided": 0.00014999850001499985,
+    "wins": 40,
+    "losses": 19,
+    "ties": 1,
+    "p_holm": 0.00014999850001499985,
+    "verdict": "beats"
+   },
+   {
+    "a": "mises@opus",
+    "b": "baseline@fable",
+    "n": 60,
+    "a_mean": 0.8689015818574124,
+    "b_mean": 0.7029835313618062,
+    "mean_diff": 0.1659180504956061,
+    "ci95": [
+     0.11457365895858279,
+     0.21655301307603736
+    ],
+    "p_two_sided": 9.99990000099999e-06,
+    "wins": 53,
+    "losses": 7,
+    "ties": 0,
+    "p_holm": 3.999960000399996e-05,
+    "verdict": "beats"
+   }
+  ],
+  "full_stats": "results/round3_stats.json",
+  "cadtestbench_published_same_50": "results/round3_cadtestbench_published.json"
  }
 }

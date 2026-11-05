@@ -32,6 +32,28 @@ def score_cadbench(task: Task, d: Path) -> dict:
 _CQ_LOCK = threading.Lock()   # parallel CadQuery env launches were seen to hang; one at a time
 
 
+def score_cadbench_t2(task: Task, d: Path) -> dict:
+    """The harness metric plus CADBench's own (cadbench_official.py; a failure scores 0)."""
+    r = score_cadbench(task, d)
+    r.update(official_iou=0.0, official_siou=0.0, official_chamfer=None)
+    if (d / "result.stl").is_file():   # CADBench counts any solid that executes; it wraps the mesh
+        out = d / "official.json"
+        args = ["nice", "-n", "15", "uv", "run", "--no-project", "--with", "trimesh", "--with",
+                "manifold3d", "--with", "pymeshlab", "--with", "scipy", "--with", "rtree",
+                "--with", "networkx", "python", "-I", str(HERE / "cadbench_official.py"),
+                str(d / "result.stl"), task.meta["gt_stl"], str(out)]
+        try:
+            p = subprocess.run(args, capture_output=True, text=True, timeout=1200, cwd=d)
+            o = read_json(out)
+            if o:
+                r.update(o)
+            else:
+                r["official_error"] = p.stderr[-800:]
+        except subprocess.TimeoutExpired:
+            r["official_error"] = "timeout"
+    return r
+
+
 def score_cadtestbench(task: Task, d: Path) -> dict:
     step = d / "result.step"
     out = d / "cadtests.json"
@@ -69,7 +91,7 @@ def score_physics(task: Task, d: Path) -> dict:
     return r
 
 
-SCORERS = {"cadbench": score_cadbench, "cadtestbench": score_cadtestbench,
+SCORERS = {"cadbench_t2": score_cadbench_t2, "cadbench": score_cadbench, "cadtestbench": score_cadtestbench,
            "functional": score_functional, "cadbench_test": score_cadbench,
            "cadtestbench_test": score_cadtestbench, "physics_dev": score_physics,
            "physics_test": score_physics, "physics": score_physics}
