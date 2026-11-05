@@ -27,6 +27,8 @@ export class ModesController {
   private baseTarget: THREE.Vector3 | null = null;
   /** The camera's direction from before the parts were laid out (null: not laid out). */
   private baseDir: THREE.Vector3 | null = null;
+  /** Laid out: the camera's distance from its target before the swing (restored after). */
+  private baseDist: number | null = null;
 
   readonly host: ModeHost;
 
@@ -120,18 +122,22 @@ export class ModesController {
     const f = this.layouter.value;
     if (f <= 0) {
       if (this.baseDir !== null && this.baseTarget !== null) {
+        // the camera's own distance, read before it moves (read after, it was 0 → 100 mm: an
+        // orthographic camera 100 mm from the middle clipped the whole model away)
+        const dist = this.baseDist ?? (camera.position.distanceTo(controls.target) || 100);
         controls.target.copy(this.baseTarget);
-        camera.position.copy(this.baseTarget).addScaledVector(this.baseDir, camera.position.distanceTo(controls.target) || 100);
+        camera.position.copy(this.baseTarget).addScaledVector(this.baseDir, dist);
         camera.lookAt(controls.target);
       }
       if (this.baseZoom !== null) { camera.zoom = this.baseZoom; this.keepAxis(); }
       camera.updateProjectionMatrix();
-      this.baseDir = null; this.baseTarget = null; this.baseZoom = null;
+      this.baseDir = null; this.baseTarget = null; this.baseZoom = null; this.baseDist = null;
       controls.update?.();
       return;
     }
     if (this.baseDir === null) {
       this.baseDir = camera.position.clone().sub(controls.target).normalize();
+      this.baseDist = camera.position.distanceTo(controls.target);
       this.baseTarget = controls.target.clone();
       this.baseZoom = camera.zoom;
     }
