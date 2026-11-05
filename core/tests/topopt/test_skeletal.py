@@ -317,3 +317,50 @@ def test_a_reused_pid_does_not_own_a_run():
     assert Runtime._still_owner(me, time.time())           # started before: still the owner
     assert not Runtime._still_owner(me, 1000.0)            # started long after that activity
     assert not Runtime._still_owner(2 ** 22 - 3, time.time())   # no such process
+
+
+def test_a_shutdown_is_not_a_cancel(tmp_path, monkeypatch):
+    """Stopping the core leaves a job unfinished on disk for the next start; only a real cancel
+    records it as cancelled."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from mises.sim import ccx as _ccx
+    from mises.topopt import jobs
+    monkeypatch.setattr(_ccx, "find_ccx", lambda: None)
+
+    async def hang(*a, **k):
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(jobs, "_run_variant", hang)
+    monkeypatch.setattr(jobs, "note_lead", lambda *a: False)
+
+    async def go(tid):
+        rec = {"topopt_id": tid, "status": "queued", "part_id": "p",
+               "variants": [{"id": "v0", "status": "running", "phase": "optimize"}]}
+        args = SimpleNamespace(verify=False, min_safety_factor=1.5, max_deflection_mm=None)
+        t = asyncio.ensure_future(jobs._run_job(None, rec, tmp_path, args, {}, lambda: None))
+        await asyncio.sleep(0.01)
+        jobs._active[tid] = t
+        return rec, t
+
+    async def shutdown():
+        rec, t = await go("to_000000000001")
+        t.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await t
+        jobs._active.pop(rec["topopt_id"], None)
+        assert rec["status"] == "running"
+        assert rec["variants"][0]["status"] == "running"
+
+    async def real_cancel():
+        rec, t = await go("to_000000000002")
+        jobs.cancel(rec["topopt_id"])
+        with pytest.raises(asyncio.CancelledError):
+            await t
+        jobs._active.pop(rec["topopt_id"], None)
+        jobs._cancel_requested.discard(rec["topopt_id"])
+        assert rec["status"] == "cancelled"
+
+    asyncio.run(shutdown())
+    asyncio.run(real_cancel())

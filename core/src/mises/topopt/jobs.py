@@ -672,7 +672,8 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
             try:
                 await _run_variant(events, rec, v, d, args, plan_, ccx, save)
             except asyncio.CancelledError:
-                v.update(status="cancelled", phase="cancelled", error="cancelled")
+                if rec["topopt_id"] in _cancel_requested:
+                    v.update(status="cancelled", phase="cancelled", error="cancelled")
                 raise
             except SimError as e:
                 v.update(status="failed", phase="failed", error=e.message)
@@ -693,30 +694,37 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
         rec["status"] = ("done" if any(v["status"] == "done" for v in rec["variants"])
                          else "failed")
     except asyncio.CancelledError:
+        if rec["topopt_id"] not in _cancel_requested:
+            # the core is shutting down, nobody cancelled this: leave it unfinished on disk so
+            # the next start carries it on (resume_interrupted)
+            rec["status"] = "running"
+            save()
+            raise
         rec["status"] = "cancelled"
         for v in rec["variants"]:
             if v["status"] in ("queued", "running"):
                 v.update(status="cancelled", phase="cancelled")
         raise
     finally:
-        pareto, best = rank(rec["variants"], min_safety_factor=args.min_safety_factor,
-                            max_deflection_mm=args.max_deflection_mm)
-        rec.update(pareto=pareto, recommended=best, finished_at=time.time())
-        rec["summary"] = summary(rec)
-        save()
-        # mark the background Job finished FIRST, so an exception in _publish cannot leave it
-        # listed as running in GET /jobs for the life of the process (FW-core M-8)
-        from .. import jobs as bg
-        job = bg.get(rec["topopt_id"])
-        if job is not None and job.status == "running":
-            job.status = rec["status"]
-            job.summary = rec.get("summary") or ""
-            job.finished_at = time.time()
-        _publish(events, rec, "topopt_finished", {
-            "run_id": rec.get("run_id"), "status": rec["status"], "summary": rec["summary"],
-            "recommended": best, "pareto": pareto})
-        # a user's cancel starts no note turn (deferred); a Stop sends none (note_lead)
-        note_lead(plan_.get("runtime"), rec)
+        if rec["status"] != "running":
+            pareto, best = rank(rec["variants"], min_safety_factor=args.min_safety_factor,
+                                max_deflection_mm=args.max_deflection_mm)
+            rec.update(pareto=pareto, recommended=best, finished_at=time.time())
+            rec["summary"] = summary(rec)
+            save()
+            # mark the background Job finished FIRST, so an exception in _publish cannot leave it
+            # listed as running in GET /jobs for the life of the process (FW-core M-8)
+            from .. import jobs as bg
+            job = bg.get(rec["topopt_id"])
+            if job is not None and job.status == "running":
+                job.status = rec["status"]
+                job.summary = rec.get("summary") or ""
+                job.finished_at = time.time()
+            _publish(events, rec, "topopt_finished", {
+                "run_id": rec.get("run_id"), "status": rec["status"], "summary": rec["summary"],
+                "recommended": best, "pareto": pareto})
+            # a user's cancel starts no note turn (deferred); a Stop sends none (note_lead)
+            note_lead(plan_.get("runtime"), rec)
 
 
 async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
