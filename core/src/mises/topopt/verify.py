@@ -67,6 +67,21 @@ def select_boundary(mesh: Mesh, face_tris: np.ndarray, tol: float = MATCH_TOL_MM
     return [t for t, ok in zip(tris, (d <= tol).all(1)) if ok]
 
 
+def select_in_box(mesh: Mesh, box: list, tol: float = MATCH_TOL_MM) -> list:
+    """The mesh's boundary triangles with every corner inside a box."""
+    tris = [t for s in mesh.surfaces for t in s.tris]
+    corners = np.array([[mesh.nodes[n] for n in t[:3]] for t in tris], float)
+    b = np.asarray(box, float)
+    ok = ((corners >= b[:3] - tol) & (corners <= b[3:] + tol)).all((1, 2))
+    return [t for t, y in zip(tris, ok) if y]
+
+
+def _select(mesh: Mesh, row: dict) -> list:
+    if row.get("box"):
+        return select_in_box(mesh, row["box"])
+    return select_boundary(mesh, np.array(row["tris"]))
+
+
 def setup(mesh: Mesh, bc: dict) -> tuple[Mesh, dict]:
     """A mesh whose surfaces are the fixture / load groups (tags 1..), and the plan."""
     surfaces: list[Surface] = []
@@ -79,7 +94,7 @@ def setup(mesh: Mesh, bc: dict) -> tuple[Mesh, dict]:
     fixed: set[int] = set()
     plan = {"fixtures": [], "cases": []}
     for fx in bc["fixtures"]:
-        sel = select_boundary(mesh, np.array(fx["tris"]))
+        sel = _select(mesh, fx)
         if not sel:
             raise SimError("bad_setup", f"the fixture face {fx['face']} is not on the variant",
                            hint="keep the fixture face inside the design space")
@@ -88,7 +103,7 @@ def setup(mesh: Mesh, bc: dict) -> tuple[Mesh, dict]:
     for case in bc["loads"]:
         rows = []
         for ld in case["loads"]:
-            sel = select_boundary(mesh, np.array(ld["tris"]))
+            sel = _select(mesh, ld)
             if not sel:
                 raise SimError("bad_setup", f"the load face {ld['face']} is not on the variant",
                                hint="keep the load face inside the design space")

@@ -14,7 +14,7 @@ Direction = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
 Axis = Literal["x", "y", "z"]
 BuildDir = Literal["+x", "-x", "+y", "-y", "+z", "-z", "x", "y", "z"]
 VARIANT_KEYS = {"name", "volume_fraction", "filter_radius_mm", "resolution_mm",
-                "manufacturing", "max_iter"}
+                "manufacturing", "max_iter", "crisp", "surface"}
 SWEEP_KEYS = {"volume_fraction", "filter_radius_mm", "resolution_mm"}
 
 
@@ -59,25 +59,69 @@ class Region(BaseModel):
         return self
 
 
+def _check_box(v: list[float] | None) -> list[float] | None:
+    if v is not None and not all(v[i] < v[i + 3] for i in range(3)):
+        raise ValueError("a box is [x0, y0, z0, x1, y1, z1] with x0 < x1, y0 < y1, z0 < z1")
+    return v
+
+
+def _face_or_box(item):
+    if (item.face is None) == (item.box is None):
+        raise ValueError("give either face or box")
+    return item
+
+
 class Fixture(BaseModel):
     kind: Literal["fixed"] = "fixed"
-    face: str
+    face: str | None = None
+    box: list[float] | None = Field(None, min_length=6, max_length=6, description=(
+        "instead of a face: [x0, y0, z0, x1, y1, z1] mm; every surface of the result inside "
+        "this box is held (a mount inside a tall design space has no face of its own)"))
 
     @field_validator("face")
     @classmethod
     def _face(cls, v):
-        return check_face(v)
+        return None if v is None else check_face(v)
+
+    @field_validator("box")
+    @classmethod
+    def _box(cls, v):
+        return _check_box(v)
+
+    @model_validator(mode="after")
+    def _either(self):
+        return _face_or_box(self)
 
 
 class TopoptLoad(BaseModel):
-    face: str
+    face: str | None = None
+    box: list[float] | None = Field(None, min_length=6, max_length=6, description=(
+        "instead of a face: [x0, y0, z0, x1, y1, z1] mm; the force spreads over the material "
+        "inside this box (motor pad, battery rail, camera boss)"))
     newtons: float = Field(gt=0, le=1e6, description="total force spread over the face, N")
-    direction: Direction
+    direction: Direction | list[float] = Field(description="an axis ('+x'), or a vector "
+                                               "[x, y, z] for an oblique load")
 
     @field_validator("face")
     @classmethod
     def _face(cls, v):
-        return check_face(v)
+        return None if v is None else check_face(v)
+
+    @field_validator("box")
+    @classmethod
+    def _box(cls, v):
+        return _check_box(v)
+
+    @field_validator("direction")
+    @classmethod
+    def _direction(cls, v):
+        if isinstance(v, list) and (len(v) != 3 or sum(c * c for c in v) < 1e-12):
+            raise ValueError("a direction vector is [x, y, z], not all zero")
+        return v
+
+    @model_validator(mode="after")
+    def _either(self):
+        return _face_or_box(self)
 
 
 class TopoptLoadCase(BaseModel):
@@ -138,6 +182,14 @@ class TopoptRunArgs(BaseModel):
                                         "default: ~50k elements in the design space")
     filter_radius_mm: float | None = Field(None, gt=0, le=100, description="default: 2 voxels")
     max_iter: int = Field(60, ge=5, le=200)
+    crisp: bool | None = Field(None, description="Heaviside projection with continuation: "
+                               "solid-or-void struts instead of a gray cloud cut at 0.5. "
+                               "Default: on under volume_fraction 0.25, where thin members "
+                               "would otherwise fade out and break up")
+    surface: Literal["draft", "fine"] | None = Field(None, description="fine: smoothed field, "
+                               "more fairing and a triangle budget set by the surface area "
+                               "(organic struts without facets); draft: ~5000 triangles. "
+                               "Default: fine when crisp")
     manufacturing: Manufacturing = Field(default_factory=Manufacturing)
     verify: bool = Field(True, description="verify every variant with gmsh + CalculiX")
     wait: bool = Field(False, description="false (default): return at once with topopt_id; "
@@ -167,6 +219,8 @@ class VariantDelta(BaseModel):
     filter_radius_mm: float | None = Field(None, gt=0, le=100)
     resolution_mm: float | None = Field(None, ge=0.2, le=20)
     max_iter: int | None = Field(None, ge=5, le=200)
+    crisp: bool | None = None
+    surface: Literal["draft", "fine"] | None = None
     manufacturing: Manufacturing | None = None
 
 

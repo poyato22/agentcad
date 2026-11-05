@@ -416,8 +416,12 @@ def test_a_split_result_says_how_to_join_it():
 
 
 def test_the_element_cap_fits_the_memory_budget():
-    """DOG demo: at the old 160k-element cap every hip-bracket variant used 4.2-4.6 GB and was
-    stopped at the 4096 MB budget. The cap leaves 15 % headroom on the measured footprint."""
-    need = jobs.BASE_MB + jobs.MAX_ELEMENTS * jobs.KB_PER_ELEMENT / 1024
-    assert need <= 0.85 * jobs.MEMORY_MB
+    """The budget follows the grid (measured: 216k elements in a 746k grid peak at 2.5 GB) and
+    the largest allowed variant still fits under the hard ceiling with 15% headroom."""
+    need = (jobs.BASE_MB + (jobs.MAX_ELEMENTS * jobs.KB_PER_ELEMENT
+                            + jobs.MAX_CELLS * jobs.KB_PER_CELL) / 1024)
+    assert need <= 0.85 * jobs.MAX_MEMORY_MB
     assert jobs.MAX_ELEMENTS > jobs.TARGET_ELEMENTS
+    bbox = {"size": [108, 108, 64]}
+    assert jobs.variant_memory_mb(216_000, bbox, 1.0) >= 2500
+    assert jobs.variant_memory_mb(3072, {"size": [24, 16, 8]}, 1.0) == jobs.MEMORY_MB

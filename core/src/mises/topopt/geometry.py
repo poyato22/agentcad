@@ -124,6 +124,103 @@ def disambiguate(F: np.ndarray, iso: float = ISO, max_rounds: int = 50) -> tuple
     return F, filled
 
 
+def smooth_field(F: np.ndarray, sigma: float) -> np.ndarray:
+    """A crisp (0/1) field smoothed by sigma voxels, so the iso-surface sits between nodes
+    instead of on the voxel stairs. The void shell around the grid stays void."""
+    from scipy.ndimage import gaussian_filter
+    out = gaussian_filter(np.asarray(F, float), sigma, mode="constant")
+    out[0], out[-1] = 0.0, 0.0
+    out[:, 0], out[:, -1] = 0.0, 0.0
+    out[:, :, 0], out[:, :, -1] = 0.0, 0.0
+    return out
+
+
+def bridge_islands(x: np.ndarray, n: tuple[int, int, int], allowed: np.ndarray,
+                   keep_in: np.ndarray, iso: float = 0.5,
+                   radius: float = 1.3) -> tuple[np.ndarray, int]:
+    """Elements > iso form bodies; every body holding a keep region (a mount, a load face) is
+    joined to the largest along the path of highest density through `allowed` elements,
+    thickened to `radius` voxels. Returns (densities, bridges). Bodies with no keep region are
+    left for the speck filter: they carry nothing."""
+    from scipy.ndimage import binary_dilation, generate_binary_structure, label
+    grid = element_grid3(x, n)
+    ok = element_grid3(allowed, n)
+    keep = element_grid3(keep_in, n)
+    solid = (grid > iso) | keep
+    st = generate_binary_structure(3, 3)
+    lab, count = label(solid, structure=st)
+    if count <= 1:
+        return x, 0
+    sizes = np.bincount(lab.ravel())
+    sizes[0] = 0
+    main = int(sizes.argmax())
+    with_keep = set(np.unique(lab[keep]).tolist()) - {0, main}
+    if not with_keep:
+        return x, 0
+    out = grid.copy()
+    bridges = 0
+    connected = lab == main
+    # Dijkstra over the allowed elements from the main body; a step into density d costs
+    # (1 - d) + a little for length, so paths follow the struts that nearly formed
+    cost = 1.02 - np.clip(grid, 0, 1)
+    for body in sorted(with_keep, key=lambda b: -sizes[b]):
+        target = lab == body
+        path = _densest_path(connected, target, cost, ok)
+        if path is None:
+            continue
+        mask = np.zeros(grid.shape, bool)
+        mask[tuple(np.array(path).T)] = True
+        r = int(np.ceil(radius))
+        ax = np.arange(-r, r + 1)
+        ball = (ax[:, None, None] ** 2 + ax[None, :, None] ** 2 + ax[None, None, :] ** 2
+                <= radius * radius)
+        mask = binary_dilation(mask, structure=ball) & ok
+        out[mask] = 1.0
+        connected |= target | mask
+        bridges += 1
+    return np.ascontiguousarray(out.transpose(2, 1, 0)).ravel(), bridges
+
+
+def _densest_path(start: np.ndarray, target: np.ndarray, cost: np.ndarray,
+                  ok: np.ndarray) -> list | None:
+    nx, ny, nz = start.shape
+    best = np.full(start.shape, np.inf)
+    prev: dict[tuple, tuple] = {}
+    # only the boundary of the start region seeds the search
+    from scipy.ndimage import binary_erosion
+    seeds = np.argwhere(start & ~binary_erosion(start))
+    heap = [(0.0, *map(int, s)) for s in seeds]
+    for s in seeds:
+        best[tuple(s)] = 0.0
+    heapq.heapify(heap)
+    steps = [(a, b, c) for a in (-1, 0, 1) for b in (-1, 0, 1) for c in (-1, 0, 1)
+             if (a, b, c) != (0, 0, 0)]
+    while heap:
+        d, i, j, k = heapq.heappop(heap)
+        if d > best[i, j, k]:
+            continue
+        if target[i, j, k]:
+            path = [(i, j, k)]
+            while path[-1] in prev:
+                path.append(prev[path[-1]])
+            return path
+        for a, b, c in steps:
+            u, w, y = i + a, j + b, k + c
+            if not (0 <= u < nx and 0 <= w < ny and 0 <= y < nz) or not ok[u, w, y]:
+                continue
+            nd = d + cost[u, w, y] * math.sqrt(a * a + b * b + c * c)
+            if nd < best[u, w, y]:
+                best[u, w, y] = nd
+                prev[(u, w, y)] = (i, j, k)
+                heapq.heappush(heap, (nd, u, w, y))
+    return None
+
+
+def mesh_area(V: np.ndarray, T: np.ndarray) -> float:
+    a, b, c = V[T[:, 0]], V[T[:, 1]], V[T[:, 2]]
+    return float(np.linalg.norm(np.cross(b - a, c - a), axis=1).sum() / 2)
+
+
 def surface_nets(F: np.ndarray, h: float, origin, iso: float = ISO) -> tuple[np.ndarray, np.ndarray]:
     """Watertight, 2-manifold, outward-oriented triangle mesh of {F > iso} on a regular grid
     with node (i, j, k) at origin + h (i, j, k). F must be below iso on its two outer node
