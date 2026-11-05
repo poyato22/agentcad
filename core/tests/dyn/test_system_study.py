@@ -39,6 +39,10 @@ async def test_walk_study_record(ctx):  # noqa: F811
     assert "joint torque vs actuators" in names and "range of motion collisions" in names
     assert any(n.startswith("stability:") for n in names) and "travel" in names
     assert rec["charts"] and rec["charts"][0]["series"]
+    # each joint named by the part it moves, in its table and in the torque legend
+    labels = {r["label"] for r in rec["joints"]}
+    assert "fl shank" in labels and rec["joints"][0]["peak_nm"] > 0
+    assert {s["name"] for s in rec["charts"][0]["series"]} <= labels
     steps = rec["playback"]["steps"]
     assert 1 <= len(steps) <= ss.MAX_STEPS
     assert steps[0]["follow"] and all(len(f["values"]) >= 2 for f in steps[0]["follow"])

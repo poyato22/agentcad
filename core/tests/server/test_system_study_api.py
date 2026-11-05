@@ -82,3 +82,27 @@ def test_unknown_build_and_empty_assembly(client, rt):
     pid = rt.store.create_project("empty").id
     r = client.post("/assembly_studies", headers=AUTH, json={"project_id": pid, "kind": "drop"})
     assert r.status_code == 404 and "no assembly" in r.json()["message"]
+
+
+def test_an_older_walk_record_gets_its_named_joint_table(client, rt, build):
+    """A record saved before the joint table: GET fills it from the run's saved dyn_torque
+    result and names each joint by the part it moves (the legend too)."""
+    import json as _json
+    from mises.sim import system_study as ss
+    rid = "dyn_0123456789ab"
+    d = Path(rt.home) / "runs" / "r_old" / "dyn" / build
+    d.mkdir(parents=True)
+    (d / f"{rid}.json").write_text(_json.dumps({"id": rid, "card": {"rows": [
+        {"joint_id": "fl_knee", "peak_nm": 2.07, "use_of_stall": 0.85, "actuator": "s@1.24",
+         "status": "fail"}]}}))
+    rec = {"study_id": "as_0123456789ab", "project_id": build, "kind": "walk", "name": "Walk",
+           "status": "done", "verdict": "fail", "run_id": "r_old", "created_at": 1.0,
+           "sources": [{"tool": "dyn_torque", "result_id": rid}], "checks": [], "metrics": [],
+           "charts": [{"id": "c", "kind": "line", "title": "Joint torque",
+                       "series": [{"name": "fl_knee", "points": [[0, 1]]}]}],
+           "notes": [], "accuracy": []}
+    ss.save(rt.home, rec)
+    out = client.get("/assembly_studies/as_0123456789ab", headers=AUTH).json()
+    assert out["joints"] == [{"joint_id": "fl_knee", "label": "fl shank", "actuator": "s@1.24",
+                              "peak_nm": 2.07, "use_of_stall": 0.85, "status": "fail"}]
+    assert out["charts"][0]["series"][0]["name"] == "fl shank"

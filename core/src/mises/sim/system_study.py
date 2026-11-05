@@ -383,6 +383,85 @@ def root_steps(track: list[tuple[float, float]], *, scale: float, play_s: float,
     return out
 
 
+def joint_labels(asm, ids, *, history=None) -> dict[str, str]:
+    """{joint id: the name of the part it moves} (its `b` instance), so a study reads "rear left
+    shank 85% of stall", not a bare joint id. `history(ids) -> {joint id: instance id}` names the
+    joints the build has since removed or re-made."""
+    names = {i.id: i.name for i in asm.instances}
+    refs = {j.id: j.b.instance_id for j in asm.joints}
+    missing = [j for j in ids if j not in refs]
+    if missing and history is not None:
+        try:
+            refs.update(history(missing) or {})
+        except Exception:  # noqa: BLE001 - names are a nicety, never a failure
+            pass
+    return {j: str(names[refs[j]]).replace("_", " ") for j in ids if refs.get(j) in names}
+
+
+def joint_table(rows: list[dict], labels: dict[str, str]) -> list[dict]:
+    """The per-joint actuator table a study shows (dyn_torque's rows, named)."""
+    return [{"joint_id": r.get("joint_id"), "label": labels.get(r.get("joint_id")),
+             "actuator": r.get("actuator"), "peak_nm": r.get("peak_nm"),
+             "use_of_stall": r.get("use_of_stall"), "status": r.get("status")}
+            for r in rows if isinstance(r, dict)]
+
+
+def name_series(charts: list[dict], labels: dict[str, str]) -> list[dict]:
+    """Chart series named by joint id get the joint's label (the id kept as `joint_id`)."""
+    out = []
+    for ch in charts or []:
+        series = []
+        for s in ch.get("series") or []:
+            lab = labels.get(s.get("name")) if isinstance(s, dict) else None
+            series.append({**s, "name": lab, "joint_id": s["name"]} if lab else s)
+        out.append({**ch, "series": series})
+    return out
+
+
+def _named(td: dict, asm, ctx=None) -> tuple[list[dict], list[dict]]:
+    rows = td.get("joints") or []
+    store = getattr(ctx, "store", None)
+    labels = joint_labels(asm, [r.get("joint_id") for r in rows],
+                          history=getattr(store, "joint_refs_from_history", None))
+    return joint_table(rows, labels), name_series((td.get("card") or {}).get("charts") or [],
+                                                  labels)
+
+
+def hydrate_joints(rec: dict, home: Path, asm, *, history=None) -> dict:
+    """A record from before the joint table: its table and chart names from its saved dyn_torque
+    result (the study run's own folder). Unchanged when there is nothing to read."""
+    if rec.get("joints"):
+        return name_text(rec)
+    if rec.get("kind") not in ("walk", "mechanism"):
+        return rec
+    from ..dyn import run as dyn_run
+    rid = next((s.get("result_id") for s in rec.get("sources") or []
+                if isinstance(s, dict) and s.get("tool") == "dyn_torque"), None)
+    run_id = rec.get("run_id")
+    if not rid or not isinstance(run_id, str) or not re.fullmatch(r"[0-9A-Za-z_-]{1,64}", run_id):
+        return rec
+    saved = dyn_run.load_result(Path(home) / "runs" / run_id, rec["project_id"], rid) or {}
+    rows = (saved.get("card") or {}).get("rows") or []
+    if not rows:
+        return rec
+    labels = joint_labels(asm, [r.get("joint_id") for r in rows], history=history)
+    return name_text({**rec, "joints": joint_table(rows, labels),
+                      "charts": name_series(rec.get("charts") or [], labels)})
+
+
+def name_text(rec: dict) -> dict:
+    """The summary and check reasons read the joints' names where they quoted their ids."""
+    labels = {r["joint_id"]: r["label"] for r in rec.get("joints") or []
+              if isinstance(r, dict) and r.get("joint_id") and r.get("label")}
+    if not labels:
+        return rec
+    pat = re.compile(r"\b(" + "|".join(re.escape(j) for j in labels) + r")\b")
+    sub = (lambda t: pat.sub(lambda m: labels[m.group(1)], t) if isinstance(t, str) else t)
+    return {**rec, "summary": sub(rec.get("summary")),
+            "checks": [{**c, "reason": sub(c.get("reason"))} if isinstance(c, dict) else c
+                       for c in rec.get("checks") or []]}
+
+
 def _torque_checks(td: dict) -> tuple[list[dict], list[dict]]:
     rows = td.get("joints") or []
     checks, metrics = [], []
@@ -480,8 +559,9 @@ async def _walk(ctx, pid: str, s: WalkSettings, rec: dict, asm) -> dict:
         metrics.append(_metric("min CoP margin", round(cop * 1000, 1), "mm"))
     saved = dyn_run.load_result(Path(ctx.workdir), pid, td["result_id"]) or {}
     steps = joint_steps(saved.get("playback") or {})
+    named = _named(td, asm, ctx)
     return {"checks": checks, "metrics": metrics,
-            "charts": (td.get("card") or {}).get("charts") or [],
+            "charts": named[1], "joints": named[0],
             "playback": {"steps": steps, "loop": True,
                          "caption": f"{NAMES['walk']}: the commanded {s.gait} (body held in "
                                     "place; it travels "
@@ -634,6 +714,7 @@ async def _mechanism(ctx, pid: str, s: MechanismSettings, rec: dict, asm) -> dic
     rom = await dt.dyn_rom_sweep.handler(ctx, dt.RomArgs(project_id=pid, n=s.rom_poses))
     td = tq.data
     checks, metrics = _torque_checks(td)
+    named = _named(td, asm, ctx)
     checks.append(_check("range of motion collisions", rom.data.get("status"), rom.summary))
     if anim and anim.get("steps"):
         steps = [st for st in anim["steps"] if isinstance(st, dict)][:MAX_STEPS]
@@ -643,7 +724,7 @@ async def _mechanism(ctx, pid: str, s: MechanismSettings, rec: dict, asm) -> dic
         steps = joint_steps(saved.get("playback") or {})
         caption = f"{NAMES['mechanism']}: each joint swept through its range"
     return {"checks": checks, "metrics": metrics,
-            "charts": (td.get("card") or {}).get("charts") or [],
+            "charts": named[1], "joints": named[0],
             "playback": {"steps": steps, "loop": True, "caption": caption} if steps else None,
             "notes": td.get("notes") or [], "accuracy": td.get("accuracy") or [],
             "sources": [{"tool": "dyn_torque", "result_id": td.get("result_id")},

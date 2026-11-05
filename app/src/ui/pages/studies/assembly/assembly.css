@@ -14,7 +14,20 @@
 .asy-head h3 { margin: 0; flex: 1; font-size: 15px; }
 .asy-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 0; }
 .asy-metrics dd { margin: 0; font-variant-numeric: tabular-nums; }
-.asy-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.asy-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .asy-fem { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .asy-notes { margin: 0; padding-left: 18px; }
 .st-agent-asm { margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* the per-joint table: the part each joint moves, its actuator, peak and use of stall vs 60% */
+.asy-joints { width: 100%; max-width: 760px; border-collapse: collapse; font-size: 12.5px; }
+.asy-joints th { text-align: left; font-weight: 500; color: var(--muted, inherit); opacity: 0.75; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.asy-joints td { padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.asy-joints .num { text-align: right; font-variant-numeric: tabular-nums; }
+.asy-use { display: flex; align-items: center; gap: 8px; }
+.asy-use .num { min-width: 40px; }
+.asy-bar { position: relative; display: inline-block; width: 160px; height: 8px; border-radius: 4px; background: rgba(127, 127, 127, 0.18); overflow: visible; }
+.asy-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--green); }
+.asy-bar b { position: absolute; top: -3px; bottom: -3px; width: 1px; background: rgba(255, 255, 255, 0.55); }
+tr[data-status="warn"] .asy-bar i { background: var(--amber); }
+tr[data-status="fail"] .asy-bar i { background: var(--red); }
+.asy-when { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 12px; }

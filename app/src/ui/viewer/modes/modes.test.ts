@@ -293,3 +293,22 @@ describe("pins follow the explode (m11)", () => {
     expect(explodeOffset(new THREE.Group(), new THREE.Vector3(1, 0, 0)).toArray()).toEqual([0, 0, 0]);
   });
 });
+
+describe("Laid out, then back (capture2: the model vanished)", () => {
+  it("puts the camera back where it was, at its own distance, not 100 mm from the target", async () => {
+    const { host, c, clock } = await setup(["a", "b", "c"], [[0, 0, 0], [120, 0, 0], [0, 140, 0]]);
+    const cam = host.camera;
+    const pos0 = cam.position.clone();
+    const tgt0 = host.controls.target.clone();
+    const d0 = pos0.distanceTo(tgt0);
+    expect(d0).toBeGreaterThan(150);
+    c.set(modes({ layout: 1 }), { animate: true });
+    clock.advance(2000);
+    c.set(modes({ layout: 0 }), { animate: true });
+    clock.advance(2000);
+    expect(host.controls.target.distanceTo(tgt0)).toBeLessThan(1e-6);
+    expect(cam.position.distanceTo(host.controls.target)).toBeCloseTo(d0, 3);
+    expect(cam.position.distanceTo(pos0)).toBeLessThan(1e-3);
+    c.dispose();
+  });
+});
