@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -715,6 +716,27 @@ class Store:
             sql += f" AND kind IN ({','.join('?' * len(kinds))})"
             args += [str(k) for k in kinds]
         return [self._step(r) for r in self._all(sql + " ORDER BY id", tuple(args))]
+
+    def joint_refs_from_history(self, joint_ids: list[str]) -> dict[str, str]:
+        """{joint id: the instance it moved (its `b`)} for joints the build has since removed or
+        re-made, from the Step that added each (an old study's joint ids stay nameable)."""
+        out: dict[str, str] = {}
+        for jid in joint_ids[:64]:
+            if not re.fullmatch(r"[0-9A-Za-z_-]{1,64}", jid or ""):
+                continue
+            rows = self._all("SELECT payload FROM steps WHERE kind=? AND payload LIKE ? "
+                             "ORDER BY id DESC LIMIT 5", (str(StepKind.DIFF), f'%"{jid}"%'))
+            for r in rows:
+                try:
+                    joint = json.loads(r["payload"])["output"]["data"]["joint"]
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if isinstance(joint, dict) and joint.get("id") == jid:
+                    b = (joint.get("b") or {}).get("instance_id")
+                    if isinstance(b, str):
+                        out[jid] = b
+                        break
+        return out
 
     def get_step(self, step_id: int) -> Step:
         row = self._one("SELECT * FROM steps WHERE id=?", (step_id,))

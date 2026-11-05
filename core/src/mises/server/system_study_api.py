@@ -118,7 +118,14 @@ def build_system_study_router(runtime: Runtime) -> APIRouter:
 
     @router.get("/assembly_studies/{study_id}")
     async def get_study(study_id: str):
-        return _record(study_id)
+        rec = _record(study_id)
+        try:   # an older record: its joint table and named chart series from its saved result
+            asm = runtime.assembly_store.get(rec["project_id"])
+            return await run_in_threadpool(ss.hydrate_joints, rec, runtime.home, asm,
+                                           history=runtime.store.joint_refs_from_history)
+        except Exception:  # noqa: BLE001 - names are a nicety: the record as stored
+            log.exception("could not name the joints of %s", study_id)
+            return rec
 
     @router.post("/assembly_studies")
     async def start(body: StartBody):
