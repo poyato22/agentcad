@@ -8,7 +8,7 @@ import asyncio
 import numpy as np
 
 from .deck import Setup, buckle_step, resolve_loads, resolve_supports, write_deck
-from .fem import MAX_GLB_MODES, FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
+from .fem import mesh_note, MAX_GLB_MODES, FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
 from .results import parse_dat_table, parse_frd_blocks
 from .types import SimError
 
@@ -65,7 +65,8 @@ async def _solve(job: FemJob, s, size, d, label, lo, hi, ref: dict):
     blocks = await asyncio.to_thread(parse_frd_blocks, frd)
     # *BUCKLE writes the static pre-load displacement first, then one block per mode
     modes = [b for name, b in blocks if name == "DISP"][-len(factors):]
-    info = {"size_mm": round(size, 4), "nodes": len(mesh.nodes), "elements": len(mesh.tets),
+    info = {"size_mm": round(mesh.size_mm or size, 4), **mesh_note(mesh),
+            "nodes": len(mesh.nodes), "elements": len(mesh.tets),
             "order": mesh.order, "fixed_nodes": len(setup.held),
             "applied_n": setup.total_n, "reference_scale": scale, "solves": solves}
     return factors[0], {"mesh": mesh, "factors": factors, "modes": modes, "info": info}

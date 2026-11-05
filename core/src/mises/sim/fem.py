@@ -97,11 +97,43 @@ def mesh_options(job: FemJob, size: float) -> dict | None:
     return opts or None
 
 
+#: hard cap on a solved mesh. The volume-based estimate (mesh.MAX_FINE_NODES) undercounts
+#: thin, face-rich bodies (a topopt plate: 379k nodes against 200k estimated), and CalculiX's
+#: SPOOLES solver segfaults past ~1.1M DOF on this class of laptop (seen at 379k nodes).
+MAX_SOLVE_NODES = 300_000
+_REMESH_TRIES = 3
+
+
 async def mesh_level(job: FemJob, d: Path, size: float, label: str, pct: float) -> Mesh:
+    """Mesh one level; a mesh over MAX_SOLVE_NODES is re-meshed coarser (recorded in
+    mesh.extra["coarsened"]) rather than handed to a solver that would crash on it."""
     job.progress(f"mesh_{label}", phase="mesh", pct=pct, detail=f"meshing {label} "
                  f"({size:.2g} mm)", size_mm=size)
-    return await mesh_step(job.step, d, size, timeout_s=MESH_TIMEOUT_S,
+    mesh = await mesh_step(job.step, d, size, timeout_s=MESH_TIMEOUT_S,
                            options=mesh_options(job, size))
+    first, n0, cur = size, len(mesh.nodes), size
+    for _ in range(_REMESH_TRIES):
+        n = len(mesh.nodes)
+        if n <= MAX_SOLVE_NODES:
+            break
+        cur = cur * (n / MAX_SOLVE_NODES) ** (1 / 3) * 1.05
+        job.progress(f"mesh_{label}", phase="mesh", pct=pct, detail=f"re-meshing {label} "
+                     f"coarser ({cur:.2g} mm): {n} nodes is over the solver's "
+                     f"{MAX_SOLVE_NODES}", size_mm=cur)
+        mesh = await mesh_step(job.step, d, cur, timeout_s=MESH_TIMEOUT_S,
+                               options=mesh_options(job, cur))
+    if cur != first:
+        mesh.size_mm = cur
+        mesh.extra["coarsened"] = {"from_mm": round(first, 4), "to_mm": round(cur, 4),
+                                   "nodes_before": n0, "nodes": len(mesh.nodes),
+                                   "cap": MAX_SOLVE_NODES}
+    return mesh
+
+
+def mesh_note(mesh: Mesh) -> dict:
+    """A level's info entry for a mesh that mesh_level had to coarsen (else nothing)."""
+    c = mesh.extra.get("coarsened")
+    return {"coarsened": c} if c else {}
 
 
 async def solve_deck(job: FemJob, d: Path, write: Callable[[Path], None], label: str,
@@ -134,7 +166,8 @@ async def run_levels(job: FemJob, solve_at: Level) -> dict:
         lo, hi = 90.0 * i / n, 90.0 * (i + 1) / n
         metric, payload = await solve_at(size, d, label, lo, hi)
         payloads.append(payload)
-        hist.append({"level": i, "label": label, "size_mm": round(size, 4),
+        hist.append({"level": i, "label": label,
+                     "size_mm": round(payload["info"].get("size_mm", size), 4),
                      "nodes": payload["info"]["nodes"], "elements": payload["info"]["elements"],
                      "metric": metric})
         if loop and i > 0:

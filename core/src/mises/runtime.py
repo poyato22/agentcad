@@ -331,6 +331,8 @@ class Runtime:
         # agent_result reads it next); bounded, the steps are the fallback
         self._released_text: dict[str, str] = {}
         self._stalled: set[str] = set()       # runs already flagged idle (E9 run_stalled)
+        # when each run's current turn began: the stall clock never reaches back past it
+        self._turn_began: dict[str, float] = {}
         # P11 F3: run id -> notes for the model, sent with its next Mises tool result (a call
         # of a tool Claude Code does not have: the real names it likely meant)
         self.tool_notes: dict[str, list[str]] = {}
@@ -1843,6 +1845,7 @@ class Runtime:
             await self.resume_run(run_id)
             st = self._claude[run_id]
         st.cancel_requested = False
+        self.note_turn_began(run_id)
         st.effort = self._pending_effort.pop(run_id, None)
         if not st.ref:
             st.ref = f"{CLAUDE_CODE}/{self.store.get_run(run_id).model}"
@@ -2128,6 +2131,8 @@ class Runtime:
             raise MisesError(ErrorCode.INVALID_INPUT, "run is still working",
                              hint="wait for it to finish or cancel it")
         busy = self.run_busy(run_id)
+        if not busy:
+            self.note_turn_began(run_id)
         harness = bool(log and (CLASSIFY in log or "system_note" in log))
         words, log = _user_words(text, log), _public_log(log)
         self._sending.add(run_id)
@@ -2632,6 +2637,12 @@ class Runtime:
     #: a running turn with no activity for this long is reported as stalled (E9)
     STALL_S = 90.0
 
+    def note_turn_began(self, run_id: str, at: float | None = None) -> None:
+        """A turn starts now: idle time is counted from here, not from the previous turn's
+        last activity (a follow-up hours later is not 'no progress for hours')."""
+        self._turn_began[run_id] = time.time() if at is None else at
+        self._stalled.discard(run_id)
+
     def scan_stalls(self, *, now: float | None = None) -> list[str]:
         """Publish a `run_stalled` event for each run this process drives whose turn has made no
         activity for STALL_S and is not waiting on the user (a question or an approval). Each
@@ -2651,7 +2662,8 @@ class Runtime:
             if run.status != "running" or self.pending_questions(rid) \
                     or self.store.pending_approvals(rid):
                 continue
-            idle = now - float(run.last_activity_at or run.created_at or now)
+            idle = now - max(float(run.last_activity_at or run.created_at or now),
+                             self._turn_began.get(rid, 0.0))
             if idle < self.STALL_S:
                 self._stalled.discard(rid)
                 continue

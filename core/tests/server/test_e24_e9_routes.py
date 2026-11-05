@@ -141,6 +141,21 @@ def test_scan_stalls_publishes_once(rt, monkeypatch):
     del got, sub
 
 
+def test_scan_stalls_counts_idle_from_the_new_turn_not_the_last_one(rt, monkeypatch):
+    """A follow-up message hours after the last turn is not 'no progress for hours': the
+    stall clock starts when the new turn begins (DRONE2: a 28572 s note on the first step)."""
+    pid = rt.store.create_project("Drone").id
+    run = rt.store.create_run("engineer", "fake", "m", "go", project_id=pid)
+    monkeypatch.setattr(rt, "run_busy", lambda rid: True)
+    rt._runs[run.id] = object()
+    rt.store.update_run(run.id, last_activity_at=time.time() - 8 * 3600)
+    rt.note_turn_began(run.id)
+    assert rt.scan_stalls() == []
+    assert not rt.tool_notes.get(run.id)
+    # the turn itself going quiet is still caught
+    assert run.id in rt.scan_stalls(now=time.time() + 200)
+
+
 def test_post_queued_cancel_alias_drops_with_reason_cancelled(client, rt):
     pid = _pid(client)
     rid = client.post(f"/projects/{pid}/chat", headers=AUTH, json={"text": "hi"}).json()["run_id"]

@@ -14,7 +14,7 @@ from .aniso import layer_peaks
 from .deck import Setup, resolve_loads, resolve_supports, static_step, write_deck
 from .fatigue import case_fatigue, node_field, stress_arrays
 from .fatigue import warnings_for as fatigue_warnings
-from .fem import FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
+from .fem import mesh_note, FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
 from .fields import principal_stresses, von_mises_np
 from .results import parse_frd, peaks
 from .types import SimError
@@ -112,7 +112,8 @@ async def solve_cases(job: FemJob, size: float, d: Path, label: str, lo: float, 
         out.append({"case": case, "setup": setup, "peaks": pk, "frd": res, "nl": extras,
                     "notes": notes})
     worst = max(out, key=lambda c: c["peaks"]["max_von_mises_mpa"])
-    info = {"size_mm": round(size, 4), "nodes": len(mesh.nodes), "elements": len(mesh.tets),
+    info = {"size_mm": round(mesh.size_mm or size, 4), **mesh_note(mesh),
+            "nodes": len(mesh.nodes), "elements": len(mesh.tets),
             "order": mesh.order, "fixed_nodes": len(worst["setup"].held),
             "loaded_nodes": len(worst["setup"].cload), "dropped_load_n": worst["setup"].dropped_n}
     return worst["peaks"]["max_von_mises_mpa"], {"mesh": mesh, "cases": out, "info": info}
