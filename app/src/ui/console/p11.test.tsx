@@ -67,13 +67,13 @@ describe("F9: a run that recovers by itself", () => {
   });
 });
 
-describe("Mises continues a stopped run by itself", () => {
+describe("AgentCAD continues a stopped run by itself", () => {
   it("shows its internal continuation as a small note, never as your message", async () => {
-    const internal = "Mises note: your last turn stopped (the app restarted before the turn finished). Carry on.";
+    const internal = "AgentCAD note: your last turn stopped (the app restarted before the turn finished). Carry on.";
     const list = [
       message("c1", "user", "build the arm", 1),
       step("c1", "error", { stop_reason: "interrupted", error: "cancelled", message: "the process driving this run exited before it finished" }, 2),
-      step("c1", "decision", { continuation: { cause: "the app restarted before the turn finished", auto: true, text: "Mises continued after: the app restarted before the turn finished" } }, 3),
+      step("c1", "decision", { continuation: { cause: "the app restarted before the turn finished", auto: true, text: "AgentCAD continued after: the app restarted before the turn finished" } }, 3),
       // a native run stores the internal message as a system note: no bubble for it
       step("c1", "message", { role: "user", text: internal, system_note: { kind: "continuation" } }, 3.5),
       message("c1", "assistant", "Picking up the elbow joint.", 4),
@@ -83,7 +83,7 @@ describe("Mises continues a stopped run by itself", () => {
     await frame();
     const log = screen.getByRole("log", { name: "Conversation" });
     const notes = [...log.querySelectorAll("[data-kind=note]")].map((n) => n.textContent);
-    expect(notes).toContain("Mises continued after: the app restarted before the turn finished");
+    expect(notes).toContain("AgentCAD continued after: the app restarted before the turn finished");
     const mine = [...log.querySelectorAll("[data-msg=user]")].map((n) => n.textContent ?? "");
     expect(mine).toHaveLength(1);
     expect(mine[0]).toContain("build the arm");

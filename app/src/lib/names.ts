@@ -49,7 +49,7 @@ export function taskWords(task: string): string {
  * else the model, else the start time ("14:02", then "14:02:05" for the same minute).
  */
 /** The app's own run (provider "ui": slices, prints and other actions started from a page). */
-export const UI_RUN_LABEL = "You (Mises)";
+export const UI_RUN_LABEL = "You (AgentCAD)";
 
 /** A run's own words: the user's title (a rename in the agent manager) when it has one, kept as
  *  typed, else the first words of its task (C-5). */

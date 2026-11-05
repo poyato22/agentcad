@@ -210,7 +210,7 @@ export class CoreClient {
     if (!res.ok) throw await toError(res);
     return true;
   }
-  /** Carry a stopped run on: the core sends it an internal continuation ("Mises continued after:
+  /** Carry a stopped run on: the core sends it an internal continuation ("AgentCAD continued after:
    *  <cause>" in the thread), never your message again and never as your words. */
   async continueRun(runId: string, cause?: string | null): Promise<void> {
     const res = await this.request("POST", `/runs/${enc(runId)}/continue`, { body: cause ? { cause: cause.slice(0, 2000) } : {} });

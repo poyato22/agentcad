@@ -27,7 +27,7 @@ describe("Loading screen", () => {
 
   it("shows the cube mark and a status line while starting", () => {
     render(<Loading />);
-    expect(screen.getByRole("img", { name: "Mises" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "AgentCAD" })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toBe("Starting core");
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });

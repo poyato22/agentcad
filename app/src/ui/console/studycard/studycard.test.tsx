@@ -291,7 +291,7 @@ describe("inline study cards", () => {
   });
 });
 
-describe("the agent's reason renders as Mises markup (A2)", () => {
+describe("the agent's reason renders as AgentCAD markup (A2)", () => {
   it("bold / callout markup renders; raw HTML stays text", async () => {
     const i = STEPS.findIndex((s) => s.kind === "tool_call" && (s.payload as { name?: string }).name === "sim_run");
     expect(i).toBeGreaterThanOrEqual(0);

@@ -54,10 +54,10 @@ pub fn build_menu<R: Runtime>(handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     let app_menu = Submenu::with_items(
         handle,
-        "Mises",
+        "AgentCAD",
         true,
         &[
-            &PredefinedMenuItem::about(handle, Some("About Mises"), None)?,
+            &PredefinedMenuItem::about(handle, Some("About AgentCAD"), None)?,
             &PredefinedMenuItem::separator(handle)?,
             &PredefinedMenuItem::services(handle, None)?,
             &PredefinedMenuItem::separator(handle)?,

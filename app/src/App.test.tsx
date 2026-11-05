@@ -81,7 +81,7 @@ describe("App shell", () => {
     bindClient(c as unknown as CoreClient);
     render(<App />);
     // first run: the wizard covers the app
-    expect(await screen.findByRole("dialog", { name: "Set up Mises" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Set up AgentCAD" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
     expect(await screen.findByRole("dialog", { name: "Profile" })).toBeTruthy();

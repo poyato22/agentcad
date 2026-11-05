@@ -301,7 +301,7 @@ function runItems(runId: string, input: BuildLogInput, prevVars: ReadonlyMap<num
         const stuck = rec(p.stuck);
         if (recovered) { push({ kind: "note", text: recovered, ts: s.ts, stepId: s.id }, s.ts); break; }
         // the core carried a stopped run on with an internal message: a small system note, never
-        // a bubble of yours ("Mises continued after: <cause>")
+        // a bubble of yours ("AgentCAD continued after: <cause>")
         const continued = str(rec(p.continuation).text);
         if (continued) { push({ kind: "note", text: continued, ts: s.ts, stepId: s.id }, s.ts); break; }
         if (str(stuck.kind)) {

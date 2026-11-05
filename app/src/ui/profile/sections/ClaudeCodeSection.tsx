@@ -17,7 +17,7 @@ export const NETWORK_FIELDS = [
   { name: "NODE_EXTRA_CA_CERTS", label: "Extra CA certificates", placeholder: "/Users/you/proxy-ca.pem",
     help: "The full path to your VPN or proxy's CA file (PEM), when it inspects HTTPS." },
   { name: "HTTPS_PROXY", label: "HTTPS proxy", placeholder: "http://proxy.example:8080",
-    help: "http, https, socks5 or socks5h. A password in it is kept by Mises and shown as ***." },
+    help: "http, https, socks5 or socks5h. A password in it is kept by AgentCAD and shown as ***." },
   { name: "NO_PROXY", label: "No proxy for", placeholder: "localhost,127.0.0.1,.corp.example",
     help: "Hosts, domains or IPs that skip the proxy, comma-separated." },
 ] as const;
@@ -60,7 +60,7 @@ export function NetworkCard({ data, update }: SectionProps): JSX.Element {
 
   return (
     <Card title="Network">
-      <p class="dim">For a VPN or a proxy that inspects HTTPS. Mises passes these to Claude Code when it starts it, so you don't have to launch Mises from a terminal.</p>
+      <p class="dim">For a VPN or a proxy that inspects HTTPS. AgentCAD passes these to Claude Code when it starts it, so you don't have to launch AgentCAD from a terminal.</p>
       {NETWORK_FIELDS.map((f) => (
         <label key={f.name} class="profile-field" data-env={f.name}>
           <span class="label">{f.label} <code class="faint">{f.name}</code></span>

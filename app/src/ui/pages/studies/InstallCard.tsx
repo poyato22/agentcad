@@ -10,7 +10,7 @@ type SolverInfo = Solvers["ccx"];
 
 const WHY: Record<keyof Solvers, string> = {
   ccx: "CalculiX (ccx) is not installed. Stress, modal, buckling, thermal and drop studies need it to solve; wind studies do not.",
-  gmsh: "gmsh is missing from the Mises core. FEM studies need it to mesh.",
+  gmsh: "gmsh is missing from the AgentCAD core. FEM studies need it to mesh.",
 };
 
 /** The command to copy: the `quoted` part of a hint like "run `uv sync` in core/", else all of it. */

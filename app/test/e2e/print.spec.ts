@@ -88,7 +88,7 @@ test("a_sent_card_on_the_ui_run_stays_reachable_via_the_chip_and_show_card", asy
   await expect(printCard(page)).toHaveCount(0);
 
   // the card is one click away via the needs-you chip, labelled "You (Mises)"
-  const chip = page.getByRole("button", { name: "You (Mises) needs you · 1 waiting" });
+  const chip = page.getByRole("button", { name: "You (AgentCAD) needs you · 1 waiting" });
   await expect(chip).toHaveText("1");
   await chip.click();
   await expect(printCard(page)).toBeVisible();

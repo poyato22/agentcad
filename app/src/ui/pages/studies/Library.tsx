@@ -125,7 +125,7 @@ export function MaterialEditor({ materials, onSave, onDelete, onClose, onCalibra
           </div>
         ))}
         <div class="sf-row"><label class="sf-label" for="mat-src">Source</label><input id="mat-src" value={m.source ?? ""} maxLength={200} placeholder="datasheet, test…" onInput={(e) => setM({ ...m, source: (e.target as HTMLInputElement).value })} /></div>
-        <p class="faint st-note">Printed parts get the FDM knock-down on top of these values (approximate). Saved in this Mac's Mises home.</p>
+        <p class="faint st-note">Printed parts get the FDM knock-down on top of these values (approximate). Saved in this Mac's AgentCAD home.</p>
         {problems.length > 0 && m.name && <ul class="st-problems">{problems.map((p) => <li key={p} class="tone-red">{p}</li>)}</ul>}
         {problem && <p class="tone-red text" role="alert">{problem}</p>}
         <Button type="submit" variant="ink" disabled={problems.length > 0} data-testid="material-save">Save material</Button>

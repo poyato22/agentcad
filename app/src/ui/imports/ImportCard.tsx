@@ -28,7 +28,7 @@ function rowResult(r: MatchRow): { text: string; cls: string } {
   if (r.status === "match") return { text: "✓ matches", cls: "ok" };
   if (r.status === "unchecked") return { text: "not checked", cls: "faint" };
   if (r.status === "missing") return { text: "✗ not found", cls: "bad" };
-  if (r.kind === "callout") return { text: "✗ not on Mises's drawing", cls: "bad" };
+  if (r.kind === "callout") return { text: "✗ not on AgentCAD's drawing", cls: "bad" };
   const off = r.measured !== null && r.expected !== null ? Math.round((r.measured - r.expected) * 100) / 100 : null;
   return { text: off === null ? "✗ differs" : `✗ off by ${off > 0 ? "+" : ""}${off}`, cls: "bad" };
 }
@@ -107,7 +107,7 @@ function SideBySide({ rec }: { rec: DrawingImport }): JSX.Element {
   return (
     <div class="imp-side" data-side-by-side>
       <Picture url={original} alt={`Your drawing: ${rec.file_name}`} caption="Your drawing" />
-      <Picture url={ours} alt={`Mises's drawing of ${rec.part_id ?? "the part"}`} caption="Mises's drawing of the part" />
+      <Picture url={ours} alt={`AgentCAD's drawing of ${rec.part_id ?? "the part"}`} caption="AgentCAD's drawing of the part" />
     </div>
   );
 }

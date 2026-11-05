@@ -47,7 +47,7 @@
         {
           "model": "moonshot/kimi-k3.1-pro",
           "recommended": null,
-          "note": "Strong coder, untested on CAD in Mises; thinking always on"
+          "note": "Strong coder, untested on CAD in AgentCAD; thinking always on"
         },
         {
           "model": "moonshot/kimi-k3.1-pro-highspeed",

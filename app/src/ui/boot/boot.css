@@ -63,14 +63,14 @@
 }
 .intro-title.is-on { opacity: 1; }
 /* Typewriter: reveal character cells with a steps() width sweep; Iosevka is monospace so cells are
-   even. "Welcome to Mises" is 16 cells. A caret rides the leading edge. */
+   even. "Welcome to AgentCAD" is 19 cells. A caret rides the leading edge. */
 .intro-title.is-on:not(.is-instant) {
-  width: 16ch;
+  width: 19ch;
   border-right: 2px solid var(--blue);
-  animation: intro-type 700ms steps(16, end) forwards, intro-caret 640ms step-end 3;
+  animation: intro-type 700ms steps(19, end) forwards, intro-caret 640ms step-end 3;
 }
 .intro-title.is-instant.is-on { animation: intro-fade-in 260ms ease forwards; }
-@keyframes intro-type { from { width: 0; } to { width: 16ch; } }
+@keyframes intro-type { from { width: 0; } to { width: 19ch; } }
 @keyframes intro-caret { 50% { border-color: transparent; } }
 @keyframes intro-fade-in { from { opacity: 0; } to { opacity: 1; } }
 

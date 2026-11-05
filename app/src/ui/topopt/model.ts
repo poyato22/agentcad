@@ -205,5 +205,5 @@ export function statusLine(rec: TopoptRecord): string {
     const best = rec.variants.find((v) => v.id === rec.recommended);
     return best ? `Done · recommended ${best.name}` : "Done · no variant passed verification";
   }
-  return rec.status === "interrupted" ? "Interrupted (Mises restarted)" : rec.status[0]?.toUpperCase() + rec.status.slice(1);
+  return rec.status === "interrupted" ? "Interrupted (AgentCAD restarted)" : rec.status[0]?.toUpperCase() + rec.status.slice(1);
 }

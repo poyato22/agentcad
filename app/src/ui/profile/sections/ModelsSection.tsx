@@ -63,7 +63,7 @@ export function ClaudeCard({ data, update }: SectionProps): JSX.Element {
   const word = !c.installed ? "not installed" : c.signed_in ? "signed in" : "signed out";
   return (
     <Card title="Your Claude Code">
-      <p class="dim">Runs your Claude Code on this Mac, with your own sign-in and usage. Mises never sees your credentials.</p>
+      <p class="dim">Runs your Claude Code on this Mac, with your own sign-in and usage. AgentCAD never sees your credentials.</p>
       <div class="profile-status"><Led tone={tone} /><span>{word}</span></div>
       {c.installed && (
         <dl class="profile-dl">

@@ -21,7 +21,7 @@ describe("Intro", () => {
     render(<Intro onDone={vi.fn()} createIntro={create} reducedMotion={false} />);
     expect(handle.start).toHaveBeenCalledOnce();
     expect(handle.skip).not.toHaveBeenCalled();
-    expect(screen.getByText("Welcome to Mises")).toBeTruthy();
+    expect(screen.getByText("Welcome to AgentCAD")).toBeTruthy();
   });
 
   it("is skippable by click", () => {
@@ -73,7 +73,7 @@ describe("Intro", () => {
     // the fly-in is skipped and the title shows instantly
     expect(handle.start).not.toHaveBeenCalled();
     expect(handle.skip).toHaveBeenCalled();
-    expect(screen.getByText("Welcome to Mises").className).toContain("is-instant");
+    expect(screen.getByText("Welcome to AgentCAD").className).toContain("is-instant");
     expect(onDone).not.toHaveBeenCalled();
     vi.runAllTimers();
     expect(onDone).toHaveBeenCalledOnce();

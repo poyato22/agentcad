@@ -14,7 +14,7 @@ export interface CubeMarkProps {
 export function CubeMark({ size = 72, spin = false, muted = false }: CubeMarkProps): JSX.Element {
   return (
     <svg class={`cube-mark${spin ? " is-spin" : ""}${muted ? " is-muted" : ""}`} width={size} height={size}
-      viewBox="0 0 100 100" role="img" aria-label="Mises">
+      viewBox="0 0 100 100" role="img" aria-label="AgentCAD">
       {/* top (lightest) */}
       <polygon points="50,16 84,35 50,54 16,35" fill="#cfcfcf" />
       {/* left (mid) */}

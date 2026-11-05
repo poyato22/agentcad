@@ -379,7 +379,7 @@ describe("buildLog on real core sequences", () => {
 describe("userWords", () => {
   const SKETCH_STEP = (JSON.parse(readFileSync(resolve(__dirname, "../../../test/fixtures/core-ui/sketch_run_steps.json"), "utf8")) as Step[])[0];
 
-  it("a sketch run's first message shows the user's words, not the procedure Mises added (real core step)", () => {
+  it("a sketch run's first message shows the user's words, not the procedure AgentCAD added (real core step)", () => {
     const p = SKETCH_STEP.payload as Record<string, unknown>;
     expect(String(p.text)).toContain(SKETCH_PROCEDURE_START);           // pinned to the real core
     expect(userWords(p)).toBe("make this bracket\n\n(sketch attached)");

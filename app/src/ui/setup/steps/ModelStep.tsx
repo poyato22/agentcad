@@ -160,7 +160,7 @@ function ClaudeCard({ data, update, refresh }: StepProps): JSX.Element {
 
   return (
     <Card title="Use my Claude Code">
-      <p class="dim">Runs your Claude Code on your own Claude account and plan. Sign-in is on Anthropic's page in your browser; Mises never sees it.</p>
+      <p class="dim">Runs your Claude Code on your own Claude account and plan. Sign-in is on Anthropic's page in your browser; AgentCAD never sees it.</p>
       {st.version && <div class="faint setup-meta text">version {st.version}</div>}
       {body}
       {error && <div class="setup-error text" role="alert">{error}</div>}
