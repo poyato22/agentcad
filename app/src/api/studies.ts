@@ -58,7 +58,8 @@ export type StudyCard = z.infer<typeof studyCardSchema>;
 
 /** GET /sims item (newest first). */
 export const studySummarySchema = z.looseObject({
-  sim_id: z.string(), part_id: z.string(), run_id: z.string().nullable(), step_id: z.number().nullish(),
+  // an assembly study has no part (project_id instead): "" so every part-page check treats it as none
+  sim_id: z.string(), part_id: z.string().nullable().transform((v) => v ?? ""), run_id: z.string().nullable(), step_id: z.number().nullish(),
   type: z.string().nullish(), status: z.string(), stage: z.string().nullish(), phase: z.string().nullish(), pct: num.optional(),
   created_at: z.number(), finished_at: num, error: strN, hint: strN, inputs: z.unknown(),
   results: z.record(z.string(), z.unknown()).nullable(), guide: z.boolean(), label: z.string(), fidelity_class: z.string().nullish(),
@@ -148,12 +149,18 @@ export const studySectionSchema = z.looseObject({
   values: z.array(nested),
 });
 export type StudySection = z.infer<typeof studySectionSchema>;
+/** GET /sims/{id}/streamlines: traced in the core from the solver's velocity field, in part mm; samples dt_s apart. */
+export const studyStreamlinesSchema = z.looseObject({
+  lines: z.array(z.object({ points: z.array(vec3), speed: z.array(z.number()) })),
+  units: z.string(), dt_s: z.number(), speed_max: z.number(), inflow: z.number(),
+});
+export type StudyStreamlines = z.infer<typeof studyStreamlinesSchema>;
 
 export const studyCancelSchema = z.looseObject({ sim_id: z.string(), status: z.literal("cancelling") });
 
 /** POST /sims body (core server/sim_api.StartBody). */
 export interface StudyStartBody {
-  type: StudyType; part_id: string; settings: Record<string, unknown>;
+  type: StudyType; part_id?: string; project_id?: string; settings: Record<string, unknown>;
   reason?: string | null; requirements?: Record<string, unknown>[];
 }
 

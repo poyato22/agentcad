@@ -166,6 +166,7 @@ def write_case(case: Path, tris_w_m: np.ndarray, s: dict, a_ref_m2: float,
         "system/blockMeshDict": _block_mesh(plan),
         "system/snappyHexMeshDict": _snappy(plan),
         "system/controlDict": _control(plan, U, rho, a_ref_m2),
+        "system/volumePoints": _volume_points(plan),
         "system/fvSchemes": FV_SCHEMES,
         "system/fvSolution": FV_SOLUTION,
         "system/decomposeParDict": _decompose(plan.cpus),
@@ -310,6 +311,12 @@ def _control(p: CasePlan, U: float, rho: float, a_ref: float) -> str:
             f"        Aref            {a_ref:.9g};\n        dragDir         (1 0 0);\n"
             "        liftDir         (0 0 1);\n"
             "        coefficients    (Cd Cs Cl CmRoll CmPitch CmYaw);\n    }\n"
+            "    sets\n    {\n        type            sets;\n        libs            (sampling);\n"
+            "        writeControl    writeTime;\n        setFormat       raw;\n"
+            "        fields          (U);\n        interpolationScheme cellPoint;\n"
+            "        sets\n        {\n            volume\n            {\n"
+            "                type    cloud;\n                axis    xyz;\n"
+            "                #include \"volumePoints\"\n            }\n        }\n    }\n"
             "    surfaces\n    {\n        type            surfaces;\n"
             "        libs            (sampling);\n        writeControl    writeTime;\n"
             "        surfaceFormat   raw;\n        fields          (p U);\n"
@@ -325,6 +332,27 @@ def _control(p: CasePlan, U: float, rho: float, a_ref: float) -> str:
                       "                interpolate false;\n            }\n"
                       for name, normal in (("slice_xz", "(0 1 0)"), ("slice_xy", "(0 0 1)")))
             + "        }\n    }\n}\n")
+
+
+VOLUME_MAX_POINTS = 200_000      # the velocity sampled for streamlines and section planes
+
+
+def volume_grid(plan: "CasePlan") -> tuple[np.ndarray, float, tuple[int, int, int]]:
+    """(origin m, spacing m, shape) of the regular box of velocity samples around the body, in the
+    wind frame: 1 D upstream, 2 D downstream, 1.25 D to each side."""
+    d = plan.d_ref_m
+    lo = np.maximum(plan.lo - np.array([d, 1.25 * d, 1.25 * d]), plan.dom_lo)
+    hi = np.minimum(plan.hi + np.array([2 * d, 1.25 * d, 1.25 * d]), plan.dom_hi)
+    h = float((np.prod(hi - lo) / VOLUME_MAX_POINTS) ** (1 / 3))
+    shape = tuple(int(x) for x in np.maximum(np.floor((hi - lo) / h).astype(int) + 1, 2))
+    return lo, h, shape
+
+
+def _volume_points(plan: "CasePlan") -> str:
+    o, h, (nx, ny, nz) = volume_grid(plan)
+    rows = [f"({o[0] + i * h:.6f} {o[1] + j * h:.6f} {o[2] + k * h:.6f})"
+            for i in range(nx) for j in range(ny) for k in range(nz)]
+    return "points\n(\n" + "\n".join(rows) + "\n);\n"
 
 
 def _field(cls: str, name: str, dims: str, internal: str, *, inlet: str, outlet: str,

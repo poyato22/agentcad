@@ -27,9 +27,9 @@ import {
 } from "./spec";
 import {
   studyCancelSchema, studyChartsSchema, studyCompareSchema, studyMaterialSchema, studyMaterialsSchema, studyProbeSchema, studyRecordSchema,
-  studySectionSchema, studySolversSchema, studySummarySchema, studyTemplateSchema, studyTypeInfoSchema,
+  studySectionSchema, studyStreamlinesSchema, studySolversSchema, studySummarySchema, studyTemplateSchema, studyTypeInfoSchema,
   type CustomMaterialBody, type StudyCharts, type StudyCompare, type StudyMaterial, type StudyMaterials, type StudyProbe, type StudyRecord,
-  type StudySection, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
+  type StudySection, type StudyStreamlines, type StudySolvers, type StudyStartBody, type StudySummary, type StudyTemplate, type StudyType, type StudyTypeInfo,
 } from "./studies";
 import { studiesContextSchema, type StudiesContext } from "./studiesAgent";
 import {
@@ -376,6 +376,9 @@ export class CoreClient {
   }
   studySection(simId: string, q: { axis: "x" | "y" | "z"; offset: number; channel: string; n?: number }): Promise<StudySection> {
     return this.json("GET", `/sims/${enc(simId)}/section`, studySectionSchema, { query: { axis: q.axis, offset: q.offset, channel: q.channel, n: q.n } });
+  }
+  studyStreamlines(simId: string, n?: number): Promise<StudyStreamlines> {
+    return this.json("GET", `/sims/${enc(simId)}/streamlines`, studyStreamlinesSchema, { query: { n } });
   }
   /** A wind study's velocity slice image (slice_xz | slice_xy). */
   studySlice(simId: string, name: "slice_xz" | "slice_xy"): Promise<Blob> { return this.blob(`/sims/${enc(simId)}/slices/${name}.png`, "image/png"); }

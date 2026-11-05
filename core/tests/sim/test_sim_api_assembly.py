@@ -112,3 +112,27 @@ def test_list_sims_judges_staleness_against_the_right_root(tmp_path):
                                                    "created_at": time.time(), **rec}))
     got = {s["sim_id"]: s["stale"] for s in list_sims(tmp_path / "parts")}
     assert got == {"sim_0000000000b1": False, "sim_0000000000b2": False}
+
+
+def test_assembly_wind_is_accepted_and_modal_still_refused(client, rt, monkeypatch):
+    pid = rt.store.create_project("B").id
+    _build(client, rt, "blk", BLOCK)
+    rt.assembly_store.add_instance(pid, Instance(id="base", part_id="blk", name="base",
+                                                 fixed=True))
+    calls = []
+
+    async def fake_call(run_id, tool, payload, **kw):
+        calls.append((tool, payload))
+        return ToolOutput(summary="ok", data={})
+    monkeypatch.setattr(rt.gate, "call", fake_call)
+    r = client.post("/sims", headers=AUTH, json={"type": "modal", "project_id": pid,
+                                                 "settings": {}})
+    assert r.status_code == 400 and "static or wind" in r.json()["message"]
+    r = client.post("/sims", headers=AUTH, json={"type": "wind", "project_id": pid,
+                                                 "settings": {"speed_m_s": 20}})
+    assert r.status_code == 202, r.text
+    deadline = time.time() + 10
+    while not calls and time.time() < deadline:
+        time.sleep(0.05)
+    assert calls[0][0] == "sim_run" and calls[0][1]["type"] == "wind"
+    assert calls[0][1]["project_id"] == pid

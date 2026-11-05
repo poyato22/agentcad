@@ -1,4 +1,5 @@
-"""Assembly (build) targets for static studies: a sim_run with project_id instead of part_id.
+"""Assembly (build) targets for static and wind studies: a sim_run with project_id instead of
+part_id. A wind study runs on the placed parts' surfaces (assembly_tris).
 
 The build's assembly is solved by C2 (mises.assembly.solve: every instance's world transform
 from its fixed instances and joints). Each instance's part STEP is copied into the study's job
@@ -23,6 +24,7 @@ from ..cad import safe_io
 from ..types import ErrorCode, MisesError
 
 ASSEMBLIES_DIR = "assemblies"
+STUDY_TYPES = ("static", "wind")     # what a build can be studied by as a whole (POST /sims)
 
 
 def assemblies_root(parts_root: Path) -> Path:
@@ -119,12 +121,29 @@ def snapshot(parts_root: Path, target: dict, job_root: Path) -> dict:
                 raise MisesError(ErrorCode.NOT_FOUND, f"{pid} has no model.step",
                                  hint="rebuild the part")
             hashes[pid] = hashlib.sha256(step.read_bytes()).hexdigest()
+            safe_io.copy_out(Path(parts_root) / pid, "model.stl", inputs, f"{pid}.stl")
         mesh_instances.append({"id": inst["id"], "step": str((inputs / f"{pid}.step").resolve()),
                                "transform": inst["transform"]})
     geometry_hash = hashlib.sha256(json.dumps(
         {"parts": hashes, "transforms": {i["id"]: i["transform"] for i in target["instances"]}},
         sort_keys=True).encode()).hexdigest()
     return {"instances": mesh_instances, "part_hashes": hashes, "geometry_hash": geometry_hash}
+
+
+def assembly_tris(instances: list[dict]) -> tuple[np.ndarray, list[int]]:
+    """Every instance's triangles in build coordinates (from snapshot()'s STL copies) and how
+    many belong to each closed shell, for a wind study. Raises ValueError when one has no STL."""
+    from .cfd.setup import read_stl
+    out, counts = [], []
+    for inst in instances:
+        stl = Path(inst["step"]).with_suffix(".stl")
+        if not stl.is_file():
+            raise ValueError(f"instance {inst['id']} has no STL to voxelize")
+        tris = read_stl(stl)
+        T = np.array(inst["transform"], dtype=float)
+        out.append(tris @ T[:3, :3].T + T[:3, 3])
+        counts.append(len(tris))
+    return np.concatenate(out), counts
 
 
 def node_instances(mesh) -> dict[int, str]:

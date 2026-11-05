@@ -456,6 +456,7 @@ async def _solve_angle(tris_part_mm, s, case: Path, direction, up, a_ref_m2, doc
             "convergence_band": r["convergence_band"], "model_error_band": band,
             "validation": openfoam_validation_rows(), "converged": r["converged"],
             "stopped": r["stopped"], "steps": r["iterations"], "history": r["history"],
+            "_plan": plan,
             "mesh": {**plan.to_dict(), "solver": f"OpenFOAM {OPENFOAM_VERSION}",
                      "image": OPENFOAM_IMAGE, "turbulence": plan.turbulence,
                      "boundaries": "fixed-velocity inlet, fixed-pressure outlet, "
@@ -490,6 +491,40 @@ def _surface(path: Path, field: str) -> tuple[np.ndarray, np.ndarray]:
     except (OSError, ValueError) as e:
         log.warning("skipping OpenFOAM surface %s: %s", path.name, e)
         return np.zeros((0, 3)), np.zeros(0)
+
+
+def volume_arrays(rows: np.ndarray, origin_m, h_m: float, shape) -> tuple[np.ndarray, np.ndarray]:
+    """(velocity (3, nx, ny, nz), solid) on the sampled grid. A grid point the sampler left out is
+    in the body or out of the mesh: it counts as solid and holds no velocity."""
+    vel = np.zeros((3, *shape), np.float32)
+    solid = np.ones(shape, bool)
+    g = np.round((rows[:, :3] - np.asarray(origin_m)) / h_m).astype(int)
+    ok = np.all((g >= 0) & (g < np.array(shape)), axis=1)
+    g, u = g[ok], rows[ok, 3:6]
+    vel[:, g[:, 0], g[:, 1], g[:, 2]] = u.T
+    solid[g[:, 0], g[:, 1], g[:, 2]] = False
+    return vel, solid
+
+
+def write_volume(path: Path, case: Path, plan, R: np.ndarray) -> bool:
+    """fields.npz from the sampled velocity box: the same grid form as the built-in solver's, so
+    streamlines, section planes and probes work on it. False when the samples are missing."""
+    from ..fields import save_grid
+    from .foam_case import volume_grid
+    f = foam_parse.find_volume_samples(case)
+    if f is None:
+        log.warning("no OpenFOAM velocity samples in %s", case)
+        return False
+    try:
+        rows = foam_parse.volume_samples(f)
+    except (OSError, ValueError) as e:
+        log.warning("skipping OpenFOAM velocity samples: %s", e)
+        return False
+    o, h, shape = volume_grid(plan)
+    vel, solid = volume_arrays(rows, o, h, shape)
+    save_grid(path, o * 1e3, h * 1e3, {"velocity": vel, "speed": np.sqrt((vel * vel).sum(0))},
+              {"velocity": "m/s", "speed": "m/s"}, solid=solid, rot=R)
+    return True
 
 
 def write_outputs(out_dir: Path, case: Path, tris_part_mm: np.ndarray, R: np.ndarray, s: dict,
@@ -534,6 +569,9 @@ def write_outputs(out_dir: Path, case: Path, tris_part_mm: np.ndarray, R: np.nda
         slices.append(f"{name}.png")
     if slices:
         outputs["slices"] = slices
+    plan = main.pop("_plan", None)
+    if plan is not None and write_volume(out_dir / "fields.npz", case, plan, R):
+        outputs["fields"] = "fields.npz"
     main["outputs"] = outputs
 
 

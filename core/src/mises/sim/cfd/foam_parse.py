@@ -165,6 +165,29 @@ def find_surface(case: Path, fo: str, surface: str, field: str) -> Path | None:
     return None
 
 
+def find_volume_samples(case: Path) -> Path | None:
+    """The raw file of the sampled velocity box at the last written time."""
+    root = Path(case) / "postProcessing" / "sets"
+    if not _plain_dir(root):
+        return None
+    times = sorted((d for d in root.iterdir() if _plain_dir(d) and _is_num(d.name)),
+                   key=lambda d: float(d.name))
+    for d in reversed(times):
+        c = d / "volume_U.xy"
+        if c.is_file() and not c.is_symlink():
+            return c
+    return None
+
+
+def volume_samples(path: Path) -> np.ndarray:
+    """(n, 6) rows x y z Ux Uy Uz. Points in the body or out of the mesh are not in the file."""
+    text, _ = read_capped(path)
+    a = np.loadtxt(text.splitlines(), comments="#", ndmin=2)
+    if a.shape[1] < 6:
+        raise ValueError(f"{Path(path).name}: {a.shape[1]} columns, wanted x y z Ux Uy Uz")
+    return a[:, :6]
+
+
 def surface_values(path: Path, field: str) -> tuple[np.ndarray, np.ndarray]:
     """(xyz (n, 3), values (n,) or (n, 3)) of `field` from a raw surface file."""
     names, a = read_raw(path)

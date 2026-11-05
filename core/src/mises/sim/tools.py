@@ -270,7 +270,7 @@ async def _run(ctx: ToolContext, type_id: str, part_id: str, settings: dict, *,
                   "adds large deflection, plasticity, contact / bonded pairs and rigid "
                   "supports (slower; reports the load fraction reached, plastic strain and "
                   "contact pressure with a validated error band). project_id instead of "
-                  "part_id runs a static study of the build's assembly (instance faces "
+                  "part_id runs a static or wind study of the build's assembly (instance faces "
                   "f3@<instance id>; instances interact only through settings.nonlinear."
                   "contacts). Faces are presets or face "
                   "ids from mirror_measure / mirror_faces. Give a one-line `reason`; pass spec "
@@ -290,15 +290,15 @@ async def sim_run(ctx: ToolContext, args: SimRunArgs) -> ToolOutput:
 
 async def _run_assembly(ctx: ToolContext, args: SimRunArgs, extra: dict | None):
     from . import assembly_study
-    if args.type != "static":
-        raise MisesError(ErrorCode.INVALID_INPUT, f"assembly studies are static only (not "
-                         f"{args.type})", hint="study each part with its part_id")
+    if args.type not in assembly_study.STUDY_TYPES:
+        raise MisesError(ErrorCode.INVALID_INPUT, f"assembly studies are static or wind only "
+                         f"(not {args.type})", hint="study each part with its part_id")
     try:
-        model = studies.validate_settings("static", args.settings)
+        model = studies.validate_settings(args.type, args.settings)
     except SimError as e:
         raise _bad(e) from None
     target = assembly_study.resolve(ctx, args.project_id)
-    return await studies.run_study(ctx, "static", None, None, model, reason=args.reason,
+    return await studies.run_study(ctx, args.type, None, None, model, reason=args.reason,
                                    requirements=args.requirements,
                                    inputs_extra={"project_id": target["project_id"],
                                                  **(extra or {})},

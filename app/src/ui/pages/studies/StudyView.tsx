@@ -7,7 +7,7 @@
 import type { JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { NEW_CHANNELS } from "../../../api/accuracy";
-import type { StudyProbe, StudyRecord, StudySection } from "../../../api/studies";
+import type { StudyProbe, StudyRecord, StudySection, StudyStreamlines } from "../../../api/studies";
 import type { PartFace } from "../../../api/types";
 import { actions } from "../../../state/store";
 import { Button } from "../../common/Button";
@@ -25,13 +25,15 @@ export interface StudyViewDeps extends StudySceneDeps {
   resultGlb?: (simId: string) => Promise<ArrayBuffer | null>;
   section?: (simId: string, q: { axis: "x" | "y" | "z"; offset: number; channel: string; n?: number }) => Promise<StudySection>;
   probe?: (simId: string, p: V3) => Promise<StudyProbe>;
+  streamlines?: (simId: string) => Promise<StudyStreamlines>;
 }
 
-const defaults: Required<Pick<StudyViewDeps, "partGlb" | "resultGlb" | "section" | "probe">> = {
+const defaults: Required<Pick<StudyViewDeps, "partGlb" | "resultGlb" | "section" | "probe" | "streamlines">> = {
   partGlb: async (id) => { const r = await actions.client().partGlb(id); return r === "not-modified" ? null : r.bytes; },
   resultGlb: (id) => studyData.glb(id),
   section: (id, q) => actions.client().studySection(id, q),
   probe: (id, p) => actions.client().studyProbe(id, p),
+  streamlines: (id) => actions.client().studyStreamlines(id, 144),
 };
 
 export interface StudyViewProps {
@@ -84,6 +86,7 @@ export function StudyView(props: StudyViewProps): JSX.Element {
   const [probeOn, setProbeOn] = useState(false);
   const [probe, setProbe] = useState<{ point: V3; data: StudyProbe | null; error: string | null } | null>(null);
   const [flowOn, setFlowOn] = useState(true);
+  const [meshOn, setMeshOn] = useState(false);
   const [labels, setLabels] = useState<{ key: string; x: number; y: number; text: string }[]>([]);
   /** E8: loads and fixtures shown over a result (on by default where the view offers it). */
   const [showLoads, setShowLoads] = useState(true);
@@ -154,6 +157,7 @@ export function StudyView(props: StudyViewProps): JSX.Element {
 
   useEffect(() => { sc.current?.setDeform(deform); }, [deform, info, channel]);
   useEffect(() => { sc.current?.setAnimate(animate); touch(); }, [animate, info, channel]);
+  useEffect(() => { sc.current?.setMeshLines(meshOn); }, [meshOn, info]);
 
   // markers: the setup view, and over a result where the view asks (E8) while Show loads is on
   const markersOn = !simId || (!!props.loadsOnResult && showLoads);
@@ -191,12 +195,21 @@ export function StudyView(props: StudyViewProps): JSX.Element {
   const frame = (rec?.mesh as { frame?: number[][] } | undefined)?.frame ?? null;
   useEffect(() => {
     const s = sc.current;
-    if (!s || !simId || type !== "wind" || !info || !flowOn) { s?.setFlow(null); return; }
+    if (!s || !simId || type !== "wind" || !info || !flowOn) { s?.setFlow(null); s?.setStreamlines(null); return; }
     let live = true;
     const b = info.bounds;
-    void deps.section(simId, { axis: "y", offset: (b.min[1] + b.max[1]) / 2, channel: "velocity" }).then((sec) => {
-      if (live) { sc.current?.setFlow(sec, frame); touch(); }
-    }).catch(() => { if (live) sc.current?.setFlow(null); });
+    // 3D streamlines when the study has a velocity field; else the particles on one slice
+    void Promise.resolve().then(() => deps.streamlines(simId)).then((set) => {
+      if (!live) return true;
+      if (set.lines.length === 0) return false;
+      sc.current?.setFlow(null); sc.current?.setStreamlines(set); touch();
+      return true;
+    }).catch(() => false).then((drawn) => {
+      if (drawn || !live) return;
+      void deps.section(simId, { axis: "y", offset: (b.min[1] + b.max[1]) / 2, channel: "velocity" }).then((sec) => {
+        if (live) { sc.current?.setFlow(sec, frame); touch(); }
+      }).catch(() => { if (live) sc.current?.setFlow(null); });
+    });
     return () => { live = false; };
   }, [simId, type, info, flowOn]);
 
@@ -308,6 +321,15 @@ export function StudyView(props: StudyViewProps): JSX.Element {
               disabled={reduced} title={reduced ? "Reduced motion: the mode shape shows as a static frame" : undefined}>
               {animate ? "Pause mode" : "Play mode"}
             </Button>
+          )}
+          {modes.length === 0 && channels.some((c) => c.name === "displacement") && (
+            <Button onClick={() => setAnimate(!animate)} aria-pressed={animate} data-testid="animate-load"
+              disabled={reduced} title={reduced ? "Reduced motion: the deformed shape shows as a static frame" : "The load going on and off, at the deformed scale"}>
+              {animate ? "Pause load" : "Play load"}
+            </Button>
+          )}
+          {type !== "wind" && (
+            <Button onClick={() => setMeshOn(!meshOn)} aria-pressed={meshOn} data-testid="toggle-mesh" title="The finite-element mesh on the surface">Mesh</Button>
           )}
           {type === "wind" && (
             <Button onClick={() => setFlowOn(!flowOn)} aria-pressed={flowOn} data-testid="toggle-flow">
