@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from ..sim.ccx import run_ccx
+from ..sim.fem import MAX_SOLVE_NODES
 from ..sim.deck import cload_lines, model_cards, _lines16
 from ..sim.materials import Material
 from ..sim.mesh import Mesh, Surface, consistent_loads, load_mesh, mesh_step
@@ -37,6 +38,7 @@ SOLVE_TIMEOUT_S = 900.0
 # the final STL is within 0.05 mm of the B-rep and the original face tessellation within
 # ~0.05 mm of its surface: a boundary triangle is on an original face within this distance
 MATCH_TOL_MM = 0.12
+REMESH_TRIES = 3
 
 
 def weld_stl(src: Path, dst: Path) -> dict:
@@ -149,6 +151,13 @@ async def verify(job: Path, material: Material, ccx: str, *, size_mm: float,
         # for ~5k faces); the STL path below keeps OCCT's long boolean-cut slivers as tet
         # faces, which stiffens the model by ~10%
         mesh = await mesh_step(job / "part.step", d, size_mm, timeout_s=MESH_TIMEOUT_S)
+        # the same cap as every study: a skeletal body's surface sets its node count, far over
+        # the volume estimate, and CalculiX dies of a bus error past it (403k nodes on a frame)
+        for _ in range(REMESH_TRIES):
+            if len(mesh.nodes) <= MAX_SOLVE_NODES:
+                break
+            size_mm = round(size_mm * (len(mesh.nodes) / MAX_SOLVE_NODES) ** (1 / 3) * 1.05, 3)
+            mesh = await mesh_step(job / "part.step", d, size_mm, timeout_s=MESH_TIMEOUT_S)
         mesher = "gmsh OCC (STEP)"
     except SimError:
         surf = await asyncio.to_thread(weld_stl, job / "part.stl", d / "welded.stl")
