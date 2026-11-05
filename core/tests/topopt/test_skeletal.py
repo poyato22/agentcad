@@ -168,19 +168,20 @@ def test_a_speck_without_a_mount_is_not_bridged():
     assert bridges == 0 and (xs == x).all()
 
 
-def test_a_one_voxel_membrane_goes_a_strut_stays():
+def test_a_one_voxel_link_grows_so_the_smoothing_keeps_it():
+    from scipy.ndimage import gaussian_filter, label
     n = (16, 16, 16)
     ne = int(np.prod(n))
     i, j, k = fe.element_grid(n)
     x = np.zeros(ne)
-    strut = (abs(i - 4) <= 1) & (abs(j - 8) <= 1)
-    fin = (k == 8) & (i > 6)
-    mount = (i == 15) & (j == 2) & (k == 2)
-    x[strut | fin | mount] = 1.0
-    out = geo.drop_thin(x, n, mount)
-    assert (out[strut & (k > 0) & (k < 15)] == 1.0).all()
-    assert out[fin & ~strut].max() == 0.0
-    assert out[mount] == 1.0
+    strut = (abs(i - 8) <= 2) & (abs(j - 8) <= 2) & (k < 5)
+    top = (abs(i - 8) <= 2) & (abs(j - 8) <= 2) & (k > 10)
+    link = (i == 8) & (j == 8) & (k >= 5) & (k <= 10)
+    x[strut | top | link] = 1.0
+    out = geo.thicken_thin(x, n, np.ones(ne, bool))
+    assert out[strut | top | link].min() == 1.0
+    assert (out == 1.0).sum() > (x == 1.0).sum()
+    assert label(gaussian_filter(geo.element_grid3(out, n), 0.7, mode="constant") > 0.5)[1] == 1
 
 
 def test_fixtures_and_loads_take_a_box_and_a_vector():
@@ -241,3 +242,15 @@ def test_a_one_voxel_link_does_not_count_when_the_surface_is_smoothed():
     assert bridges == 1
     smooth = gaussian_filter(geo.element_grid3(xs, n), 0.7, mode="constant") > 0.5
     assert label(smooth)[1] == 1
+
+
+def test_the_cut_level_keeps_the_target_volume():
+    x = np.concatenate([np.ones(10), np.full(10, 0.3), np.zeros(80)])
+    space = np.ones(100, bool)
+    out, t = geo.volume_preserving(x, space, 0.2)
+    assert t == pytest.approx(0.3) or t == pytest.approx(0.05)
+    assert out[:10].min() == 1.0
+    assert (out[10:20] >= 0.5).all() and (out[20:] < 0.5).all()
+    # a crisp field is left alone: its level stays at most 0.5
+    out2, t2 = geo.volume_preserving((x > 0.5).astype(float), space, 0.1)
+    assert ((out2 > 0.5) == (x > 0.5)).all() and t2 <= 0.5

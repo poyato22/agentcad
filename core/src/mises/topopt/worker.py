@@ -369,12 +369,20 @@ def run(job: Path, progress=None) -> dict:
     t = time.perf_counter()
     fine = spec.get("surface") == "fine"
     # one printed body: a mount left floating is joined back along the densest path
-    xs = geo.drop_thin(res.x, p.n, p.keep_in) if fine else res.x
+    xs, level = res.x, 0.5
+    if spec.get("crisp"):
+        xs, level = geo.volume_preserving(xs, p.space, opts.volume_fraction)
+    xs = geo.thicken_thin(xs, p.n, p.space & ~p.keep_out) if fine else xs
     xs, bridged = geo.bridge_islands(xs, p.n, p.space & ~p.keep_out, p.keep_in,
                                      sigma=BRIDGE_SIGMA if fine else 0.0)
     F = geo.nodal_field(xs, p.n, p.void, grow_from=p.keep_in if fine else None)
     if fine:
+        # smoothing must not push a strut through a wall it hugs: the exact boolean would then
+        # slice it lengthwise and leave it ending in air. Nodes with no design-space element
+        # stay void, so the surface stays inside and the booleans only trim
+        walls = geo.nodal_field(np.ones_like(xs), p.n, p.void, grow_from=p.keep_in) == 0.0
         F = geo.smooth_field(F, FINE_SIGMA)
+        F[walls] = 0.0
     F, filled = geo.disambiguate(F)
     V, T = geo.surface_nets(F, p.h, grid.origin - p.h)
     if len(T) == 0:
@@ -458,7 +466,7 @@ def run(job: Path, progress=None) -> dict:
         "history": [{k: r[k] for k in ("it", "c", "vf", "ch", "cg")} for r in res.history],
         "evolution": list(state["evo"]),
         "mesh_raw": raw, "mesh": dec, "ambiguous_cells_filled": filled,
-        "bridged_islands": bridged, "crisp": bool(spec.get("crisp")),
+        "bridged_islands": bridged, "crisp": bool(spec.get("crisp")), "iso_level": level,
         "surface": spec.get("surface"),
         "cavities_filled": cavities, "specks_dropped": len(specks),
         "faces": len(part.faces()), "volume_mm3": float(part.volume),

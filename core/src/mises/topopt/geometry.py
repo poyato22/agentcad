@@ -140,16 +140,29 @@ def smooth_field(F: np.ndarray, sigma: float) -> np.ndarray:
     return out
 
 
-def drop_thin(x: np.ndarray, n: tuple[int, int, int], keep_in: np.ndarray,
-              iso: float = 0.5) -> np.ndarray:
-    """Remove what a 2-voxel cube cannot sweep: membranes and hairs one voxel thick, which the
-    smoothed surface turns into ragged fins. Nothing under 3 voxels is trustworthy in the voxel
-    model anyway (thin_member_pct); CalculiX verifies what stays."""
-    from scipy.ndimage import binary_opening
+def volume_preserving(x: np.ndarray, space: np.ndarray, vf: float) -> tuple[np.ndarray, float]:
+    """Densities remapped so that the level 0.5 holds vf of the design space. Cutting a low
+    volume fraction at 0.5 loses the struts that stayed gray (a fifth of the volume, and exactly
+    the slender ones): they end in air. Returns (densities, the level used in the old scale)."""
+    vals = np.sort(x[space])[::-1]
+    t = float(vals[min(len(vals) - 1, int(vf * len(vals)))])
+    t = float(np.clip(t, 0.05, 0.5))
+    out = np.where(x < t, 0.5 * x / t, 0.5 + 0.5 * (x - t) / max(1 - t, 1e-9))
+    return out, t
+
+
+def thicken_thin(x: np.ndarray, n: tuple[int, int, int], allowed: np.ndarray,
+                 iso: float = 0.5) -> np.ndarray:
+    """Members a 2-voxel cube cannot sweep grow by one voxel. They carry load in the voxel model
+    (the optimizer left them for a reason), and the smoothed surface would erase them, leaving
+    struts that end in air with the rest of the frame unaware. CalculiX verifies the result."""
+    from scipy.ndimage import binary_dilation, binary_opening, generate_binary_structure
     grid = element_grid3(x, n)
-    opened = binary_opening(grid > iso, structure=np.ones((2, 2, 2), bool))
+    solid = grid > iso
+    thin = solid & ~binary_opening(solid, structure=np.ones((2, 2, 2), bool))
+    grown = binary_dilation(thin, structure=generate_binary_structure(3, 1))
     out = grid.copy()
-    out[(grid > iso) & ~opened & ~element_grid3(keep_in, n)] = 0.0
+    out[grown & element_grid3(allowed, n)] = 1.0
     return np.ascontiguousarray(out.transpose(2, 1, 0)).ravel()
 
 
