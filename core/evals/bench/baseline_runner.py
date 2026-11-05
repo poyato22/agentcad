@@ -1,8 +1,8 @@
 """BASELINE: the same Claude Code model, a plain build123d prompt and one sandboxed exec tool.
 
-No Mises harness: no Mises tools, agents, rules, renders, critique, FEA or catalog. The model
+No AgentCAD harness: no AgentCAD tools, agents, rules, renders, critique, FEA or catalog. The model
 gets the task text (and image), a short build123d brief, and `run_build123d` (see
-baseline_exec_mcp.py). Same model alias and Think level as the Mises run, the same wall-time
+baseline_exec_mcp.py). Same model alias and Think level as the AgentCAD run, the same wall-time
 cap, and up to MAX_TURNS turns. The last successful execution is the answer, exported to
 <out>/result.step / result.stl (and components/ for multi-part answers).
 """

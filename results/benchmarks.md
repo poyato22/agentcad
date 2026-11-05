@@ -1,24 +1,24 @@
-# Mises CAD benchmarks (2026-11-04)
+# AgentCAD CAD benchmarks (2026-11-04)
 
-**Headline (held-out TEST, never looked at while tuning Mises):** Mises leads on image→part (CADBench), is level-to-slightly-ahead on text→part (CADTestBench) and on the physics-graded suite, at 4–8× the cost per task and 1.5–2.5× the agent time. Baseline = the same Claude Code model (Sonnet 5.5, Think High) with a plain build123d prompt and one sandboxed exec tool; one attempt per task for both.
+**Headline (held-out TEST, never looked at while tuning AgentCAD):** AgentCAD leads on image→part (CADBench), is level-to-slightly-ahead on text→part (CADTestBench) and on the physics-graded suite, at 4–8× the cost per task and 1.5–2.5× the agent time. Baseline = the same Claude Code model (Sonnet 5.5, Think High) with a plain build123d prompt and one sandboxed exec tool; one attempt per task for both.
 
-How to read: *n* tasks, paired; *Mises − baseline* is the mean per-task difference with a 95% paired bootstrap CI; win/loss counts are per task. Splits: DEV sets were used to find and test Mises fixes; TEST sets were drawn after (next items of the same seed-pinned rankings, disjoint from DEV) and run once with the final Mises. Mises-Physics (20 tasks) was written before any tuning, split 5 DEV / 15 TEST. Mises-Functional (20) was never tuned on; its Mises runs are from the first pass (pre-fix Mises).
+How to read: *n* tasks, paired; *AgentCAD − baseline* is the mean per-task difference with a 95% paired bootstrap CI; win/loss counts are per task. Splits: DEV sets were used to find and test AgentCAD fixes; TEST sets were drawn after (next items of the same seed-pinned rankings, disjoint from DEV) and run once with the final AgentCAD. AgentCAD-Physics (20 tasks) was written before any tuning, split 5 DEV / 15 TEST. AgentCAD-Functional (20) was never tuned on; its AgentCAD runs are from the first pass (pre-fix AgentCAD).
 
 Model: `claude-code/sonnet` for both systems, Think: High, one build per task. Invalid or missing outputs score 0. Only tasks run by both systems are compared (paired).
 
-| Suite | n | Metric | Mises | Baseline | Mises − baseline (95% CI) | Mises better / worse / tie |
+| Suite | n | Metric | AgentCAD | Baseline | AgentCAD − baseline (95% CI) | AgentCAD better / worse / tie |
 |---|---|---|---|---|---|---|
 | CADBench (image→part) | 60 | volume IoU | 71.9% | 62.6% | +9.3 pts (+4.0 to +14.5) | 42 / 18 / 0 |
 | CADTestBench (text→part) | 50 | CADTest pass rate | 93.8% | 92.9% | +1.0 pts (-0.4 to +2.8) | 3 / 3 / 44 |
-| Mises-Functional (engineering) | 20 | requirements passed | 100.0% | 98.8% | +1.2 pts (+0.0 to +3.1) | 2 / 0 / 18 |
+| AgentCAD-Functional (engineering) | 20 | requirements passed | 100.0% | 98.8% | +1.2 pts (+0.0 to +3.1) | 2 / 0 / 18 |
 | CADBench, held-out (image→part) | 60 | volume IoU | 72.2% | 63.6% | +8.5 pts (+4.9 to +12.6) | 46 / 14 / 0 |
 | CADTestBench, held-out (text→part) | 50 | CADTest pass rate | 94.2% | 93.2% | +1.0 pts (+0.0 to +2.6) | 2 / 0 / 48 |
-| Mises-Physics, dev | 5 | requirements passed | 100.0% | 100.0% | +0.0 pts (+0.0 to +0.0) | 0 / 0 / 5 |
-| Mises-Physics, held-out | 15 | requirements passed | 100.0% | 98.3% | +1.7 pts (+0.0 to +5.0) | 1 / 0 / 14 |
+| AgentCAD-Physics, dev | 5 | requirements passed | 100.0% | 100.0% | +0.0 pts (+0.0 to +0.0) | 0 / 0 / 5 |
+| AgentCAD-Physics, held-out | 15 | requirements passed | 100.0% | 98.3% | +1.7 pts (+0.0 to +5.0) | 1 / 0 / 14 |
 
 ### CADBench (image→part) (n = 60)
 
-| | Mises | Baseline |
+| | AgentCAD | Baseline |
 |---|---|---|
 | valid output | 98.3% | 100.0% |
 | volume IoU | 71.9% | 62.6% |
@@ -35,7 +35,7 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 
 ### CADTestBench (text→part) (n = 50)
 
-| | Mises | Baseline |
+| | AgentCAD | Baseline |
 |---|---|---|
 | valid output | 100.0% | 100.0% |
 | CADTest pass rate | 93.8% | 92.9% |
@@ -53,9 +53,9 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 | type: topology_checks | 98.1% | 96.2% |
 | type: volumetric_checks | 88.0% | 87.2% |
 
-### Mises-Functional (engineering) (n = 20)
+### AgentCAD-Functional (engineering) (n = 20)
 
-| | Mises | Baseline |
+| | AgentCAD | Baseline |
 |---|---|---|
 | valid output | 100.0% | 100.0% |
 | mean requirement pass | 100.0% | 98.8% |
@@ -73,7 +73,7 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 
 ### CADBench, held-out (image→part) (n = 60)
 
-| | Mises | Baseline |
+| | AgentCAD | Baseline |
 |---|---|---|
 | valid output | 100.0% | 100.0% |
 | volume IoU | 72.2% | 63.6% |
@@ -90,7 +90,7 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 
 ### CADTestBench, held-out (text→part) (n = 50)
 
-| | Mises | Baseline |
+| | AgentCAD | Baseline |
 |---|---|---|
 | valid output | 100.0% | 100.0% |
 | CADTest pass rate | 94.2% | 93.2% |
@@ -108,9 +108,9 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 | type: topology_checks | 97.1% | 94.2% |
 | type: volumetric_checks | 91.1% | 90.3% |
 
-### Mises-Physics, dev (n = 5)
+### AgentCAD-Physics, dev (n = 5)
 
-| | Mises | Baseline |
+| | AgentCAD | Baseline |
 |---|---|---|
 | valid output | 100.0% | 100.0% |
 | mean requirement pass | 100.0% | 100.0% |
@@ -126,7 +126,7 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 | category: stability | 100.0% | 100.0% |
 | category: structural | 100.0% | 100.0% |
 
-| task | Mises | Baseline |
+| task | AgentCAD | Baseline |
 |---|---|---|
 | PH01_bracket_200N | mass_g 20.75, vm_p995_mpa 19.3, sf 14.26 | mass_g 20.28, vm_p995_mpa 41.8, sf 6.6 |
 | PH03_sensor_mast | mass_g 93.1, f 367.1185, f1_hz 367.1 | mass_g 86.1, f 370.7835, f1_hz 370.8 |
@@ -134,9 +134,9 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 | PH08_robot_base | structure_kg 1.336, tip_angle_deg 17.43, com_height_mm 398.1 | structure_kg 1.331, tip_angle_deg 17.03, com_height_mm 408.2 |
 | PH11_rocket_c6 | static_margin_cal 1.41, cp_mm 120.6, cg_mm 85.3, n_fins 3, structure_g 89.0, liftoff_g 113.1, apogee_m 263.4 | static_margin_cal 1.162, cp_mm 151.1, cg_mm 118.6, n_fins 3, structure_g 90.5, liftoff_g 114.6, apogee_m 243.6 |
 
-### Mises-Physics, held-out (n = 15)
+### AgentCAD-Physics, held-out (n = 15)
 
-| | Mises | Baseline |
+| | AgentCAD | Baseline |
 |---|---|---|
 | valid output | 100.0% | 100.0% |
 | mean requirement pass | 100.0% | 98.3% |
@@ -154,7 +154,7 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 | category: stability | 100.0% | 100.0% |
 | category: structural | 100.0% | 95.0% |
 
-| task | Mises | Baseline |
+| task | AgentCAD | Baseline |
 |---|---|---|
 | PH02_ribbed_plate | mass_g 105.7, f 718.7017, f1_hz 718.7 | mass_g 105.7, f 689.7413, f1_hz 689.7 |
 | PH04_column_buckling | mass_g 124.3, b 6.169281, buckling_factor 6.17 | mass_g 139.1, b 8.618575, buckling_factor 8.62 |
@@ -172,19 +172,19 @@ Model: `claude-code/sonnet` for both systems, Think: High, one build per task. I
 | PH19_lamp_base | structure_kg 1.946, tip_angle_deg 15.38, com_height_mm 128.3 | structure_kg 1.931, tip_angle_deg 14.76, com_height_mm 127.8 |
 | PH20_drone_arm | mass_g 11.04, f 705.6113, f1_hz 705.6 | mass_g 13.83, f 1025.143, f1_hz 1025.1 |
 
-## DEV iteration history (Mises headline / baseline headline, paired wins-losses)
+## DEV iteration history (AgentCAD headline / baseline headline, paired wins-losses)
 
 | Round | What changed | CADBench IoU | CADTestBench pass | CADTestBench all-pass wins | Physics/Functional |
 |---|---|---|---|---|---|
-| round0_first_pass | main @ 4bf7af07 + harness; all DEV suites, both systems | 63.8% / 62.6% (29-31) | 91.9% / 92.9% (2-5) | 0 Mises-only / 4 baseline-only | 100.0% / 98.8% (2-0) |
-| round1_after_2_fixes | chat-attached images checkable by reference_photo_check; multi-solid warning. Mises re-run on all 60 CADBench + the 19 CADTestBench it failed | 71.9% / 62.6% (42-18) | 93.8% / 92.9% (3-3) | 1 Mises-only / 3 baseline-only | 100.0% / 98.8% (2-0) |
-| round2_dev | units rule + unit-slip guard, schema titles dropped, zero-solid warning, photo mismatch hints (reverted: no gain), designer verify-every-requirement (reverted: no gain). Mises re-run on DEV CADBench 60 + CADTestBench 50 | 72.2% / 62.6% (41-19) | 91.8% / 92.9% (4-5) | 2 Mises-only / 5 baseline-only | 100.0% / 100.0% (0-0) |
+| round0_first_pass | main @ 4bf7af07 + harness; all DEV suites, both systems | 63.8% / 62.6% (29-31) | 91.9% / 92.9% (2-5) | 0 AgentCAD-only / 4 baseline-only | 100.0% / 98.8% (2-0) |
+| round1_after_2_fixes | chat-attached images checkable by reference_photo_check; multi-solid warning. AgentCAD re-run on all 60 CADBench + the 19 CADTestBench it failed | 71.9% / 62.6% (42-18) | 93.8% / 92.9% (3-3) | 1 AgentCAD-only / 3 baseline-only | 100.0% / 98.8% (2-0) |
+| round2_dev | units rule + unit-slip guard, schema titles dropped, zero-solid warning, photo mismatch hints (reverted: no gain), designer verify-every-requirement (reverted: no gain). AgentCAD re-run on DEV CADBench 60 + CADTestBench 50 | 72.2% / 62.6% (41-19) | 91.8% / 92.9% (4-5) | 2 AgentCAD-only / 5 baseline-only | 100.0% / 100.0% (0-0) |
 
 ## Honest notes
-- **Where Mises leads clearly:** image→part. On held-out CADBench IoU is +8.5 pts (95% CI +4.9 to +12.6), Mises wins 46 of 60 tasks, and it leads in every family (B 74 vs 63, F 57 vs 50, M 85 vs 78). The gain comes from checking the model against the attached image.
+- **Where AgentCAD leads clearly:** image→part. On held-out CADBench IoU is +8.5 pts (95% CI +4.9 to +12.6), AgentCAD wins 46 of 60 tasks, and it leads in every family (B 74 vs 63, F 57 vs 50, M 85 vs 78). The gain comes from checking the model against the attached image.
 - **Close to level:** text→part. On held-out CADTestBench the pass rate is +1.0 pt (CI 0.0 to +2.6) and all-tests-pass is 72% vs 70%. On DEV the baseline led on all-tests-pass in every round (70% vs 62–66%). Many CADTestBench failures for both systems come from label conventions, for example "hexagon side length 1.5" being graded as a 1.5 mm circumscribed diameter, not from modelling errors.
-- **Saturated:** Mises-Physics and Mises-Functional. On Physics TEST, Mises is 15/15 strict and the baseline 14/15. The baseline missed the torsion-tube stiffness target, 28.6 vs 200 N·m/rad. This model can hand-calculate these briefs, so the suites need harder tasks before they can separate the two systems. Physics DEV was 5/5 for both.
-- **Cost and time (held-out):** Mises costs $0.27 against $0.03 per task on CADBench, $0.14 against $0.02 on CADTestBench and $0.29 against $0.08 on Physics, all at list price. Median agent time is 34 s against 14 s, 16 s against 11 s, and 57 s against 23 s. Each Mises turn re-reads about 95k tokens of tool schemas and rules. Dropping the generated schema titles removed about 15% of the schema text. No fast path for simple prompts was shipped.
+- **Saturated:** AgentCAD-Physics and AgentCAD-Functional. On Physics TEST, AgentCAD is 15/15 strict and the baseline 14/15. The baseline missed the torsion-tube stiffness target, 28.6 vs 200 N·m/rad. This model can hand-calculate these briefs, so the suites need harder tasks before they can separate the two systems. Physics DEV was 5/5 for both.
+- **Cost and time (held-out):** AgentCAD costs $0.27 against $0.03 per task on CADBench, $0.14 against $0.02 on CADTestBench and $0.29 against $0.08 on Physics, all at list price. Median agent time is 34 s against 14 s, 16 s against 11 s, and 57 s against 23 s. Each AgentCAD turn re-reads about 95k tokens of tool schemas and rules. Dropping the generated schema titles removed about 15% of the schema text. No fast path for simple prompts was shipped.
 - **Reverted:** two DEV changes were reverted because they did not help. The designer "verify every requirement" pass gave 91.8% vs 93.8% at +4% cost, and the photo-check mismatch hints gave 72.1% vs 71.9%.
 - **Harness:** graders are independent of both systems. They are our own CalculiX static, modal and buckling decks, checked against hand calculations within 1–3%, plus mass and tipping models, Barrowman with a 1-D flight model, and the official CADTests through CadQuery. Every functional and physics reference design passes its grader.
 - **Usage:** about $102 list-price-equivalent across all rounds. Weekly utilisation went from 0% to 30% on the account, which other sessions share.

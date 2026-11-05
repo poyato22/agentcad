@@ -1,5 +1,5 @@
-"""Independent physics for the Mises-Physics graders: mass properties, tipping, a Barrowman
-rocket model with a 1-D flight simulation. Nothing here is shared with Mises' own code."""
+"""Independent physics for the AgentCAD-Physics graders: mass properties, tipping, a Barrowman
+rocket model with a 1-D flight simulation. Nothing here is shared with AgentCAD's own code."""
 from __future__ import annotations
 
 import math

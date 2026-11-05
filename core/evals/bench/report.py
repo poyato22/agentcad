@@ -17,10 +17,10 @@ from .common import read_json, write_json
 
 SYSTEMS = ("mises", "baseline")
 SUITE_TITLES = {"cadbench": "CADBench (image→part)", "cadtestbench": "CADTestBench (text→part)",
-                "functional": "Mises-Functional (engineering)",
+                "functional": "AgentCAD-Functional (engineering)",
                 "cadbench_test": "CADBench, held-out (image→part)",
                 "cadtestbench_test": "CADTestBench, held-out (text→part)",
-                "physics_dev": "Mises-Physics, dev", "physics_test": "Mises-Physics, held-out"}
+                "physics_dev": "AgentCAD-Physics, dev", "physics_test": "AgentCAD-Physics, held-out"}
 METRIC = {"cadbench": "volume IoU", "cadtestbench": "CADTest pass rate",
           "functional": "requirements passed", "physics": "requirements passed"}
 
@@ -167,7 +167,7 @@ def chart(summary: dict, path: Path, model: str, date: str, label: str = "",
             ax.bar(x, v, w, color=col[sysname], zorder=3, linewidth=0)
             ax.text(x, v + 0.015, f"{100 * v:.0f}%", ha="center", va="bottom", color=ink,
                     fontsize=22, fontweight="bold")
-            ax.text(x, -0.035, "Mises" if sysname == "mises" else "Baseline", ha="center",
+            ax.text(x, -0.035, "AgentCAD" if sysname == "mises" else "Baseline", ha="center",
                     va="top", color=muted, fontsize=14)
     ax.set_xticks(range(len(suites)))
     ax.set_xticklabels([f"{SUITE_TITLES[s]}\n{METRIC[family(s)]} · n = {summary[s]['n']}"
@@ -180,12 +180,12 @@ def chart(summary: dict, path: Path, model: str, date: str, label: str = "",
     ax.grid(axis="y", color=grid, linewidth=1, zorder=0)
     for sp in ax.spines.values():
         sp.set_visible(False)
-    fig.text(0.06, 0.93, title or "Mises vs the same model with a plain build123d tool", color=ink,
-             fontsize=26, fontweight="bold")
+    fig.text(0.06, 0.93, title or "AgentCAD vs the same model with a plain build123d tool", color=ink,
+             fontsize=24, fontweight="bold")
     fig.text(0.06, 0.885, f"{model} · Think: High · one attempt per task · {date}"
              + (f" · {label}" if label else ""), color=muted, fontsize=15)
     handles = [plt.Rectangle((0, 0), 1, 1, color=col[s]) for s in SYSTEMS]
-    ax.legend(handles, ["Mises", "Baseline (Claude Code + build123d exec)"], loc="upper right",
+    ax.legend(handles, ["AgentCAD", "Baseline (Claude Code + build123d exec)"], loc="upper right",
               frameon=False, labelcolor=ink, fontsize=14, bbox_to_anchor=(1.0, 1.13), ncol=2)
     fig.subplots_adjust(left=0.06, right=0.98, top=0.8, bottom=0.17)
     fig.savefig(path, facecolor=bg)
@@ -204,7 +204,7 @@ HELD_OUT = ["cadbench_test", "cadtestbench_test", "physics_test", "functional"]
 
 
 def tables(summary: dict) -> list[str]:
-    lines = ["| Suite | n | Metric | Mises | Baseline | Mises − baseline (95% CI) | Mises better / worse / tie |",
+    lines = ["| Suite | n | Metric | AgentCAD | Baseline | AgentCAD − baseline (95% CI) | AgentCAD better / worse / tie |",
              "|---|---|---|---|---|---|---|"]
     for s, sm in summary.items():
         p = sm["paired"]
@@ -215,7 +215,7 @@ def tables(summary: dict) -> list[str]:
                      f"{p['mises_better']} / {p['baseline_better']} / {p['ties']} |")
     for s, sm in summary.items():
         fam = family(s)
-        lines += ["", f"### {SUITE_TITLES[s]} (n = {sm['n']})", "", "| | Mises | Baseline |",
+        lines += ["", f"### {SUITE_TITLES[s]} (n = {sm['n']})", "", "| | AgentCAD | Baseline |",
                   "|---|---|---|"]
         keys = [("valid_rate", "valid output", _pct)]
         if fam == "cadbench":
@@ -238,7 +238,7 @@ def tables(summary: dict) -> list[str]:
                     lines.append(f"| {sub.split('_')[1]}: {k} | {_pct(sm['mises'][sub].get(k))} "
                                  f"| {_pct(sm['baseline'][sub].get(k))} |")
         if "metrics" in sm["mises"]:
-            lines += ["", "| task | Mises | Baseline |", "|---|---|---|"]
+            lines += ["", "| task | AgentCAD | Baseline |", "|---|---|---|"]
             for tid in sm["mises"]["metrics"]:
                 fm = lambda d: ", ".join(f"{k} {v}" for k, v in (d or {}).items())  # noqa: E731
                 lines.append(f"| {tid} | {fm(sm['mises']['metrics'][tid])} | "
@@ -269,9 +269,9 @@ def build_report(runs: Path, out: Path, label: str = "", history: dict | None = 
     write_json(out / "benchmarks.json", doc)
     held = [s for s in HELD_OUT if s in summary]
     chart(summary, out / "benchmarks.png", model or "?", date, label, only=held or None,
-          title="Mises vs the same model with a plain build123d tool (held-out tasks)" if held else None)
-    lines = [f"# Mises CAD benchmarks ({date})", "", preamble] if preamble else \
-        [f"# Mises CAD benchmarks ({date})", ""]
+          title="AgentCAD vs the same model with a plain build123d tool (held-out tasks)" if held else None)
+    lines = [f"# AgentCAD CAD benchmarks ({date})", "", preamble] if preamble else \
+        [f"# AgentCAD CAD benchmarks ({date})", ""]
     lines += [f"Model: `{model}` for both systems, Think: High, one build per task. Invalid or "
               "missing outputs score 0. Only tasks run by both systems are compared (paired).", ""]
     lines += tables(summary)

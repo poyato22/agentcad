@@ -1,9 +1,9 @@
-"""Mises-Physics: 20 tasks whose requirements can only be verified with physics, graded
+"""AgentCAD-Physics: 20 tasks whose requirements can only be verified with physics, graded
 independently on the delivered geometry (our own CalculiX decks, mass properties, tipping,
 Barrowman + 1-D flight), never on either system's self-report.
 
 The DEV / TEST split is fixed here, before any tuning: 5 DEV tasks (one per grader type) may be
-looked at while improving Mises; the 15 TEST tasks are held out and only run for the final
+looked at while improving AgentCAD; the 15 TEST tasks are held out and only run for the final
 numbers. Score = fraction of requirements passed; strict = all passed. Each task also reports
 its key physical numbers (mass, margin, frequency ...) in `metrics`.
 """

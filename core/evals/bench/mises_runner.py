@@ -1,9 +1,9 @@
-"""Run one benchmark task through a real Mises core, over its HTTP API.
+"""Run one benchmark task through a real AgentCAD core, over its HTTP API.
 
 Each task gets a fresh MISES_HOME (never the user's real one) and its own `mises serve`
 process, so builds cannot learn from each other. The prompt (and its images) go to
 POST /projects/{id}/chat exactly as the app's composer sends them, with the default model
-(Mises' own pick: the signed-in Claude Code) and Think=High. We then poll the build's run
+(AgentCAD's own pick: the signed-in Claude Code) and Think=High. We then poll the build's run
 tree until every run is idle, answering what the unattended app would have to:
 
 - approvals: a reversible tool's one-off approval is approved (the build's own reversible

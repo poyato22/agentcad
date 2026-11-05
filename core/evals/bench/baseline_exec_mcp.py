@@ -3,7 +3,7 @@
     python -I baseline_exec_mcp.py --jobs DIR
 
 Tool `run_build123d(code)`: the code runs in a fresh process under the same macOS sandbox
-Mises gives its own CAD worker (no network, no new processes, writes only into the job dir),
+AgentCAD gives its own CAD worker (no network, no new processes, writes only into the job dir),
 with a 120 s timeout. The code must assign `result`: a build123d shape (one part) or a dict
 {name: shape} (several parts, placed in world coordinates). The tool answers with the error
 (traceback tail) or a summary: solids, volume, bounding box, OCCT validity. Every successful

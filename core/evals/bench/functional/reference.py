@@ -1,4 +1,4 @@
-"""Hand-written reference answers for the Mises-Functional checkers (checker self-tests only;
+"""Hand-written reference answers for the AgentCAD-Functional checkers (checker self-tests only;
 never shown to either system). Each returns {name: shape} placed in world coordinates, and
 edit tasks return (before, after)."""
 from __future__ import annotations

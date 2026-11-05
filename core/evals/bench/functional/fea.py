@@ -1,4 +1,4 @@
-"""A small independent CalculiX linear-static check for the Mises-Functional structural tasks.
+"""A small independent CalculiX linear-static check for the AgentCAD-Functional structural tasks.
 
 gmsh (OCC) meshes the exported STEP into 10-node tets; we write the CalculiX deck ourselves
 (C3D10, linear elastic, fixed and loaded nodes picked by coordinates), run `ccx`, and read the
@@ -8,7 +8,7 @@ re-entrant-corner singularity from deciding a pass; the checkers use p99.5 again
 report both). Loads are split equally over the selected nodes (a total force, not a consistent
 pressure). Units: mm, N, MPa.
 
-Kept separate from Mises' own simulation code on purpose: the checker must not share code
+Kept separate from AgentCAD's own simulation code on purpose: the checker must not share code
 with the system under test.
 """
 from __future__ import annotations

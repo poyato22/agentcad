@@ -5460,8 +5460,8 @@
   },
   "notes": {
    "round0_first_pass": "main @ 4bf7af07 + harness; all DEV suites, both systems",
-   "round1_after_2_fixes": "chat-attached images checkable by reference_photo_check; multi-solid warning. Mises re-run on all 60 CADBench + the 19 CADTestBench it failed",
-   "round2_dev": "units rule + unit-slip guard, schema titles dropped, zero-solid warning, photo mismatch hints (reverted: no gain), designer verify-every-requirement (reverted: no gain). Mises re-run on DEV CADBench 60 + CADTestBench 50"
+   "round1_after_2_fixes": "chat-attached images checkable by reference_photo_check; multi-solid warning. AgentCAD re-run on all 60 CADBench + the 19 CADTestBench it failed",
+   "round2_dev": "units rule + unit-slip guard, schema titles dropped, zero-solid warning, photo mismatch hints (reverted: no gain), designer verify-every-requirement (reverted: no gain). AgentCAD re-run on DEV CADBench 60 + CADTestBench 50"
   }
  }
 }
