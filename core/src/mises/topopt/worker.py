@@ -369,7 +369,7 @@ def run(job: Path, progress=None) -> dict:
     fine = spec.get("surface") == "fine"
     # one printed body: a mount left floating is joined back along the densest path
     xs, bridged = geo.bridge_islands(res.x, p.n, p.space & ~p.keep_out, p.keep_in)
-    F = geo.nodal_field(xs, p.n, p.void)
+    F = geo.nodal_field(xs, p.n, p.void, grow_from=p.keep_in if fine else None)
     if fine:
         F = geo.smooth_field(F, FINE_SIGMA)
     F, filled = geo.disambiguate(F)

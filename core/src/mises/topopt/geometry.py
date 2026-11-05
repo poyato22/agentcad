@@ -39,18 +39,23 @@ def element_grid3(x: np.ndarray, n: tuple[int, int, int]) -> np.ndarray:
     return np.asarray(x).reshape(nz, ny, nx).transpose(2, 1, 0)
 
 
-def nodal_field(x: np.ndarray, n: tuple[int, int, int], outside: np.ndarray) -> np.ndarray:
+def nodal_field(x: np.ndarray, n: tuple[int, int, int], outside: np.ndarray,
+                grow_from: np.ndarray | None = None) -> np.ndarray:
     """Element densities -> node values on a grid whose node 0 sits one element before the
     element grid's origin (node origin = grid origin - h): one extra element layer, then a void
     shell, so the surface always closes. `outside` (bool, flat): elements outside the design
     space or inside a keep-out. Each takes the max of its in-space 3x3x3 neighbours, so material
     crosses the design-space boundary by one element and keep-outs shrink by one element: the
-    exact `common` / `cut` that follow then intersect transversally (no coplanar booleans)."""
+    exact `common` / `cut` that follow then intersect transversally (no coplanar booleans).
+    With `grow_from` (bool, flat) only those elements cross: a mount keeps its exact face, and
+    a strut that merely reaches the boundary closes in a rounded surface of its own instead of
+    being sliced flat by the design space's walls."""
     from scipy.ndimage import maximum_filter
     e = element_grid3(x, n).astype(float).copy()
     out = element_grid3(outside, n)
     e[out] = 0.0
-    grown = maximum_filter(e, size=3, mode="constant")
+    src = e if grow_from is None else e * element_grid3(grow_from, n)
+    grown = maximum_filter(src, size=3, mode="constant")
     e[out] = grown[out]
     p = np.pad(e, 1, mode="edge")
     p = np.pad(p, 1)                      # the void shell

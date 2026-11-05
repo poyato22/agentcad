@@ -193,3 +193,18 @@ def test_verify_finds_the_surface_inside_a_box():
     m = Mesh(nodes=nodes, tets=[], surfaces=[s], size_mm=1.0, gmsh_version="x", order=2)
     assert select_in_box(m, [-1, -1, -1, 2, 2, 1]) == [[1, 2, 3]]
     assert select_in_box(m, [20, 20, 20, 21, 21, 21]) == []
+
+
+def test_only_a_mount_crosses_the_design_space_wall():
+    """A fine surface: a strut at the wall closes round inside it; a mount crosses, so the
+    exact boolean gives it a flat face."""
+    n = (12, 12, 12)
+    i, j, k = fe.element_grid(n)
+    outside = k >= 8
+    x = ((abs(i - 3) <= 1) & (abs(j - 6) <= 1) & (k < 8)).astype(float)
+    mount = (abs(i - 9) <= 1) & (abs(j - 6) <= 1) & (k < 8)
+    x[mount] = 1.0
+    F = geo.nodal_field(x, n, outside, grow_from=mount)
+    # F[m] averages elements m - 2 and m - 1 along each axis: index 9 straddles the wall (k 7, 8)
+    assert F[10, 7, 9] == pytest.approx(1.0)      # the mount crossed
+    assert F[4, 7, 9] <= 0.5                      # the strut stops at the wall
