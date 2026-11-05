@@ -589,6 +589,7 @@ async def mirror_part_create(ctx: ToolContext, args: CreateArgs) -> ToolOutput:
         _wrote_source(ctx, d, version, kept)
         placed = await _auto_place(ctx, args.part_id, d) if args.place and not existed else None
     return ToolOutput(summary=_summary(args.part_id, res.metrics) + note
+                      + _unit_note(ctx, res.metrics)
                       + (f"; placed in the assembly as {placed['instance']['name']}"
                          if placed else ""),
                       data={"part_id": args.part_id, "vars": res.vars, "version": version,
@@ -848,11 +849,29 @@ def _with_mass(ctx, part_id: str, metrics: dict) -> dict:
                                 part_id) or metrics
 
 
+def _unit_note(ctx, m: dict) -> str:
+    """A unit-slip warning when the new part's sizes are a unit factor of the numbers in the
+    run's request (mises.unit_guard). Best effort: no run row, no note."""
+    try:
+        from ..unit_guard import note
+        task = ctx.store.get_run(ctx.run_id).task
+        return note(task or "", list(m["bbox"]["size"]))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _summary(part_id: str, m: dict) -> str:
     s = m["bbox"]["size"]
+    n = m.get("solids", 1)
+    split = (f"; WARNING: {n} separate solids. A part is normally one connected solid: if a "
+             "cut split it or a feature floats, fix the geometry; if they really are separate "
+             "pieces, make them separate parts") if n > 1 else (
+             "; WARNING: no closed solid: the result is a surface or open shell, not a volume. "
+             "Build a solid (extrude/loft/revolve a closed profile, or thicken the surface)"
+             if n == 0 else "")
     return (f"{part_id}: volume {m['volume_mm3']:.1f} mm3, mass {m['mass_g']:.2f} g, "
             f"bbox {s[0]:.1f}x{s[1]:.1f}x{s[2]:.1f} mm, {len(m['holes'])} hole(s), "
-            f"valid={m['valid']}")
+            f"valid={m['valid']}{split}")
 
 
 def register_mirror_tools(registry: ToolRegistry) -> None:

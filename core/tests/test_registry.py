@@ -62,6 +62,33 @@ def test_list_filters():
     assert reg.list(names=["echo_tool"], classes={SafetyClass.READ}) == [echo]
 
 
+class Titled(BaseModel):
+    title: str = "a property named title stays"
+    inner: Inner | None = None
+
+
+@tool("titled_tool", description="t", safety=SafetyClass.READ)
+async def titled(ctx, args: Titled) -> ToolOutput:
+    return ToolOutput(summary="")
+
+
+def test_schema_drops_pydantic_titles_but_keeps_a_property_named_title():
+    # bench cost fix: the generated "title" labels repeat every field name in every tool's
+    # schema (about 26k characters over the registry) and carry no meaning for the model
+    s = ToolRegistry().schema(titled)["input_schema"]
+    assert "title" in s["properties"] and "inner" in s["properties"]
+
+    def titles(node, key=None):
+        if isinstance(node, dict):
+            return sum((k == "title" and key != "properties") + titles(v, k)
+                       for k, v in node.items())
+        if isinstance(node, list):
+            return sum(titles(v) for v in node)
+        return 0
+    assert titles(s) == 0
+    assert "y" in str(s)          # the nested model is still inlined
+
+
 def test_schema_has_properties():
     s = ToolRegistry().schema(echo)
     assert s["name"] == "echo_tool" and s["description"] == "echo"

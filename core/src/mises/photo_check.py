@@ -63,9 +63,32 @@ def compare_masks(render: np.ndarray, photo: np.ndarray) -> dict:
             "aspect_error": None if err is None else round(err, 4), "png": buf.getvalue()}
 
 
+def photo_bytes(ctx: ToolContext, image_id: str) -> bytes:
+    """The photo's bytes: a reference image, or an image the user attached to a message in this
+    run's own build (chat_images; another build's attachment is never found, the ids are per
+    build). Raises NOT_FOUND / DENIED."""
+    from . import chat_images
+    home = views_mod._home(ctx)
+    if home is None:
+        raise MisesError(ErrorCode.DENIED, "no reference images are available here")
+    try:
+        return refs_mod.reference_bytes(home, image_id)
+    except (MisesError, OSError):
+        pass
+    own = views_mod._run_project_id(ctx)
+    p = chat_images.path_of(home, own, image_id) if own else None
+    if p is None:
+        raise MisesError(ErrorCode.NOT_FOUND, f"no reference image {image_id!r}",
+                         hint="use an id from mises_context_get `references`, or the id of an "
+                              "image attached to a message in this build")
+    return p.read_bytes()
+
+
 class PhotoCheckArgs(BaseModel):
-    reference_image_id: str = Field(description="the photo's id (mises_context_get `references`);"
-                                    " a photo of the real object against a plain background")
+    reference_image_id: str = Field(description="the photo's id: a reference "
+                                    "(mises_context_get `references`) or an image attached to a "
+                                    "message in this build (its id is named in that message); "
+                                    "the object against a plain background")
     view: str = Field(description="the viewpoint the photo shows: front, top, side or iso")
     part_ids: list[str] | None = Field(None, description="the parts that make the modelled"
                                        " object; default the whole build")
@@ -82,14 +105,7 @@ async def reference_photo_check(ctx: ToolContext, args: PhotoCheckArgs) -> ToolO
     if args.view not in _VIEWS:
         raise MisesError(ErrorCode.INVALID_INPUT, f"view must be one of {_VIEWS}")
     views_mod._check_reference_scope(ctx, [args.reference_image_id])
-    home = views_mod._home(ctx)
-    if home is None:
-        raise MisesError(ErrorCode.DENIED, "no reference images are available here")
-    try:
-        raw = await asyncio.to_thread(refs_mod.reference_bytes, home, args.reference_image_id)
-    except (MisesError, OSError) as e:
-        raise MisesError(ErrorCode.NOT_FOUND, f"no reference image {args.reference_image_id!r}",
-                         hint="use an id from mises_context_get `references`") from e
+    raw = await asyncio.to_thread(photo_bytes, ctx, args.reference_image_id)
     ids, _whole = views_mod._resolve_targets(ctx, None, None, args.part_ids)
     views_mod._check_scope_all(ctx, ids, False)
     shown = views_mod._placed(ctx, ids, place=True)
