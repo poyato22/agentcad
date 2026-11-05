@@ -81,8 +81,9 @@ def test_post_rejects_bad_settings_before_creating_a_run(client, rt):
     assert r.json()["errors"][0]["loc"] == ["n_modes"]
     r = client.post("/sims", headers=AUTH, json={"type": "warp", "part_id": "beam"})
     assert r.status_code == 400
+    # whole-assembly wind is supported now: an unknown project is a 404, not a bad type
     r = client.post("/sims", headers=AUTH, json={"type": "wind", "project_id": "p1"})
-    assert r.status_code == 400 and "not supported" in r.json()["message"]
+    assert r.status_code == 404
     r = client.post("/sims", headers=AUTH, json={"type": "wind", "part_id": "nope"})
     assert r.status_code == 404
     assert len(client.get("/runs", headers=AUTH).json()) == before

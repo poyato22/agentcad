@@ -295,6 +295,7 @@ const COVERAGE: Record<string, string> = {
   "GET /projects/{project_id}/assembly": "assembly.json",
   "GET /projects/{project_id}/assembly.glb": "EXEMPT: the app poses each part's own model.glb (parts move at frame rate); the combined GLB is for export. Core API tests cover it",
   "GET /projects/{project_id}/assembly.step": "EXEMPT: a binary STEP download (assembly_export); the app links to it and the core API tests cover it",
+  "GET /sims/{sim_id}/streamlines": "EXEMPT: wind-study streamline polylines for the 3D viewer; core sim tests cover the route",
   "GET /projects/{project_id}/assembly/interference": "assembly_interference.json",
   "GET /projects/{project_id}/assembly/animations": "motion/motion_animations.json",
   "POST /projects/{project_id}/assembly/drive": "assembly_drive.json",

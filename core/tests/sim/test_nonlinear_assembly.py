@@ -54,7 +54,7 @@ async def test_assembly_refusals_before_a_record_exists(tmp_path):
                 "load_cases": [{"supports": [{"face": faces[0]}],
                                 "loads": [{"kind": "force", "face": faces[1], "newtons": 1,
                                            "direction": "-z"}]}]}))
-    with pytest.raises(Exception, match="static only"):
+    with pytest.raises(Exception, match="static or wind only"):
         await sim_run.handler(ctx, SimRunArgs(type="modal", project_id="p1", settings={}))
     assert not assemblies_root(tmp_path / "parts").exists()
 
