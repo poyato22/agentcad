@@ -67,3 +67,20 @@ async def test_run_ccx_failure_reports_output(tmp_path):
     with pytest.raises(SimError) as e:
         await run_ccx(str(fake), job, timeout_s=10)
     assert "bad card" in e.value.message
+
+
+async def test_run_ccx_crash_names_the_signal_not_the_omp_warning(tmp_path):
+    """DRONE2: ccx segfaulted on a 379k-node mesh and the error read only 'OMP: Warning
+    #179: ... /tmp file failed', which sent the agent chasing a /tmp problem."""
+    fake = _fake_bin(tmp_path, "echo ' Frequency analysis was selected'\n"
+                               "echo 'OMP: Warning #179: Function Cannot set size of /tmp file "
+                               "failed:' >&2\nkill -SEGV $$\n")
+    job = tmp_path / "job"
+    job.mkdir()
+    (job / "job.inp").write_text("*NODE\n")
+    with pytest.raises(SimError) as e:
+        await run_ccx(str(fake), job, timeout_s=10)
+    msg = e.value.message
+    assert "crashed" in msg and "SIGSEGV" in msg
+    assert "OMP" not in msg
+    assert "coarser" in (e.value.hint or "")

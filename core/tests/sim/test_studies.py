@@ -460,3 +460,31 @@ def test_coarse_only_screening_solves_one_level(tmp_path):
     job.extra["coarse_only"] = True
     sizes, _ = level_sizes(job)
     assert sizes == [pytest.approx(coarse)]
+
+
+async def test_a_mesh_over_the_solver_node_cap_is_remeshed_coarser(tmp_path, monkeypatch):
+    """DRONE2: a thin topopt plate with ~3000 faces meshed to 379k quadratic nodes at the
+    'fine' size (the volume estimate said 200k) and CalculiX's SPOOLES segfaulted (SIGSEGV,
+    reported as an OMP /tmp warning). The level is re-meshed coarser before it is solved."""
+    from mises.sim import fem
+
+    calls = []
+
+    async def fake_mesh_step(step, d, size, *, timeout_s, options=None):
+        calls.append(size)
+        n = int(379_000 * (0.74 / size) ** 3)
+        return Mesh(nodes={i: (0.0, 0.0, 0.0) for i in range(n)}, tets=[], surfaces=[],
+                    size_mm=size)
+
+    monkeypatch.setattr(fem, "mesh_step", fake_mesh_step)
+    job = _job(tmp_path)
+    mesh = await fem.mesh_level(job, tmp_path, 0.74, "fine", 50.0)
+    assert len(calls) >= 2 and calls[-1] > 0.74
+    assert len(mesh.nodes) <= fem.MAX_SOLVE_NODES
+    assert mesh.size_mm == calls[-1]
+    assert mesh.extra["coarsened"]["from_mm"] == pytest.approx(0.74)
+    assert mesh.extra["coarsened"]["nodes_before"] == 379_000
+    # a mesh within the cap is solved as meshed
+    calls.clear()
+    mesh = await fem.mesh_level(job, tmp_path, 1.5, "coarse", 0.0)
+    assert calls == [1.5] and "coarsened" not in mesh.extra

@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 
 from .deck import thermal_step, write_deck
-from .fem import FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
+from .fem import mesh_note, FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
 from .results import parse_frd
 
 
@@ -23,7 +23,8 @@ async def _solve(job: FemJob, s, size, d, label, lo, hi):
         raise SimError("solve_failed", "CalculiX returned no temperatures")
     n_hot = max(temps, key=temps.get)
     n_cold = min(temps, key=temps.get)
-    info = {"size_mm": round(size, 4), "nodes": len(mesh.nodes), "elements": len(mesh.tets),
+    info = {"size_mm": round(mesh.size_mm or size, 4), **mesh_note(mesh),
+            "nodes": len(mesh.nodes), "elements": len(mesh.tets),
             "order": mesh.order, "fixed_temp_nodes": len(held)}
     return temps[n_hot], {"mesh": mesh, "temps": temps, "info": info,
                           "max": temps[n_hot], "min": temps[n_cold],

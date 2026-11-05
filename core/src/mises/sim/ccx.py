@@ -11,6 +11,7 @@ import importlib.util
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
@@ -84,8 +85,22 @@ async def run_ccx(ccx: str, job_dir: Path, *, job: str = "job", timeout_s: float
         # still has its converged increments in the .frd / .sta: the caller reads how far it got
         (Path(job_dir) / "ccx_errors.txt").write_text("\n".join(errors[-20:]))
         return frd
+    if rc is not None and rc < 0 and not errors:
+        # killed by a signal: the stderr tail is only libomp's benign /tmp warning, which
+        # names the wrong cause (DRONE2: a SIGSEGV in SPOOLES on a 379k-node mesh)
+        try:
+            sig = signal.Signals(-rc).name
+        except ValueError:
+            sig = f"signal {-rc}"
+        last = next((ln.strip() for ln in reversed(out.splitlines()) if ln.strip()), "")
+        raise SimError("solve_failed", f"CalculiX crashed ({sig})"
+                       + (f" after '{last[:120]}'" if last else ""),
+                       hint="usually the mesh is too large for the solver: use a coarser mesh "
+                            "(settings.mesh.size_mm) or fewer refinements")
     if rc != 0 or errors or not frd.exists():
-        detail = "; ".join(errors[-5:]) or (err.strip() or out.strip())[-800:] or f"exit {rc}"
+        noise = ("OMP: Warning", "OMP: Info", "OMP: Hint")
+        tail = "\n".join(ln for ln in err.splitlines() if not ln.strip().startswith(noise))
+        detail = "; ".join(errors[-5:]) or (tail.strip() or out.strip())[-800:] or f"exit {rc}"
         raise SimError("solve_failed", f"CalculiX failed: {detail}",
                        hint="check that the part is one solid and is held by the fixed face")
     return frd

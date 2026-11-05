@@ -7,7 +7,7 @@ import asyncio
 import numpy as np
 
 from .deck import Setup, frequency_step, point_mass_cards, resolve_supports, write_deck
-from .fem import MAX_GLB_MODES, FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
+from .fem import mesh_note, MAX_GLB_MODES, FemJob, mesh_level, result_glb, run_levels, save_fields, solve_deck
 from .results import parse_dat_table, parse_frd_blocks
 from .types import SimError
 
@@ -49,7 +49,8 @@ async def _solve(job: FemJob, s, size, d, label, lo, hi):
     freqs = [r[3] for r in rows]
     blocks = await asyncio.to_thread(parse_frd_blocks, frd)
     modes = [b for name, b in blocks if name == "DISP"][-len(freqs):]
-    info = {"size_mm": round(size, 4), "nodes": len(mesh.nodes), "elements": len(mesh.tets),
+    info = {"size_mm": round(mesh.size_mm or size, 4), **mesh_note(mesh),
+            "nodes": len(mesh.nodes), "elements": len(mesh.tets),
             "order": mesh.order, "fixed_nodes": len(setup.held) if setup else 0,
             "point_masses": masses}
     return _first_elastic(freqs), {"mesh": mesh, "freqs": freqs, "modes": modes, "info": info}
