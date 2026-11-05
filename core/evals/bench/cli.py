@@ -99,6 +99,12 @@ def run_one(task: Task, system: str, runs: Path, cap: float) -> dict:
     if (d / "run.json").is_file():
         return read_json(d / "run.json")
     wait_for_load()
+    stop = os.environ.get("MISES_BENCH_USAGE_STOP")
+    now = (weekly_usage() or {}).get("seven_day")
+    if stop and now is not None and float(now) >= float(stop):
+        print(f"usage {now}% reached the stop at {stop}%: skipping {task.id} {system}", flush=True)
+        return {"system": system, "suite": task.suite, "id": task.id,
+                "error": f"skipped: weekly usage {now}% >= {stop}%"}
     d.mkdir(parents=True, exist_ok=True)
     u0 = weekly_usage()
     followups = task.meta.get("followups") or []

@@ -54,10 +54,15 @@ def extract(gen: str) -> str:
 
 
 def cq_python() -> str:
-    p = subprocess.run(["uv", "run", "--no-project", "--with", "cadquery", "python", "-I", "-c",
-                        "import sys; print(sys.executable)"], capture_output=True, text=True,
-                       timeout=600, cwd=CACHE)
-    return p.stdout.strip().splitlines()[-1]
+    """A kept CadQuery venv (uv's --with environments are temporary)."""
+    venv = CACHE / "envs" / "cq"
+    py = venv / "bin" / "python"
+    if not py.is_file():
+        subprocess.run(["uv", "venv", "--python", "3.13", str(venv)], check=True,
+                       capture_output=True, text=True, timeout=300)
+        subprocess.run(["uv", "pip", "install", "--python", str(py), "cadquery"], check=True,
+                       capture_output=True, text=True, timeout=1200)
+    return str(py)
 
 
 def main(runs: Path, repo: Path) -> None:
