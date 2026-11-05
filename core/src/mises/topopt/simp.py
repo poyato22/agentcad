@@ -18,6 +18,7 @@ from . import fe, filters
 CG_FALLBACK_ITERS = 80     # a V-cycle this slow cannot see thin members: drop to 2 levels
 REFACTOR_EVERY = 3
 MIN_ITERS = 15
+CHECKPOINT_EVERY = 5
 
 
 @dataclass
@@ -114,7 +115,11 @@ def _solve_all(mg: fe.MGCG, p: Problem, U: list, tol: float) -> tuple[list, int]
 
 
 def optimize(p: Problem, o: Options = Options(),
-             on_iter: Callable[[int, dict, np.ndarray], None] | None = None) -> DensityResult:
+             on_iter: Callable[[int, dict, np.ndarray], None] | None = None,
+             resume: dict | None = None,
+             checkpoint: Callable[[dict], None] | None = None) -> DensityResult:
+    """resume: a dict `checkpoint` was given earlier ({x, it, stage}): carry on from there.
+    A restart then costs at most CHECKPOINT_EVERY iterations, not the hour already spent."""
     t0 = time.perf_counter()
     ne = p.ne
     active, keep_in, void = p.active, p.keep_in, p.void
@@ -147,6 +152,13 @@ def optimize(p: Problem, o: Options = Options(),
         xp[void] = 0.0
         return xp
 
+    start_it = 0
+    if resume is not None:
+        x = np.asarray(resume["x"], float).copy()
+        start_it = int(resume["it"])
+        stage = int(resume["stage"])
+        if stages:
+            chain.beta = stages[stage]
     xPhys = physical(x)
     U: list = [None] * len(p.loads)
     hist: list[dict] = []
@@ -155,7 +167,7 @@ def optimize(p: Problem, o: Options = Options(),
     ke = mg.fine.ke
     cg_ref: int | None = None
     cg_prev = 0
-    for it in range(o.max_iter):
+    for it in range(start_it, max(o.max_iter, start_it + 1)):
         Ee = Emin + xPhys ** o.penal * (E0 - Emin)
         ts = time.perf_counter()
         # a 2-level cycle's coarse LU is the expensive part: refresh it every REFACTOR_EVERY
@@ -213,6 +225,8 @@ def optimize(p: Problem, o: Options = Options(),
         hist.append(row)
         if on_iter is not None:
             on_iter(it, row, xPhys)
+        if checkpoint is not None and (it + 1) % CHECKPOINT_EVERY == 0:
+            checkpoint({"x": x, "it": it + 1, "stage": stage})
         cs = [r["c"] for r in hist[-6:]]
         dcrel = (max(abs(cs[q + 1] - cs[q]) for q in range(len(cs) - 1)) / c
                  if len(cs) > 5 else 1.0)

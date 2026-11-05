@@ -359,8 +359,21 @@ def run(job: Path, progress=None) -> dict:
                         overhang_dir=spec.get("overhang_dir"),
                         crisp=bool(spec.get("crisp")))
     t = time.perf_counter()
+
+    def save_checkpoint(state_: dict) -> None:
+        tmp = job / "checkpoint.tmp.npz"
+        np.savez(tmp, **state_)
+        os.replace(tmp, job / "checkpoint.npz")
+
+    resume = None
+    if (job / "checkpoint.npz").exists():
+        try:
+            with np.load(job / "checkpoint.npz") as c:
+                resume = {"x": c["x"], "it": int(c["it"]), "stage": int(c["stage"])}
+        except (OSError, ValueError, KeyError):
+            resume = None
     try:
-        res = simp.optimize(p, opts, on_iter=on_iter)
+        res = simp.optimize(p, opts, on_iter=on_iter, resume=resume, checkpoint=save_checkpoint)
     except simp.InfeasibleProblem as e:
         raise TopoptError(str(e)) from None
     times["optimize"] = time.perf_counter() - t

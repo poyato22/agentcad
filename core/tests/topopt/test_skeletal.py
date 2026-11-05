@@ -254,3 +254,53 @@ def test_the_cut_level_keeps_the_target_volume():
     # a crisp field is left alone: its level stays at most 0.5
     out2, t2 = geo.volume_preserving((x > 0.5).astype(float), space, 0.1)
     assert ((out2 > 0.5) == (x > 0.5)).all() and t2 <= 0.5
+
+
+def test_a_run_resumes_from_its_checkpoint():
+    p = _problem()
+    o = simp.Options(volume_fraction=0.2, filter_radius=1.5, max_iter=12, crisp=True, xtol=0.0,
+                     ctol=0.0)
+    saved = []
+    whole = simp.optimize(p, o, checkpoint=lambda s: saved.append({k: np.copy(v) for k, v in s.items()}))
+    assert [int(s["it"]) for s in saved] == [5, 10]
+    rest = simp.optimize(p, o, resume=saved[0])
+    assert rest.iters == 7       # iterations 5..11
+    assert abs(rest.x - whole.x).max() < 0.05
+
+
+def test_the_core_carries_on_an_interrupted_job(tmp_path, monkeypatch):
+    import asyncio
+    import json
+    from types import SimpleNamespace
+
+    from mises.topopt import jobs
+    d = tmp_path / "topopt" / "to_0123456789ab"
+    d.mkdir(parents=True)
+    (tmp_path / "parts" / "space").mkdir(parents=True)
+    (tmp_path / "parts" / "space" / "model.step").write_text("x")
+    args = {"part_id": "space", "fixtures": [{"box": [0, 0, 0, 1, 1, 1]}],
+            "load_cases": [{"loads": [{"box": [0, 0, 0, 1, 1, 1], "newtons": 1, "direction": "+z"}]}]}
+    rec = {"topopt_id": d.name, "tool": "topopt_generate", "part_id": "space", "status": "running",
+           "material": {"name": "PA12"}, "args": args, "run_id": None, "project_id": None,
+           "variants": [{"id": "v0", "status": "done"}, {"id": "v1", "status": "running",
+                                                         "phase": "optimize"}]}
+    (d / "record.json").write_text(json.dumps(rec))
+    seen = {}
+
+    async def fake_run_job(events, r, dd, a, plan_, save):
+        seen["status"] = [v["status"] for v in r["variants"]]
+        seen["args"] = a
+
+    monkeypatch.setattr(jobs, "_run_job", fake_run_job)
+    rt = SimpleNamespace(home=tmp_path, events=None)
+
+    async def go():
+        out = jobs.resume_interrupted(rt)
+        await jobs._active[d.name]
+        return out
+    assert asyncio.run(go()) == [d.name]
+    assert seen["status"] == ["done", "queued"] and seen["args"].part_id == "space"
+    # a finished job is left alone
+    rec["status"] = "done"
+    (d / "record.json").write_text(json.dumps(rec))
+    assert jobs.resume_interrupted(rt) == []

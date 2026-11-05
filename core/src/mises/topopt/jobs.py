@@ -18,6 +18,7 @@ deflection target); an unverified or failing variant is marked and never ranked 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import json
 import math
@@ -663,6 +664,8 @@ async def _run_job(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict,
     sem = asyncio.Semaphore(min(parallel_variants(mem), len(rec["variants"])))
 
     async def one(v: dict) -> None:
+        if v["status"] == "done":        # a resumed job keeps what already finished
+            return
         async with sem:
             if rec["status"] == "cancelled":
                 return
@@ -769,6 +772,65 @@ async def start(ctx, args: TopoptRunArgs, tool: str) -> dict:
     # shows the new generative run at once (B3 follow-up, core side)
     _publish(events, rec, "topopt_progress", {"status": rec["status"], "started": True})
     return rec
+
+
+def _launch(events, rec: dict, d: Path, args: TopoptRunArgs, plan_: dict) -> None:
+    tid = rec["topopt_id"]
+
+    def save() -> None:
+        write_record(d, rec)
+
+    async def body() -> None:
+        try:
+            await _run_job(events, rec, d, args, plan_, save)
+        finally:
+            _active.pop(tid, None)
+            _cancel_requested.discard(tid)
+
+    _active[tid] = asyncio.ensure_future(body())
+    from .. import jobs as bg
+    bg.register(bg.Job(id=tid, kind="topopt", run_id=rec.get("run_id"),
+                       label=f"generative design of {args.part_id}", task=_active[tid],
+                       cancel=lambda: cancel(tid), build_id=rec.get("project_id"),
+                       part_id=args.part_id, scope=[args.part_id]))
+
+
+def resume_interrupted(runtime) -> list[str]:
+    """The core restarted mid-run (a reboot, a crash): carry on every generative design job it
+    left unfinished, from each variant's checkpoint, rather than leaving the lead to find an
+    "interrupted" record and spend the hour again. Finished variants stay as they are."""
+    home = Path(runtime.home)
+    out: list[str] = []
+    if not root(home).is_dir():
+        return out
+    for d in root(home).iterdir():
+        if not TOPOPT_ID_RE.fullmatch(d.name) or d.name in _active:
+            continue
+        try:
+            rec = json.loads((d / RECORD).read_text())
+            if rec.get("status") not in ("queued", "running"):
+                continue
+            cls = TopoptGenerateArgs if rec.get("tool") == "topopt_generate" else TopoptRunArgs
+            args = cls.model_validate(rec["args"])
+            part_dir = home / "parts" / args.part_id
+            if not (part_dir / "model.step").exists():
+                raise FileNotFoundError(f"{args.part_id} has no model.step")
+            others = {r.part_id: home / "parts" / r.part_id
+                      for r in [*args.keep, *args.keep_out] if r.kind == "part"}
+            plan_ = {"part_dir": part_dir, "others": others, "metrics": {},
+                     "material": get_material(rec["material"]["name"], home),
+                     "variants": rec["variants"], "runtime": runtime}
+        except (OSError, ValueError, KeyError, SimError) as e:
+            rec_status = {"status": "interrupted", "error": f"could not resume: {e}"}
+            with contextlib.suppress(OSError, ValueError):
+                write_record(d, {**json.loads((d / RECORD).read_text()), **rec_status})
+            continue
+        for v in rec["variants"]:
+            if v["status"] != "done":
+                v.update(status="queued", phase="queued", error=None)
+        _launch(runtime.events, rec, d, args, plan_)
+        out.append(d.name)
+    return out
 
 
 def cancel(topopt_id: str) -> bool:
