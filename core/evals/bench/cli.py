@@ -19,6 +19,8 @@ from __future__ import annotations
 import argparse
 import concurrent.futures as cf
 import json
+import os
+import subprocess
 import sys
 import time
 import traceback
@@ -26,9 +28,9 @@ from pathlib import Path
 
 from .common import CACHE, Task, read_json, weekly_usage, write_json
 
-CAPS = {"cadbench": 1200, "cadtestbench": 1200, "functional": 1800, "cadbench_test": 1200,
+CAPS = {"cadbench_t2": 1200, "cadbench": 1200, "cadtestbench": 1200, "functional": 1800, "cadbench_test": 1200,
         "cadtestbench_test": 1200, "physics": 1800, "physics_dev": 1800, "physics_test": 1800}
-ALL_SUITES = ["cadbench", "cadtestbench", "functional", "cadbench_test", "cadtestbench_test",
+ALL_SUITES = ["cadbench_t2", "cadbench", "cadtestbench", "functional", "cadbench_test", "cadtestbench_test",
               "physics_dev", "physics_test"]
 
 
@@ -42,6 +44,9 @@ def load_tasks(suite: str) -> list[Task]:
     if suite == "cadbench_test":
         from .datasets import fetch_cadbench
         return fetch_cadbench(split="test")
+    if suite == "cadbench_t2":
+        from .datasets import fetch_cadbench
+        return fetch_cadbench(split="test2")
     if suite == "cadtestbench_test":
         from .datasets import fetch_cadtestbench
         return fetch_cadtestbench(split="test")
@@ -72,20 +77,41 @@ def pilot_order(tasks: list[Task]) -> list[Task]:
     return out
 
 
+LOAD_START, FREE_MIN = 14.0, 15.0
+
+
+def _free_pct() -> float:
+    try:
+        out = subprocess.run(["memory_pressure"], capture_output=True, text=True, timeout=30).stdout
+        return float(out.strip().splitlines()[-1].rsplit(":", 1)[1].strip().rstrip("%"))
+    except Exception:  # noqa: BLE001
+        return 100.0
+
+
+def wait_for_load() -> None:
+    """The machine's rule: start a job only under load 14 and with free memory over 15%."""
+    while os.getloadavg()[0] >= LOAD_START or _free_pct() < FREE_MIN:
+        time.sleep(30)
+
+
 def run_one(task: Task, system: str, runs: Path, cap: float) -> dict:
     d = runs / task.suite / task.id / system
     if (d / "run.json").is_file():
         return read_json(d / "run.json")
+    wait_for_load()
     d.mkdir(parents=True, exist_ok=True)
     u0 = weekly_usage()
     followups = task.meta.get("followups") or []
+    # "mises" / "baseline", or "mises@opus" / "baseline@fable" for another Claude Code model
+    kind, _, model = system.partition("@")
     try:
-        if system == "mises":
+        if kind == "mises":
             from .mises_runner import run_task
-            row = run_task(task, d, CACHE / "homes", cap, followups=followups)
+            row = run_task(task, d, CACHE / "homes", cap, followups=followups,
+                           model_ref=f"claude-code/{model}" if model else None)
         else:
             from .baseline_runner import run_task
-            row = run_task(task, d, cap, followups=followups)
+            row = run_task(task, d, cap, followups=followups, model=model or "sonnet")
     except Exception as e:  # noqa: BLE001
         row = {"system": system, "suite": task.suite, "id": task.id,
                "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-3000:]}

@@ -43,7 +43,8 @@ class Core:
     def __enter__(self):
         self.home.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "MISES_HOME": str(self.home)}
-        self.proc = subprocess.Popen(["uv", "run", "mises", "serve", "--port", "0"], cwd=CORE,
+        self.proc = subprocess.Popen(["nice", "-n", "15", "uv", "run", "mises", "serve",
+                                      "--port", "0"], cwd=CORE,
                                      env=env, stdout=open(self.log, "ab"),
                                      stderr=subprocess.STDOUT, start_new_session=True)
         sj = self.home / "server.json"
@@ -193,15 +194,21 @@ def _image_block(path: str) -> dict:
 
 
 def run_task(task: Task, out: Path, home_root: Path, cap_s: float, effort: str = "high",
-             followups: list[str] | None = None) -> dict:
+             followups: list[str] | None = None, model_ref: str | None = None) -> dict:
     """One build per task. `followups` (edit-regression tasks) are sent in the same build
     after the first build finishes; the export before each follow-up is kept as stage_<n>."""
     out.mkdir(parents=True, exist_ok=True)
-    home = home_root / f"{task.suite}-{task.id}-{int(time.time())}"
+    home = home_root / f"{task.suite}-{task.id}-{out.name}-{int(time.time())}"
     row: dict = {"system": "mises", "suite": task.suite, "id": task.id, "home": str(home),
                  "effort": effort, "cap_s": cap_s}
     t0 = time.monotonic()
     decisions: list = []
+    if model_ref:                        # the user's own default-model setting, in this fresh home
+        from mises.profile import load_profile, save_profile
+        home.mkdir(parents=True, exist_ok=True)
+        prof = load_profile(home)
+        prof.default_model = model_ref
+        save_profile(home, prof)
     with Core(home, out / "core.log") as core:
         safety = _safety_by_tool(core)
         pid = core.call("POST", "/projects", {"name": f"bench {task.suite} {task.id}"})["id"]
