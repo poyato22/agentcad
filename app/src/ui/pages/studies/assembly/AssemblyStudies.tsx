@@ -12,6 +12,7 @@ import { Button } from "../../../common/Button";
 import { Led } from "../../../common/Led";
 import { StudyChart } from "../charts/StudyChart";
 import { verdictTone } from "../model";
+import { AssemblyWind } from "./AssemblyWind";
 import type { AssemblyStudiesController } from "./controller";
 import "./assembly.css";
 
@@ -133,6 +134,7 @@ export function AssemblySide({ c, projectId, initialKind }: { c: AssemblyStudies
           ))}
         </ul>
       )}
+      <AssemblyWind projectId={projectId} />
     </div>
   );
 }

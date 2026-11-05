@@ -10,7 +10,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { StudySection } from "../../../../api/studies";
+import type { StudySection, StudyStreamlines } from "../../../../api/studies";
 import type { PartFace } from "../../../../api/types";
 import { EDGE_THRESHOLD_DEG, MM_PER_GLTF_UNIT, type PartScene } from "../../../viewer/loadPart";
 import { fitOrtho, ISO_AZIMUTH_DEG, ISO_ELEVATION_DEG, type RendererLike } from "../../../viewer/scene";
@@ -20,6 +20,8 @@ import {
   advect, channelValues, colorize, dirVec, faceAnchor, finiteRange, flowField, matchFace, planePoint, readChannels, seedParticles,
   streamlines, threeAttribute, type Bounds, type Channel, type FlowField, type Particles, type V3,
 } from "./fields";
+
+import { baseLines, cometBuffers, SAMPLES_PER_SECOND, writeComets, type Comets } from "./streamlines";
 
 export interface SceneColors { ink: string; dim: string; selected: string; edge: string; paper: string }
 
@@ -64,6 +66,10 @@ export interface StudySceneHandle {
   labelPoint?(i: number): V3 | null;
   /** Wind: particles on this velocity section (null: none). */
   setFlow(section: StudySection | null, frame?: readonly (readonly number[])[] | null): void;
+  /** Wind: 3D streamlines with comets moving along them at the solver's local speed (null: none). */
+  setStreamlines(s: StudyStreamlines | null): void;
+  /** Draw the result's mesh triangles over it (they follow the deformation). */
+  setMeshLines(on: boolean): void;
   /** A section plane: clips the result and shows the core's section values on it. */
   setSection(s: { axis: "x" | "y" | "z"; offset: number; values: StudySection | null; range: [number, number] } | null): void;
   setProbe(point: V3 | null): void;
@@ -103,7 +109,18 @@ function disposeTree(o: THREE.Object3D): void {
   o.removeFromParent();
 }
 
+/** For each vertex of the feature edges, the mesh vertex at the same place. */
+export function edgeVertexMap(edge: ArrayLike<number>, verts: ArrayLike<number>): Int32Array {
+  const key = (a: ArrayLike<number>, i: number) => `${a[i].toFixed(5)},${a[i + 1].toFixed(5)},${a[i + 2].toFixed(5)}`;
+  const at = new Map<string, number>();
+  for (let i = 0; i < verts.length; i += 3) { const k = key(verts, i); if (!at.has(k)) at.set(k, i); }
+  const out = new Int32Array(edge.length / 3);
+  for (let i = 0; i < out.length; i++) out[i] = at.get(key(edge, i * 3)) ?? -1;
+  return out;
+}
+
 interface ResultMesh {
+  edges: THREE.LineSegments; edgeMap: Int32Array;
   mesh: THREE.Mesh; base: Float32Array; attrs: Map<string, THREE.BufferAttribute>;
   colorBuf: Float32Array; values: Float32Array | null; range: [number, number];
 }
@@ -149,6 +166,8 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
   const flowGroup = new THREE.Group(); scene.add(flowGroup);
   const sectionGroup = new THREE.Group(); scene.add(sectionGroup);
   const probeGroup = new THREE.Group(); scene.add(probeGroup);
+  const streamGroup = new THREE.Group(); scene.add(streamGroup);   // never part of the framing: lines leave the view
+  let stream: { set: StudyStreamlines; comets: Comets | null; geo: THREE.BufferGeometry | null; clock: number } | null = null;
   let flow: { field: FlowField; particles: Particles | null; lines: THREE.LineSegments; scale: number; rot: THREE.Matrix3 | null; staticLines: number } | null = null;
   let clip: THREE.Plane | null = null;
   let lastT = now();
@@ -163,7 +182,7 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
   const requestRender = () => { if (!frame && !disposed) frame = requestAnimationFrame(draw); };
   controls.addEventListener("change", requestRender);
 
-  const moving = () => !disposed && !reduced() && ((animate && result !== null) || (flow?.particles != null) || now() < revealUntil);
+  const moving = () => !disposed && !reduced() && ((animate && result !== null) || (flow?.particles != null) || stream?.comets != null || now() < revealUntil);
   const tick = () => {
     loop = 0;
     if (!moving()) { requestRender(); return; }
@@ -172,7 +191,17 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
     lastT = t;
     if (typeof document === "undefined" || !document.hidden) {
       if (now() < revealUntil + 20 && result && channel) recolor(Math.min(1, 1 - (revealUntil - t) / 700));
-      if (animate && result) applyDeform(Math.sin(((t - t0) / 1000) * Math.PI * 1.25));
+      if (animate && result) {
+        const w = ((t - t0) / 1000) * Math.PI * 1.25;
+        // a mode shape swings both ways; a static load goes on and off (it never reverses)
+        applyDeform(/^mode_/.test(channel ?? "") ? Math.sin(w) : (1 - Math.cos(w)) / 2);
+      }
+      if (stream?.comets && stream.geo) {
+        stream.clock += dt * SAMPLES_PER_SECOND;
+        writeComets(stream.set, stream.comets, stream.clock);
+        (stream.geo.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+        (stream.geo.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
+      }
       if (flow?.particles) { advect(flow.field, flow.particles, dt, flow.scale); writeParticles(); }
       draw();
     }
@@ -215,6 +244,12 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
       for (let i = 0; i < arr.length; i++) arr[i] = rm.base[i] + (src && d?.itemSize === 3 ? src[i] * k : 0);
       pos.needsUpdate = true;
       rm.mesh.geometry.computeBoundingSphere();
+      // the feature edges go with the surface (no ghost of the undeformed part)
+      const ep = rm.edges.geometry.getAttribute("position") as THREE.BufferAttribute;
+      const ea = ep.array as Float32Array;
+      rm.edgeMap.forEach((v, i) => { if (v >= 0) { ea[3 * i] = arr[v]; ea[3 * i + 1] = arr[v + 1]; ea[3 * i + 2] = arr[v + 2]; } });
+      ep.needsUpdate = true;
+      rm.edges.geometry.computeBoundingSphere();
     }
   }
 
@@ -334,7 +369,7 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
         const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g, EDGE_THRESHOLD_DEG), new THREE.LineBasicMaterial({ color: edge, transparent: true, opacity: 0.35 }));
         edges.userData.edges = true;
         o.add(edges);
-        meshes.push({ mesh: o, base: Float32Array.from(g.getAttribute("position").array as ArrayLike<number>), attrs, colorBuf: colorAttr.array as Float32Array, values: null, range: [0, 1] });
+        meshes.push({ edges, edgeMap: edgeVertexMap(edges.geometry.getAttribute("position").array as ArrayLike<number>, g.getAttribute("position").array as ArrayLike<number>), mesh: o, base: Float32Array.from(g.getAttribute("position").array as ArrayLike<number>), attrs, colorBuf: colorAttr.array as Float32Array, values: null, range: [0, 1] });
       });
       if (meshes.length === 0) { disposeTree(root); throw new Error("result model has no geometry"); }
       root.updateMatrixWorld(true);
@@ -510,6 +545,49 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
       kick();
     },
 
+    setStreamlines(set) {
+      clearGroup(streamGroup);
+      stream = null;
+      if (set && set.lines.length > 0) {
+        const motion = !reduced();
+        const base = baseLines(set, colormap, motion ? 0.28 : 0.8);
+        const bg = new THREE.BufferGeometry();
+        bg.setAttribute("position", new THREE.BufferAttribute(base.positions, 3));
+        bg.setAttribute("color", new THREE.BufferAttribute(base.colors, 3));
+        const lines = new THREE.LineSegments(bg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+        lines.frustumCulled = false;
+        streamGroup.add(lines);
+        let comets: Comets | null = null; let geo: THREE.BufferGeometry | null = null;
+        if (motion) {
+          comets = cometBuffers(set, colormap);
+          geo = new THREE.BufferGeometry();
+          geo.setAttribute("position", new THREE.BufferAttribute(comets.positions, 3));
+          geo.setAttribute("color", new THREE.BufferAttribute(comets.colors, 3));
+          writeComets(set, comets, 0);
+          const c = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+          c.frustumCulled = false;
+          streamGroup.add(c);
+        }
+        stream = { set, comets, geo, clock: 0 };
+      }
+      kick();
+    },
+
+    setMeshLines(on) {
+      if (result) for (const rm of result.meshes) {
+        let wire = rm.mesh.children.find((c) => c.userData.meshLines) as THREE.Mesh | undefined;
+        if (on && !wire) {
+          // shares the geometry, so the triangles follow the deformation
+          wire = new THREE.Mesh(rm.mesh.geometry, new THREE.MeshBasicMaterial({ wireframe: true, color: 0x0a0d12, transparent: true, opacity: 0.55 }));
+          wire.userData.meshLines = true;
+          wire.raycast = () => {};
+          rm.mesh.add(wire);
+        }
+        if (wire) wire.visible = on;
+      }
+      requestRender();
+    },
+
     setSection(s) {
       clearGroup(sectionGroup);
       clip = null;
@@ -609,8 +687,8 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
 
     state() {
       return {
-        channel, animating: moving() && (animate || flow?.particles != null), particles: flow?.particles?.pu.length ?? 0,
-        streamlines: flow?.staticLines ?? 0, markers: markers.children.length, markersInView: markersInView(), section: sectionGroup.children.length > 0, frames,
+        channel, animating: moving() && (animate || flow?.particles != null || stream?.comets != null), particles: flow?.particles?.pu.length ?? 0,
+        streamlines: stream?.set.lines.length ?? flow?.staticLines ?? 0, markers: markers.children.length, markersInView: markersInView(), section: sectionGroup.children.length > 0, frames,
       };
     },
 
@@ -620,7 +698,7 @@ export function createStudyScene(canvas: HTMLCanvasElement, deps: StudySceneDeps
       if (frame) cancelAnimationFrame(frame);
       if (loop) cancelAnimationFrame(loop);
       controls.dispose();
-      for (const g of [markers, flowGroup, sectionGroup, probeGroup]) clearGroup(g);
+      for (const g of [markers, flowGroup, streamGroup, sectionGroup, probeGroup]) clearGroup(g);
       if (result) disposeTree(result.root);
       result = null;
       part?.dispose();

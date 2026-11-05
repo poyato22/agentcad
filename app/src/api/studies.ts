@@ -148,12 +148,18 @@ export const studySectionSchema = z.looseObject({
   values: z.array(nested),
 });
 export type StudySection = z.infer<typeof studySectionSchema>;
+/** GET /sims/{id}/streamlines: traced in the core from the solver's velocity field, in part mm; samples dt_s apart. */
+export const studyStreamlinesSchema = z.looseObject({
+  lines: z.array(z.object({ points: z.array(vec3), speed: z.array(z.number()) })),
+  units: z.string(), dt_s: z.number(), speed_max: z.number(), inflow: z.number(),
+});
+export type StudyStreamlines = z.infer<typeof studyStreamlinesSchema>;
 
 export const studyCancelSchema = z.looseObject({ sim_id: z.string(), status: z.literal("cancelling") });
 
 /** POST /sims body (core server/sim_api.StartBody). */
 export interface StudyStartBody {
-  type: StudyType; part_id: string; settings: Record<string, unknown>;
+  type: StudyType; part_id?: string; project_id?: string; settings: Record<string, unknown>;
   reason?: string | null; requirements?: Record<string, unknown>[];
 }
 
