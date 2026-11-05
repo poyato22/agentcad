@@ -153,13 +153,13 @@ def volume_preserving(x: np.ndarray, space: np.ndarray, vf: float) -> tuple[np.n
 
 def thicken_thin(x: np.ndarray, n: tuple[int, int, int], allowed: np.ndarray,
                  iso: float = 0.5) -> np.ndarray:
-    """Members a 2-voxel cube cannot sweep grow by one voxel. They carry load in the voxel model
+    """Members a 3-voxel cube cannot sweep grow by one voxel. They carry load in the voxel model
     (the optimizer left them for a reason), and the smoothed surface would erase them, leaving
     struts that end in air with the rest of the frame unaware. CalculiX verifies the result."""
     from scipy.ndimage import binary_dilation, binary_opening, generate_binary_structure
     grid = element_grid3(x, n)
     solid = grid > iso
-    thin = solid & ~binary_opening(solid, structure=np.ones((2, 2, 2), bool))
+    thin = solid & ~binary_opening(solid, structure=np.ones((3, 3, 3), bool))
     grown = binary_dilation(thin, structure=generate_binary_structure(3, 1))
     out = grid.copy()
     out[grown & element_grid3(allowed, n)] = 1.0
