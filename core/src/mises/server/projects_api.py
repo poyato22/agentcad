@@ -196,6 +196,22 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
                              hint="it has no parts with a built mesh")
         return Response(png, media_type="image/png", headers=headers)
 
+    @router.get("/projects/{project_id}/spin.png")
+    async def project_spin(project_id: str):
+        """Home's hover turntable: the cover from SPIN_FRAMES angles around the model, side by
+        side in one PNG (X-Spin-Frames, X-Frame-Width / -Height say how to step it)."""
+        _projects._project_or_404(store, project_id)
+        home = _home()
+        placed = await run_in_threadpool(_cover_placements, home, project_id)
+        got = await thumbs.project_spin(home, project_id, placed)
+        if got is None:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no preview for build {project_id!r} yet",
+                             hint="it has no parts with a built mesh")
+        png, n, w, h = got
+        return Response(png, media_type="image/png", headers={
+            "Cache-Control": "private, no-cache", "X-Spin-Frames": str(n),
+            "X-Frame-Width": str(w), "X-Frame-Height": str(h)})
+
     @router.post("/projects/{project_id}/restore")
     async def restore_project(project_id: str):
         return _projects.restore_project(store, project_id)

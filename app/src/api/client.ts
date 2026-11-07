@@ -316,6 +316,10 @@ export class CoreClient {
   projectThumb(projectId: string, size = 640): Promise<Blob> {
     return this.blob(`/projects/${enc(projectId)}/thumb.png`, "image/png", { size });
   }
+  /** Home's hover turntable: the cover from 16 angles, side by side in one PNG (16:10 frames). */
+  projectSpin(projectId: string): Promise<Blob> {
+    return this.blob(`/projects/${enc(projectId)}/spin.png`, "image/png");
+  }
 
   // ---- static stress studies (core server/sim_api.py; Studies page)
 

@@ -329,3 +329,8 @@
 /* m2: drawing-import results span the page above the grid (not squeezed into a grid cell) */
 .home-imports { padding: 12px 24px 0; max-width: 1100px; }
 .home-imports:empty { display: none; }
+
+/* the hover turntable: the spinning model over the still cover (the cover hides under it) */
+.tile-thumb { position: relative; }
+.tile-spin { position: absolute; inset: 0; background-repeat: no-repeat; pointer-events: none; }
+.tile-thumb:has(.tile-spin) .tile-img { visibility: hidden; }

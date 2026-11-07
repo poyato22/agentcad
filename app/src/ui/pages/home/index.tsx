@@ -19,6 +19,7 @@ import { atHome, goHome, homeView, openBuild, toggleHomeView } from "../../../st
 import { actions, conn, runs } from "../../../state/store";
 import { CubeMark } from "../../boot/CubeMark";
 import { Led } from "../../common/Led";
+import { Spin } from "./Spin";
 import { Thumb } from "../../common/Thumb";
 import { useDismiss } from "../../common/dismiss";
 import { DrawingDrop, ImportCards, ImportDrawingButton } from "../../imports";
@@ -236,14 +237,18 @@ function BuildTile({ build: b, onTrash }: { build: Build; onTrash(): void }): JS
   const mass = fmtMass(b.mass_g);
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
   const more = useRef<HTMLButtonElement>(null);
+  const [hovered, setHovered] = useState(false);
   return (
     <div class="tile" data-build={b.id}
       onContextMenu={(e) => { e.preventDefault(); setMenuAt({ x: e.clientX, y: e.clientY }); }}>
       <button type="button" class="tile-open" title={`Open ${b.name}`} aria-label={`Open ${b.name}`}
         onClick={() => { void openBuild(b.id); }}>
-        <div class="tile-thumb">
+        <div class="tile-thumb" data-spinning={hovered && b.part_count > 0 ? "" : undefined}
+          onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
           <Thumb class="tile-img" alt={`${b.name} cover`} glyph={b.part_count > 0 ? "" : "No parts yet"} cacheKey={`${b.id}:${edited}:${b.part_count}`}
             load={b.part_count > 0 ? () => actions.client().projectThumb(b.id) : null} />
+          <Spin active={hovered} cacheKey={`${b.id}:${edited}:${b.part_count}`}
+            load={b.part_count > 0 ? () => actions.client().projectSpin(b.id) : null} />
         </div>
         <div class="tile-body">
           <span class="tile-name">{b.name}</span>

@@ -350,6 +350,121 @@ async def _render_cover(home: Path, project_id: str, shown: list[Placement], w: 
         return None
 
 
+# ---- the turntable: the cover spinning, for Home's hover (N frames side by side in one PNG)
+
+SPIN_FRAMES = 16
+SPIN_W = 320                           # each frame's width (16:10, like the cover)
+_SPIN_PREFIX = "spin"
+
+
+def spin_cameras(n: int = SPIN_FRAMES) -> dict[str, list[list[float]]]:
+    """n cameras around the model at the hero view's height, starting at the hero view and
+    turning about +Z: {"s0": [forward, up], ...}."""
+    import math
+    from . import render
+    f = render.VIEWS["hero"][0]
+    out = {}
+    for k in range(n):
+        a = 2 * math.pi * k / n
+        c, s_ = math.cos(a), math.sin(a)
+        out[f"s{k}"] = [[f[0] * c - f[1] * s_, f[0] * s_ + f[1] * c, f[2]], [0.0, 0.0, 1.0]]
+    return out
+
+
+def _framed_strip(pngs: list[bytes], w: int, h: int) -> bytes:
+    """Each frame fitted into w x h like the cover, all with ONE crop and scale (the union of
+    their silhouettes), so the model turns in place; then side by side: (n*w) x h RGBA."""
+    import numpy as np
+    from PIL import Image
+    arrs = []
+    for png in pngs:
+        with Image.open(io.BytesIO(png)) as src:
+            a = np.asarray(src.convert("RGBA")).copy()
+        a[..., 3][a[..., 3] < _ALPHA_NOISE] = 0
+        arrs.append(a)
+    boxes = []
+    for a in arrs:
+        pts = np.argwhere(a[..., 3] >= _SOLID_ALPHA)
+        if len(pts):
+            boxes.append((*pts.min(axis=0), *(pts.max(axis=0) + 1)))
+    strip = np.zeros((h, w * len(arrs), 4), dtype=np.uint8)
+    if not boxes:
+        return thumb_render.encode_png(w * len(arrs), h, strip.tobytes())
+    y0 = min(b[0] for b in boxes); x0 = min(b[1] for b in boxes)
+    y1 = max(b[2] for b in boxes); x1 = max(b[3] for b in boxes)
+    room_w, room_h = w * (1 - 2 * _COVER_MARGIN), h * (1 - 2 * _COVER_MARGIN)
+    k = min(room_w / (x1 - x0), room_h / (y1 - y0))
+    cx, cy = (x0 + x1) / 2 * k, (y0 + y1) / 2 * k
+    left, top = round(cx - w / 2), round(cy - h / 2)
+    band_x, band_y = max(1.0, w * _COVER_MARGIN), max(1.0, h * _COVER_MARGIN)
+    fx = np.clip(np.minimum(np.arange(w), w - 1 - np.arange(w)) / band_x, 0.0, 1.0)
+    fy = np.clip(np.minimum(np.arange(h), h - 1 - np.arange(h)) / band_y, 0.0, 1.0)
+    fade = np.minimum.outer(fy, fx)
+    for i, a in enumerate(arrs):
+        sh, sw = a.shape[:2]
+        big = Image.fromarray(a, "RGBA").resize((max(1, round(sw * k)), max(1, round(sh * k))),
+                                                Image.LANCZOS)
+        out = np.asarray(big.crop((left, top, left + w, top + h))).copy()
+        out[..., 3] = (out[..., 3] * fade).astype(np.uint8)
+        strip[:, i * w:(i + 1) * w] = out
+    return thumb_render.encode_png(w * len(arrs), h, strip.tobytes())
+
+
+async def _render_spin(home: Path, project_id: str, shown: list[Placement], w: int, h: int,
+                       n: int) -> bytes | None:
+    base = _cache_dir(home, f"project-{project_id}")
+    try:
+        safe_io.ensure_dir(base)
+    except (OSError, safe_io.UnsafePath):
+        return None
+    meshes = [MeshIn(Path(home) / "parts" / pid, pid, _rgb((look or {}).get("color")),
+                     float((look or {}).get("opacity") or 1.0), tf,
+                     roughness=float((look or {}).get("roughness", 0.9)),
+                     metalness=float((look or {}).get("metalness", 0.0)))
+              for pid, _v, tf, look in shown]
+    cams = spin_cameras(n)
+    rsize = min(MAX_SIZE, max(_RENDER_MIN, round(w * 1.5)))
+    try:
+        async with _semaphore():
+            out = await run_render_job(base / "jobs", meshes, renders=[{
+                "key": "s", "views": list(cams), "cameras": cams, "size": rsize,
+                "style": "shaded", "perspective": True, "transparent": False,
+                "background": "transparent"}])
+    except (MisesError, OSError, safe_io.UnsafePath):
+        return None
+    got = out.pngs.get("s") or {}
+    pngs = [got.get(v) for v in cams]
+    if any(p is None for p in pngs):
+        return None
+    try:
+        return await asyncio.to_thread(_framed_strip, pngs, w, h)
+    except (OSError, ValueError):
+        return None
+
+
+async def project_spin(home: Path, project_id: str, placed: list[Placement],
+                       n: int = SPIN_FRAMES) -> tuple[bytes, int, int, int] | None:
+    """The build's turntable for Home's hover: (PNG of n frames side by side, n, frame w,
+    frame h), from cache or one sandboxed render; None when nothing has a mesh."""
+    w, h = cover_size(SPIN_W)
+    ck = cover_key(home, placed, w)
+    if ck is None:
+        return None
+    key = f"{_SPIN_PREFIX}{n}-{ck.removeprefix(_COVER_PREFIX)}"
+    shown = [p for p, _k in _shown(home, placed, w)]
+    cdir = _cache_dir(home, f"project-{project_id}")
+    name = f"{key}.png"
+    hit = _read_cache(cdir, name)
+    if hit is None:
+        async def make():
+            png = await _render_spin(home, project_id, shown, w, h, n)
+            if png is not None:
+                _write_cache(cdir, name, png, keep_prefix=f"{_SPIN_PREFIX}{n}-")
+            return png
+        hit = await _once((str(home), f"project-{project_id}", key), make)
+    return None if hit is None else (hit, n, w, h)
+
+
 def _drop_legacy_tiles(cdir: Path) -> None:
     """Remove the pre-D24 2x2 composites (`<size>-<digest>.png`) a cover replaces."""
     try:

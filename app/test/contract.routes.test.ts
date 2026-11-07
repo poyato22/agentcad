@@ -216,6 +216,7 @@ const COVERAGE: Record<string, string> = {
   "GET /agents/{name}": "agent_get.json",
   "GET /parts": "parts.json", "GET /parts/{part_id}/model.glb": "mount_plate.glb",
   "GET /parts/{part_id}/thumb.png": "EXEMPT: a PNG rendered in the sandboxed worker (needs a real build); core test_thumb_api + test_thumbs cover it end to end",
+  "GET /projects/{project_id}/spin.png": "EXEMPT: Home's hover turntable, PNG frames rendered in the sandboxed worker (needs a real build); core test_thumbs covers it end to end",
   "GET /projects/{project_id}/thumb.png": "EXEMPT: a PNG render of the build's assembly in the sandboxed worker (D24 cover); core test_thumb_api + test_thumbs cover it",
   "GET /runs": "runs.json", "GET /runs/{run_id}": "run.json", "GET /runs/{run_id}/steps": "steps.json",
   "GET /runs/{run_id}/pending": "run_pending.json", "GET /tools": "tools.json",

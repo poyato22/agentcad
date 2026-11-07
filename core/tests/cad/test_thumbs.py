@@ -312,3 +312,21 @@ async def test_a_build_cover_with_a_translucent_part_has_no_white_square(tmp_pat
     slab = sum(1 for i in range(0, len(px), 4)
                if px[i + 3] == 255 and min(px[i], px[i + 1], px[i + 2]) > 215)
     assert slab < w * h * 0.02, f"{slab} opaque light pixels: a background square"
+
+
+async def test_the_hover_turntable_is_16_frames_that_turn_in_place(tmp_path):
+    """Home's hover spin: 16 cover frames around the model, side by side, one shared framing."""
+    home = tmp_path / "home"
+    platform.register_sandbox_home(home)
+    await _build_part(home, "box_s", BOX)
+    placed = [("box_s", 1, _shift(0), None)]
+    png, n, w, h = await thumbs.project_spin(home, "projS", placed)
+    W, H, px = thumb_render.decode_png(png)
+    assert (n, W, H) == (16, 16 * w, h) and (w, h) == (320, 200)
+    frame = lambda i: bytes(px[(y * W + i * w) * 4 + c] for y in range(h) for c in range(w * 4))
+    f0, f4 = frame(0), frame(4)
+    assert f0 != f4                                           # a quarter turn looks different
+    assert any(f0[i + 3] for i in range(0, len(f0), 4))      # each frame shows the model
+    assert (await thumbs.project_spin(home, "projS", placed))[0] == png   # cached
+    cams = thumbs.spin_cameras(4)
+    assert cams["s2"][0][0] == pytest.approx(-cams["s0"][0][0]) and cams["s2"][0][2] == pytest.approx(cams["s0"][0][2])
