@@ -297,16 +297,76 @@ async def _measure(part_dir: Path, refs: list[dict], timeout_s: float, warm: boo
         code = error.get("code") if error.get("code") in ("not_found", "invalid_input") else "tool_failed"
         raise MeasureError(code, str(error.get("message") or "measure failed"))
     res = {"items": out.get("items") or [], "values": out.get("values") or []}
+    if isinstance(out.get("distances"), dict):
+        res["distances"] = out["distances"]
     _cache[key] = res
     while len(_cache) > _CACHE_MAX:
         _cache.popitem(last=False)
     return json.loads(json.dumps(res))
 
 
-async def _one_shot(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
+def _check_pose(m: object) -> list[list[float]]:
+    if (not isinstance(m, list) or len(m) not in (3, 4)
+            or not all(isinstance(r, list) and len(r) == 4 for r in m)
+            or not all(isinstance(c, (int, float)) and not isinstance(c, bool) for r in m for c in r)):
+        raise MeasureError("invalid_input", "pose must be a 4 x 4 matrix (row-major, mm)")
+    R = [[float(c) for c in r[:3]] for r in m[:3]]
+    for i in range(3):
+        for j in range(3):
+            dot = sum(R[i][k] * R[j][k] for k in range(3))
+            if abs(dot - (1.0 if i == j else 0.0)) > 1e-4:
+                raise MeasureError("invalid_input", "pose must be rigid (a rotation and a shift)")
+    return [[float(c) for c in r] for r in m[:3]]
+
+
+async def measure_pair(dir_a: Path, ref_a: object, pose_a: object, dir_b: Path, ref_b: object,
+                       pose_b: object, *, timeout_s: float = TIMEOUT_S) -> dict:
+    """Two picks on two posed parts (the build view): {items, values, distances} in the
+    assembly's frame, on the exact B-rep; MeasureError otherwise."""
+    (ra,), (rb,) = check_refs([ref_a]), check_refs([ref_b])
+    pa, pb = _check_pose(pose_a), _check_pose(pose_b)
+    try:
+        dir_a, dir_b = safe_io.real_dir(dir_a), safe_io.real_dir(dir_b)
+    except MisesError as e:
+        raise MeasureError("not_found", f"part is not built: {e.message}") from None
+    steps = []
+    for d in (dir_a, dir_b):
+        try:
+            os.close(safe_io.open_dir(d))
+            safe_io.scrub(d)
+            steps.append(os.lstat(d / "model.step").st_mtime_ns)
+            os.lstat(d / "metrics.json")
+        except MisesError as e:
+            raise MeasureError("tool_failed", f"measure refused: {e.message}") from None
+        except OSError:
+            raise MeasureError("not_found", "part is not built (no model.step)") from None
+    args = {"other_dir": str(dir_b), "ref_a": ra, "ref_b": rb, "pose_a": pa, "pose_b": pb}
+    key = ("pair", str(dir_a), str(dir_b), *steps, json.dumps(args, sort_keys=True))
+    if key in _cache:
+        _cache.move_to_end(key)
+        return json.loads(json.dumps(_cache[key]))
+    async with contextlib.AsyncExitStack() as stack:
+        for d in sorted({str(dir_a), str(dir_b)}):     # a fixed order: never two waits crossed
+            await stack.enter_async_context(_lock(Path(d)))
+        out = await _one_shot(dir_a, args, timeout_s, mode="--measure-pair", extra_read=(dir_b,))
+    error = out.get("error")
+    if isinstance(error, dict):
+        code = error.get("code") if error.get("code") in ("not_found", "invalid_input") else "tool_failed"
+        raise MeasureError(code, str(error.get("message") or "measure failed"))
+    res = {"items": out.get("items") or [], "values": out.get("values") or [],
+           "distances": out.get("distances") or {}}
+    _cache[key] = res
+    while len(_cache) > _CACHE_MAX:
+        _cache.popitem(last=False)
+    return json.loads(json.dumps(res))
+
+
+async def _one_shot(part_dir: Path, refs: "list[dict] | dict", timeout_s: float, *,
+                    mode: str = "--measure", extra_read: tuple = ()) -> dict:
     tmp = part_dir / "tmp"
     safe_io.ensure_dir(tmp)
-    safe_io.write_text(tmp, "measure_args.json", json.dumps({"refs": refs}))
+    safe_io.write_text(tmp, "measure_args.json",
+                       json.dumps(refs if isinstance(refs, dict) else {"refs": refs}))
     safe_io.unlink(tmp, "measure.json")
     nonce = secrets.token_hex(16)
     env = {"MISES_NONCE": nonce, "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), "HOME": str(tmp),
@@ -314,8 +374,8 @@ async def _one_shot(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
     async with heavy_slot("measure"):   # one of the global heavy-worker slots (M9)
         proc = await asyncio.create_subprocess_exec(
             *sandboxed_command([sys.executable, "-I", str(WORKER), str(part_dir),
-                                str(tmp / "measure_args.json"), "--measure"], tmp,
-                               read_dirs=(part_dir,)),
+                                str(tmp / "measure_args.json"), mode], tmp,
+                               read_dirs=(part_dir, *extra_read)),
             stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE, env=env, start_new_session=True)
         try:
@@ -345,4 +405,4 @@ async def _one_shot(part_dir: Path, refs: list[dict], timeout_s: float) -> dict:
     return out
 
 
-__all__ = ["MeasureError", "check_refs", "close_servers", "measure_part", "warm_part"]
+__all__ = ["MeasureError", "check_refs", "close_servers", "measure_pair", "measure_part", "warm_part"]

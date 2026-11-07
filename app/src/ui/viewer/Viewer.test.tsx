@@ -7,6 +7,7 @@ import type { DesignViewerHandle } from "./scene";
 import { noteMyEdit, resetPartEdits } from "../../state/partEdits";
 import { Viewer, changingRunLabel, highlighted } from "./Viewer";
 import { requestModify, viewerTool } from "./tool";
+import { distanceMode } from "./Overlays";
 import { activeBuildId } from "../../state/builds";
 import { resetPins } from "./pins";
 
@@ -226,6 +227,43 @@ describe("Viewer", () => {
     expect(queryByTestId("pick-label")).toBeNull();
   });
 
+  it("measure, Onshape's way: Minimum / Center / Maximum swap the distance and its line; empty space clears", async () => {
+    const plate = treeParts().find((p) => p.part_id === "top_plate") as PartSummary;
+    const span = (d: number) => ({ distance: d, dx: d, dy: 0, dz: 0, points: [[0, 0, 1.5], [d, 0, 1.5]] });
+    const measurePart = vi.fn().mockResolvedValue({ part_id: "top_plate", version: 1, items: [], values: [
+      { key: "distance", label: "Distance", value: 17.9, unit: "mm" }, { key: "dx", label: "ΔX", value: 17.9, unit: "mm" },
+      { key: "dy", label: "ΔY", value: 0, unit: "mm" }, { key: "dz", label: "ΔZ", value: 0, unit: "mm" },
+      { key: "center_distance", label: "Center distance", value: 20, unit: "mm" }, { key: "max_distance", label: "Max distance", value: 22.1, unit: "mm" }],
+      distances: { min: span(17.9), center: span(20), max: span(22.1) } });
+    bindClient({ partGlb: vi.fn().mockResolvedValue({ bytes: fixtureBytes(), etag: '"x"' }), measurePart, warmMeasure: vi.fn().mockResolvedValue({ part_id: "top_plate", warm: true }) } as unknown as CoreClient);
+    parts.value = [plate];
+    selectedPartId.value = "top_plate";
+    distanceMode.value = "min";
+    handle.toScreen.mockImplementation((p: [number, number, number]): [number, number] => [p[0] * 10, p[1] * 10]);
+    const { getByTestId, findByTestId, getByRole } = render(<Viewer />);
+    act(() => { viewerTool.value = "measure"; });
+    const panel = await findByTestId("measure-panel");
+    const click = (point: [number, number, number] | null, normal: [number, number, number] = [0, 0, 1]) => {
+      handle.pick.mockReturnValue(point ? { partId: "top_plate", point, normal } : null);
+      fireEvent.pointerDown(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5 });
+      fireEvent.pointerUp(getByTestId("viewer-canvas"), { button: 0, clientX: 100, clientY: 5 });
+    };
+    click([0, 0, 1.5]);
+    click([0, 0, -1.5], [0, 0, -1]);
+    await waitFor(() => expect(panel.querySelector('[data-value="distance"] dd')?.textContent).toBe("17.9 mm"));
+    expect(panel.querySelector('[data-value="center_distance"]')).toBeNull();    // it is the Center choice
+    expect(getByTestId("dimension-line").textContent).toBe("17.9 mm");
+    fireEvent.click(getByRole("radio", { name: "Center" }));
+    await waitFor(() => expect(panel.querySelector('[data-value="distance"] dd')?.textContent).toBe("20 mm"));
+    expect(getByTestId("dimension-line").textContent).toBe("20 mm");
+    fireEvent.click(getByRole("radio", { name: "Maximum" }));
+    await waitFor(() => expect(panel.querySelector('[data-value="dx"] dd')?.textContent).toBe("22.1 mm"));
+    // Onshape: a click on empty space clears the selection
+    click(null);
+    await waitFor(() => expect(panel.textContent).toContain("Click a vertex, an edge, a circle or a face"));
+    distanceMode.value = "min";
+  });
+
   it("measure: hover previews the snap target; a click shows the metrics value at once, then the core's exact one; a second click adds (E16)", async () => {
     const plate = treeParts().find((p) => p.part_id === "top_plate") as PartSummary;
     const top = plate.metrics!.face_list!.find((f) => f.normal?.[2] === 1)!;
@@ -247,7 +285,7 @@ describe("Viewer", () => {
     expect(getByRole("menuitemcheckbox", { name: "Measure" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.keyDown(getByRole("menu"), { key: "Escape" });
     const panel = await findByTestId("measure-panel");
-    expect(panel.textContent).toContain("Click an edge, a face or a corner");
+    expect(panel.textContent).toContain("Click a vertex, an edge, a circle or a face");
     await waitFor(() => expect(warmMeasure).toHaveBeenCalledWith("top_plate"));   // the core loads the shape ahead
     handle.pick.mockReturnValue({ partId: "top_plate", point: [0, 0, 1.5], normal: [0, 0, 1] });
     // E16: hovering shows what a click would pick (the top face, tinted) before any click

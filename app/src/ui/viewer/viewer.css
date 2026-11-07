@@ -168,3 +168,26 @@
   display: inline-flex; align-items: center; justify-content: center; min-width: 14px; height: 14px; padding: 0 2px; flex: none;
   color: var(--on-blue); background: var(--blue); border-radius: 7px 7px 7px 0; font-weight: 600;
 }
+
+/* Measure, Onshape's way: Minimum / Center / Maximum, and the distance drawn on the model */
+.vx-modes { display: flex; gap: 2px; padding: 2px; margin: 4px 0; border: 1px solid var(--line2); border-radius: 6px; }
+.vx-mode { flex: 1; padding: 3px 6px; border: 0; border-radius: 4px; background: transparent; color: var(--dim); font: inherit; cursor: pointer; }
+.vx-mode[aria-checked="true"] { background: var(--blue-tint); color: var(--ink); box-shadow: inset 0 0 0 1px var(--blue); }
+.vx-mode:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.vx-row[data-axis] { cursor: default; }
+.vx-row[data-axis="dx"] dt { color: var(--red); }
+.vx-row[data-axis="dy"] dt { color: var(--green); }
+.vx-row[data-axis="dz"] dt { color: var(--blue); }
+.vx-dim { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.vx-dim-line { stroke: var(--amber); stroke-width: 1.75; }
+.vx-dim-end { fill: var(--amber); }
+.vx-leg { stroke-width: 1.25; stroke-dasharray: 4 3; opacity: .45; }
+.vx-leg.on { stroke-width: 2; opacity: 1; }
+.vx-leg-dx { stroke: var(--red); }
+.vx-leg-dy { stroke: var(--green); }
+.vx-leg-dz { stroke: var(--blue); }
+.vx-dim-label {
+  width: fit-content; margin: 0 auto; padding: 3px 7px; border-radius: 5px; white-space: nowrap;
+  font: 600 var(--fs-small)/1.3 var(--font-mono); font-variant-numeric: tabular-nums;
+  color: var(--ink); background: var(--raised); border: 1px solid var(--amber);
+}

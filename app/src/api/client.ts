@@ -2,7 +2,7 @@
 // is validated with zod. Failures always surface as CoreError (never a raw fetch/zod error).
 import { buildUsageSchema, runUsageSchema, type BuildUsage, type RunUsage } from "./usage";
 import { z } from "zod";
-import { feedbackResultSchema, measureResultSchema, measureWarmSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult } from "./measure";
+import { feedbackResultSchema, measureResultSchema, measureWarmSchema, pairResultSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult, type PairResult, type PairSide } from "./measure";
 import { debug } from "../lib/log";
 import { errorLogSchema, type ErrorLogList, type ErrorReport } from "./errorLog";
 import type { Appearance } from "../lib/appearance";
@@ -834,6 +834,10 @@ export class CoreClient {
   /** Exact B-rep values for the picks; 409 (stale_version) when the part changed since `baseVersion`. */
   measurePart(id: string, refs: MeasureRef[], baseVersion?: number): Promise<MeasureResult> {
     return this.json("POST", `/parts/${enc(id)}/measure`, measureResultSchema, { body: { refs, ...(baseVersion === undefined ? {} : { base_version: baseVersion }) } });
+  }
+  /** The build view's measure: a pick on each of two posed parts, exact, in the assembly's frame. */
+  measurePair(a: PairSide, b: PairSide): Promise<PairResult> {
+    return this.json("POST", "/measure/pair", pairResultSchema, { body: { a, b } });
   }
   /** Measure mode opened on a part: warm the core's measure worker (best effort). */
   warmMeasure(id: string): Promise<{ part_id: string; warm: boolean }> {
