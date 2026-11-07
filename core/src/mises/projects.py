@@ -107,6 +107,12 @@ def build_mass_g(store: Store, home: Path | None, project_id: str, assemblies=No
     return round(sum(known), 4) if known else None
 
 
+def build_summary(store: Store, project_id: str) -> dict:
+    """The Home tile's usage figure (mises.usage.build_summary)."""
+    from .usage import build_summary as _summary
+    return _summary(store, project_id)
+
+
 def project_view(store: Store, p: Project, home: Path | None = None, assemblies=None) -> dict:
     """The GET /projects shape. onshape stays null until C5's import links a document.
     `last_edited_at` is derived (see last_edited_at); `updated_at` keeps its row meaning.
@@ -115,7 +121,8 @@ def project_view(store: Store, p: Project, home: Path | None = None, assemblies=
             "last_edited_at": last_edited_at(store, p, home),
             "trashed_at": p.trashed_at, "part_count": store.project_part_count(p.id),
             "run_count": store.project_run_count(p.id), "onshape": None,
-            "mass_g": build_mass_g(store, home, p.id, assemblies)}
+            "mass_g": build_mass_g(store, home, p.id, assemblies),
+            "usage": build_summary(store, p.id)}
 
 
 def list_projects(store: Store, home: Path | None = None, assemblies=None) -> list[dict]:

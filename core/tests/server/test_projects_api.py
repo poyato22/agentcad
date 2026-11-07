@@ -336,3 +336,27 @@ def test_agent_traversal_names_rejected_on_every_verb(client, rt, name):
     agents = rt.home / "agents"
     assert not agents.exists() or list(agents.iterdir()) == []
     assert not (rt.home / "evil.md").exists()
+
+
+# ---- usage per turn and per build
+
+def test_usage_routes(client, rt):
+    pid = rt.active_project_id()
+    lead = rt.store.create_run("lead", "claude-code", "opus", "t", project_id=pid).id
+    rt.store.update_run(lead, role="lead")
+    rt.store.start_turn(lead, 100.0, 0.0)
+    rt.store.add_usage(lead, input_tokens=10, output_tokens=5, cache_read_tokens=100, usd=0.2)
+    sub = rt.store.create_run("designer", "claude-code", "sonnet", "s", parent_id=lead,
+                              project_id=pid).id
+    rt.store.add_usage(sub, input_tokens=1, output_tokens=1, usd=0.05)
+    r = client.get(f"/runs/{sub}/usage", headers=AUTH).json()
+    assert r["root_id"] == lead and len(r["turns"]) == 1 and "not a charge" in r["note"]
+    t = r["turns"][0]
+    assert t["usd"] == pytest.approx(0.25) and t["tokens"] == 117
+    assert [a["run_id"] for a in t["agents"]] == [lead, sub]
+    b = client.get(f"/projects/{pid}/usage", headers=AUTH).json()
+    assert b["usd"] == pytest.approx(0.25) and b["unrecorded"] is None
+    tile = [p for p in client.get("/projects", headers=AUTH).json() if p["id"] == pid][0]
+    assert tile["usage"] == {"recorded": True, "tokens": 117, "usd": 0.25}
+    assert client.get("/runs/nope/usage", headers=AUTH).status_code == 404
+    assert client.get("/projects/nope/usage", headers=AUTH).status_code == 404

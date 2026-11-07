@@ -84,6 +84,24 @@ def build_projects_router(runtime: Runtime) -> APIRouter:
         runtime.active_project_id()
         return _projects.list_projects(store, _home(), getattr(runtime, "assembly_store", None))
 
+    # ---- usage: per turn (a user message's agent run, sub-agents included) and per build
+    @router.get("/projects/{project_id}/usage")
+    async def project_usage(project_id: str):
+        from .. import usage
+        _projects._project_or_404(store, project_id)
+        return usage.build_usage(store, project_id)
+
+    @router.get("/runs/{run_id}/usage")
+    async def run_usage(run_id: str):
+        from .. import usage
+        try:
+            store.get_run(run_id)
+        except KeyError:
+            raise MisesError(ErrorCode.NOT_FOUND, f"no run {run_id}") from None
+        root, _family = store.run_family(run_id)
+        return {"run_id": run_id, "root_id": root, "turns": usage.run_turns(store, run_id),
+                "note": usage.SUBSCRIPTION_NOTE}
+
     @router.post("/projects")
     async def create_project(body: NewProject):
         return _projects.create_project(store, body.name)
