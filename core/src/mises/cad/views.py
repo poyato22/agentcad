@@ -974,7 +974,7 @@ async def _collect_text(ctx: ToolContext, provider, req: ModelRequest) -> str:
             parts.append(ev.text)
         elif isinstance(ev, Usage) and store is not None and run_id is not None:
             store.add_usage(run_id, input_tokens=ev.input_tokens, output_tokens=ev.output_tokens,
-                            usd=max(0.0, ev.usd or 0.0))
+                            usd=max(0.0, ev.usd or 0.0), usd_known=ev.usd is not None)
     return "".join(parts)
 
 

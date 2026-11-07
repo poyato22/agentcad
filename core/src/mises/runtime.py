@@ -1290,7 +1290,7 @@ class Runtime:
                     provider, model, prompt,
                     on_usage=lambda u: self.store.add_usage(
                         run_id, input_tokens=u.input_tokens, output_tokens=u.output_tokens,
-                        usd=max(0.0, u.usd or 0.0))), 2.0)
+                        usd=max(0.0, u.usd or 0.0), usd_known=u.usd is not None)), 2.0)
                 cur = self.store.get_run(run_id).design_class
                 if cur and cur.get("source") != "user":
                     new = design_mod.combine(cur, score)

@@ -323,7 +323,8 @@ class AgentLoop:
             elif isinstance(ev, Usage):
                 self.store.add_usage(self.run_id, input_tokens=ev.input_tokens,
                                      output_tokens=ev.output_tokens,
-                                     usd=max(0.0, ev.usd or 0.0))   # unknown cost counts $0
+                                     usd=max(0.0, ev.usd or 0.0),   # unknown cost counts $0
+                                     usd_known=ev.usd is not None)  # else priced (mises.usage)
             elif isinstance(ev, Done):
                 out.stop = ev.stop_reason
         out.text = "".join(text)

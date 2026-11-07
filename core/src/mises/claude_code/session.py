@@ -957,11 +957,14 @@ class ClaudeCodeSession:
             self._abort(f"{UNVERIFIED}: a result arrived before system/init")
             return
         usage = msg.get("usage") or {}
-        tokens_in = (_int(usage.get("input_tokens")) + _int(usage.get("cache_read_input_tokens"))
-                     + _int(usage.get("cache_creation_input_tokens")))
-        self.runtime.store.add_usage(self.run_id, input_tokens=tokens_in,
-                                     output_tokens=_int(usage.get("output_tokens")),
-                                     usd=self._cost_delta(msg.get("total_cost_usd")))
+        # the run row's input_tokens still counts the cache tokens (Store.add_usage adds them)
+        self.runtime.store.add_usage(
+            self.run_id, input_tokens=_int(usage.get("input_tokens")),
+            cache_read_tokens=_int(usage.get("cache_read_input_tokens")),
+            cache_write_tokens=_int(usage.get("cache_creation_input_tokens")),
+            output_tokens=_int(usage.get("output_tokens")),
+            usd=self._cost_delta(msg.get("total_cost_usd")),
+            usd_known=_known_cost(msg.get("total_cost_usd")))
         if isinstance(msg.get("session_id"), str):
             self.session_id = msg["session_id"]
         if msg.get("is_error"):
@@ -990,3 +993,8 @@ class ClaudeCodeSession:
         self._finish("done")
         if self._turn is not None and not self._turn.done():
             self._turn.set_result("".join(self._turn_text))
+
+
+def _known_cost(total: Any) -> bool:
+    """Whether a result's total_cost_usd is a usable number (see _cost_delta)."""
+    return not isinstance(total, bool) and isinstance(total, (int, float)) and total >= 0

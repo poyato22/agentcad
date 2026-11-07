@@ -177,6 +177,12 @@ CREATE TABLE IF NOT EXISTS studies (
   id TEXT PRIMARY KEY, project_id TEXT, data TEXT, status TEXT, created_at REAL,
   updated_at REAL);
 CREATE INDEX IF NOT EXISTS studies_project ON studies(project_id, id);
+CREATE TABLE IF NOT EXISTS usage_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, root_id TEXT, turn_ts REAL,
+  project_id TEXT, provider TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER,
+  cache_read_tokens INTEGER, cache_write_tokens INTEGER, usd REAL, usd_source TEXT, ts REAL);
+CREATE INDEX IF NOT EXISTS usage_root ON usage_events(root_id, turn_ts);
+CREATE INDEX IF NOT EXISTS usage_project ON usage_events(project_id);
 """
 
 _RUN_FIELDS = {"status", "branch", "agent", "provider", "model", "task", "parent_id",
@@ -399,11 +405,61 @@ class Store:
             return False
 
     def add_usage(self, run_id: str, *, input_tokens: int = 0, output_tokens: int = 0,
-                  usd: float = 0.0, onshape_calls: int = 0) -> None:
+                  usd: float = 0.0, onshape_calls: int = 0, cache_read_tokens: int = 0,
+                  cache_write_tokens: int = 0, usd_known: bool = True,
+                  priced_usd: float | None = None) -> None:
+        """Add to the run's totals and, for tokens or dollars, record a usage event tagged with
+        the run's root and the root's current turn (mises.usage aggregates them per turn and
+        per build). The run row's input_tokens counts cache tokens too (its old meaning).
+        `usd` is the reported cost (the dollar cap counts it); `usd_known=False` means the
+        provider reported none, and `priced_usd` is then a price-table estimate, shown only."""
+        now = time.time()
         with self._tx() as db:
             db.execute("UPDATE runs SET input_tokens=input_tokens+?, output_tokens=output_tokens+?,"
                        " usd=usd+?, onshape_calls=onshape_calls+?, updated_at=? WHERE id=?",
-                       (input_tokens, output_tokens, usd, onshape_calls, time.time(), run_id))
+                       (input_tokens + cache_read_tokens + cache_write_tokens, output_tokens,
+                        usd, onshape_calls, now, run_id))
+            if not (input_tokens or output_tokens or cache_read_tokens or cache_write_tokens
+                    or usd):
+                return
+            row = db.execute("SELECT provider, model, project_id FROM runs WHERE id=?",
+                             (run_id,)).fetchone()
+            if row is None:
+                return
+            root, seen = run_id, {run_id}
+            while True:
+                p = db.execute("SELECT parent_id FROM runs WHERE id=?", (root,)).fetchone()
+                if p is None or p[0] is None or p[0] in seen:
+                    break
+                seen.add(p[0])
+                root = p[0]
+            r = db.execute("SELECT turn_started_at, created_at FROM runs WHERE id=?",
+                           (root,)).fetchone()
+            turn_ts = (r[0] if r[0] is not None else r[1]) if r else now
+            if not usd_known and priced_usd is None:
+                from .usage import price
+                priced_usd = price(row[0] or "", row[1] or "", input_tokens, output_tokens,
+                                   cache_read_tokens, cache_write_tokens)
+            if usd_known:
+                cost, source = usd, "reported"
+            elif priced_usd is not None:
+                cost, source = priced_usd, "priced"
+            else:
+                cost, source = 0.0, "unknown"
+            db.execute("INSERT INTO usage_events (run_id, root_id, turn_ts, project_id, provider,"
+                       " model, input_tokens, output_tokens, cache_read_tokens,"
+                       " cache_write_tokens, usd, usd_source, ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (run_id, root, turn_ts, row[2], row[0], row[1], input_tokens,
+                        output_tokens, cache_read_tokens, cache_write_tokens, cost, source, now))
+
+    def usage_events(self, *, root_id: str | None = None,
+                     project_id: str | None = None) -> list[dict]:
+        if root_id is not None:
+            rows = self._all("SELECT * FROM usage_events WHERE root_id=? ORDER BY id", (root_id,))
+        else:
+            rows = self._all("SELECT * FROM usage_events WHERE project_id=? ORDER BY id",
+                             (project_id,))
+        return [dict(r) for r in rows]
 
     def delete_run(self, run_id: str) -> None:
         """Remove a run and everything the Mises home holds for it (steps, approvals, policies).
@@ -550,6 +606,7 @@ class Store:
             db.execute("DELETE FROM parts WHERE project_id=?", (project_id,))
             db.execute("DELETE FROM specs WHERE project_id=?", (project_id,))
             db.execute("DELETE FROM studies WHERE project_id=?", (project_id,))
+            db.execute("DELETE FROM usage_events WHERE project_id=?", (project_id,))
             if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND"
                           " name='catalog_items'").fetchone() is not None:
                 db.execute("DELETE FROM catalog_items WHERE project_id=?", (project_id,))
