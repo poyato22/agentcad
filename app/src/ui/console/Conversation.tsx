@@ -16,7 +16,7 @@ import { DiffView } from "./DiffView";
 import { shownPending } from "./queued";
 import { CallDetails } from "./ToolCallRow";
 import type { ThreadItem } from "./threadModel";
-import { editedKeys } from "./chat";
+import { editedKeys, outbox, outboxDrop, pendingFor } from "./chat";
 import { isApiErrorText } from "./errorText";
 import { CancelQueuedButton, cancelledQueued, EditButton, ErrorCard } from "./MessageActions";
 import { Markup } from "../markup/render";
@@ -64,6 +64,12 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
   const start = Math.max(0, items.length - span);
   const shown = start > 0 ? items.slice(start) : items;
   const newCount = atBottom ? 0 : Math.max(0, items.length - seenLen.current);
+  // your messages show at once: the outbox's, until the thread has them (or sending failed)
+  const seenUser = items.flatMap((i) => (i.kind === "user" || i.kind === "queued" ? [{ text: i.text, ts: i.ts }] : []));
+  if (run?.task) seenUser.push({ text: run.task, ts: run.created_at });
+  const { show: pending, done: echoed } = given ? { show: [], done: [] }
+    : pendingFor(outbox.value, run?.project_id ?? activeBuildId.value, run?.id ?? null, seenUser);
+  useEffect(() => { for (const id of echoed) outboxDrop(id); }, [echoed.join(",")]);
   const usage = run ? runUsage.value.get(run.id) : undefined;
   const turnAt = usage && run ? placeTurns(shown, usage.turns) : null;
 
@@ -120,7 +126,7 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
     <div class="cv-wrap">
       <div class="cv-thread" ref={scroller} onScroll={onScroll} role="log" aria-label="Conversation" aria-live="off" data-conversation>
         {start > 0 && <button type="button" class="cv-earlier" onClick={showEarlier}>{`Show earlier (${start})`}</button>}
-        {!run && items.length === 0 && <Empty />}
+        {!run && items.length === 0 && pending.length === 0 && <Empty />}
         {weave(shown, editsForRun(buildUserEdits.value, run ?? null)).map((r) => (r.kind === "you"
           ? <div key={r.line.key} class="cv-item" data-key={r.line.key}><YouLine text={r.line.text} /></div>
           : (
@@ -133,6 +139,14 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
         {run && items.length === 0 && run.task && (
           <Item item={{ kind: "user", key: "task", text: run.task, ts: run.created_at, stepIds: [] }} agent={run.agent} />
         )}
+        {pending.map((o) => (
+          <div key={`outbox-${o.id}`} class="cv-item" data-key={`outbox-${o.id}`}>
+            <div class="cv-msg cv-user is-sending" data-msg="user" data-row data-kind="message" data-sending="">
+              <div class="cv-msg-head"><span class="label">you</span><span class="faint">sending…</span></div>
+              <div class="cv-text text">{o.text}</div>
+            </div>
+          </div>
+        ))}
         {run && run.status === "queued" && <Queued />}
         {run && run.status !== "queued" && <RunStatus runId={run.id} status={run.status} />}
       </div>

@@ -72,12 +72,61 @@ async function firstLeadModel(): Promise<string | null> {
 
 export interface Sent { runId: string; note: string | null; res: CreateRunResult | null }
 
+/** A message you sent, shown in the thread at once (before the core records it). It leaves the
+ *  outbox when the thread shows it (the same words, sent at or after it), when sending fails
+ *  (the composer keeps the words and shows the error), or after OUTBOX_MAX_S as a last resort. */
+export interface Outgoing { id: number; buildId: string | null; runId: string | null; text: string; body: string; ts: number }
+export const outbox: Signal<readonly Outgoing[]> = signal<readonly Outgoing[]>([]);
+export const OUTBOX_MAX_S = 120;
+let outboxSeq = 0;
+function outboxAdd(o: Omit<Outgoing, "id">): number {
+  const id = ++outboxSeq;
+  outbox.value = [...outbox.peek(), { ...o, id }];
+  setTimeout(() => outboxDrop(id), OUTBOX_MAX_S * 1000);
+  return id;
+}
+function outboxSet(id: number, runId: string): void {
+  outbox.value = outbox.peek().map((o) => (o.id === id ? { ...o, runId } : o));
+}
+export function outboxDrop(id: number): void {
+  if (outbox.peek().some((o) => o.id === id)) outbox.value = outbox.peek().filter((o) => o.id !== id);
+}
+
+/** The outbox messages a thread should show: this build's, sent to this run (or not yet to any),
+ *  and not yet in the thread. `seen` are the thread's own user texts with their times (s). */
+export function pendingFor(list: readonly Outgoing[], buildId: string | null, runId: string | null,
+                           seen: readonly { text: string; ts: number }[]): { show: Outgoing[]; done: number[] } {
+  const show: Outgoing[] = [];
+  const done: number[] = [];
+  for (const o of list) {
+    if (o.buildId !== buildId || (o.runId !== null && runId !== null && o.runId !== runId)) continue;
+    const echoed = seen.some((u) => (u.text === o.body || u.text === o.text) && u.ts >= o.ts - 5);
+    if (echoed) done.push(o.id); else show.push(o);
+  }
+  return { show, done };
+}
+
 /** Send `text` to the build's lead (or to `target`, a sub-agent the user chose). "Use with
  *  agent" chips ride along, and `images` (P11 F7: the composer's attachments). Throws the core's
  *  error (the composer shows it, the text and the images are kept). */
 export async function sendChat(text: string, target: AgentRun | null = null, images: readonly ChatImageIn[] = []): Promise<Sent> {
   const chipLine = chipsPromptLine(agentChips.peek());
   const body = chipLine ? `${text}\n\n${chipLine}` : text;
+  // your words show in the thread now, not when the core has recorded them
+  const out = outboxAdd({ buildId: target?.project_id ?? activeBuildId.peek(), runId: target?.id ?? null, text, body, ts: Date.now() / 1000 });
+  try {
+    const sent = await deliver(text, body, chipLine, target, images);
+    outboxSet(out, sent.runId);
+    return sent;
+  } catch (e) {
+    outboxDrop(out);
+    throw e;
+  }
+}
+
+async function deliver(text: string, body: string, chipLine: string | null, target: AgentRun | null,
+                       images: readonly ChatImageIn[]): Promise<Sent> {
+  void text;
   const c = actions.client();
   let fellBack = false;
   if (target && target.role !== "lead") {
@@ -124,6 +173,7 @@ export async function sendChat(text: string, target: AgentRun | null = null, ima
 /** Tests. */
 export function resetChat(): void {
   messageTarget.value = null;
+  outbox.value = [];
   composerDraft.value = null;
   editedKeys.value = new Set();
 }

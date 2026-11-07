@@ -96,6 +96,8 @@ def _look_digest(look: dict | None) -> str:
     if (k["color"] is None and k["opacity"] == 1.0 and k["roughness"] == 0.9
             and k["metalness"] == 0.0):
         return "plain"                 # the default look: the renderer's grey, matte, opaque
+    if k["opacity"] < 1.0:
+        k["shaded"] = 1                # rendered shaded now (was x-ray on a white square): re-render
     return hashlib.sha256(json.dumps(k, sort_keys=True).encode()).hexdigest()[:10]
 
 
@@ -173,7 +175,9 @@ async def _render(home: Path, part_dir: Path, size: int, look: dict | None = Non
         async with _semaphore():
             out = await run_render_job(base / "jobs", [mesh], renders=[{
                 "key": "t", "views": ["iso"], "size": max(size, _RENDER_MIN),
-                "transparent": mesh.opacity < 1.0, "background": "transparent",
+                # shaded even for a translucent finish: the x-ray path has no transparent
+                # background and painted an opaque white square behind the part
+                "transparent": False, "background": "transparent",
                 "shadow": False}])
     except (MisesError, OSError, safe_io.UnsafePath):
         return None
@@ -331,8 +335,9 @@ async def _render_cover(home: Path, project_id: str, shown: list[Placement], w: 
             out = await run_render_job(base / "jobs", meshes, renders=[{
                 "key": "t", "views": ["hero"], "size": rsize, "style": "shaded",
                 # `background: transparent` (NOT the x-ray `transparent` flag) is the shaded path
-                # whose ground shadow lands in alpha; x-ray only for a translucent finish
-                "transparent": any(m.opacity < 1.0 for m in meshes),
+                # whose ground shadow lands in alpha. Never x-ray: one translucent part turned the
+                # whole cover into an x-ray on an opaque white square (the x-ray path is RGB only)
+                "transparent": False,
                 "background": "transparent"}])
     except (MisesError, OSError, safe_io.UnsafePath):
         return None
