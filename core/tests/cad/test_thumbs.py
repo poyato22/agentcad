@@ -281,3 +281,34 @@ async def test_thumb_uses_g1_render_job_and_the_u8_appearance(tmp_path, monkeypa
     assert reds > 64 * 64 * 0.05
     await thumbs.part_thumb(home, "box_f", 1, size=64, look=red)    # cached: no new render
     assert len(calls) == 2
+
+
+async def test_a_translucent_part_has_no_white_square_behind_it(tmp_path):
+    """A see-through finish used to switch the thumbnail to the x-ray renderer, which has no
+    transparent background: the part sat on an opaque white square. Now it is shaded on alpha."""
+    home = tmp_path / "home"
+    platform.register_sandbox_home(home)
+    await _build_part(home, "box_t", BOX)
+    glass = {"preset": "matte", "color": "#ff8800", "metalness": 0, "roughness": 0.8, "opacity": 0.4}
+    png = await thumbs.part_thumb(home, "box_t", 1, size=64, look=glass)
+    w, h, px = thumb_render.decode_png(png)
+    corners = [px[(y * w + x) * 4 + 3] for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))]
+    assert corners == [0, 0, 0, 0]                                   # no square behind it
+    clear = sum(1 for i in range(3, len(px), 4) if px[i] == 0)
+    assert clear > w * h * 0.2                                       # the background is see-through
+
+
+async def test_a_build_cover_with_a_translucent_part_has_no_white_square(tmp_path):
+    """The Home cover of a build where one part is see-through (a rocket's clear bay) used to be
+    an x-ray on an opaque white square; it is the shaded hero view on alpha like any other."""
+    home = tmp_path / "home"
+    platform.register_sandbox_home(home)
+    await _build_part(home, "box_c", BOX)
+    glass = {"preset": "matte", "color": "#88ccff", "metalness": 0, "roughness": 0.8, "opacity": 0.4}
+    placed = [("box_c", 1, _shift(0), None), ("box_c", 1, _shift(80), glass)]
+    png = await thumbs.project_cover(home, "projT", placed, size=320)
+    w, h, px = thumb_render.decode_png(png)
+    # the square was opaque light grey (the x-ray renderer's background): none of that now
+    slab = sum(1 for i in range(0, len(px), 4)
+               if px[i + 3] == 255 and min(px[i], px[i + 1], px[i + 2]) > 215)
+    assert slab < w * h * 0.02, f"{slab} opaque light pixels: a background square"
