@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PartEdge } from "../../api/builds";
-import type { PartFace, PartMetrics } from "../../api/types";
-import { circleOf, fmtMeasure, labelFor, pickTarget, provisionalValues, refOf, shownValues, togglePick, type Picked } from "./interact";
+import type { PartFace, PartMetrics, Vec3 } from "../../api/types";
+import { circleOf, fmtMeasure, labelFor, pickTarget, provisionalValues, refOf, measurable, shownValues, togglePick, valuesForMode, type Picked } from "./interact";
 
 const top: PartFace = { id: "f2", type: "plane", center: [0, 0, 2.5], normal: [0, 0, 1], area: 1200 };
 const wall: PartFace = { id: "f6", type: "cylinder", center: [10, 0, 0], normal: null, area: 65.973, radius: 2.1 };
@@ -45,14 +45,26 @@ describe("measure picks", () => {
     expect(refOf(b)).toEqual({ face_id: "f2" });
     expect(refOf({ kind: "vertex", point: [1, 2, 3] })).toEqual({ point: [1, 2, 3] });
   });
-  it("E16: a second click adds to the first (never replaces it), a third starts a new pair, a pick made twice drops", () => {
+  it("Onshape's rules: each click adds to the selection, a pick clicked again is deselected", () => {
     expect(togglePick([], a)).toEqual([a]);
     expect(togglePick([a], b)).toEqual([a, b]);
     const c: Picked = { kind: "vertex", point: [1, 2, 3] };
-    expect(togglePick([a, b], c)).toEqual([c]);
+    expect(togglePick([a, b], c)).toEqual([a, b, c]);
     expect(togglePick([a, b], { kind: "edge", edge: edge40 })).toEqual([b]);
-    // Shift keeps adding past two (a total length / area)
-    expect(togglePick([a, b], c, true)).toEqual([a, b, c]);
+    expect(measurable([a, b, c])).toBe(false);
+    expect(measurable([a, a, a])).toBe(true);
+  });
+  it("Minimum / Center / Maximum swap Distance and ΔX ΔY ΔZ; the center and max rows are the choice", () => {
+    const span = (d: number) => ({ distance: d, dx: d, dy: 0, dz: 0, points: [[0, 0, 0], [d, 0, 0]] as [Vec3, Vec3] });
+    const vals = [
+      { key: "distance", label: "Distance", value: 20.26, unit: "mm" }, { key: "dx", label: "ΔX", value: 1, unit: "mm" },
+      { key: "dy", label: "ΔY", value: 1, unit: "mm" }, { key: "dz", label: "ΔZ", value: 0, unit: "mm" },
+      { key: "center_distance", label: "Center distance", value: 22.36, unit: "mm" }, { key: "max_distance", label: "Max distance", value: 24.46, unit: "mm" },
+    ];
+    const dist = { min: span(20.26), center: span(22.36), max: span(24.46) };
+    expect(valuesForMode(vals, dist, "center").map((v) => [v.key, v.value])).toEqual([["distance", 22.36], ["dx", 22.36], ["dy", 0], ["dz", 0]]);
+    expect(valuesForMode(vals, dist, "max")[0].value).toBe(24.46);
+    expect(valuesForMode(vals, { min: span(20.26) }, "center")[0].value).toBe(20.26);   // no center: the minimum
   });
   it("one pick shows its metrics values at once (the core's exact values replace them)", () => {
     expect(provisionalValues([a]).map((v) => fmtMeasure(v))).toEqual(["Length 40 mm"]);

@@ -3,9 +3,10 @@
 // camera through the scene's onView.
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { MeasureValue } from "../../api/measure";
+import { signal } from "@preact/signals";
+import type { DistanceMode, MeasureDistances, MeasureSpan, MeasureValue } from "../../api/measure";
 import type { Vec3 } from "../../api/types";
-import { fmtValueOnly, labelFor, shownValues, type Picked } from "./interact";
+import { fmtValueOnly, labelFor, valuesForMode, type Picked } from "./interact";
 import type { Pin } from "./pins";
 
 type At = { x: number; y: number };
@@ -33,11 +34,77 @@ export function SelectionLabel({ picked, at, bounds, canModify, onModify, onClos
   );
 }
 
-export interface MeasureState { status: "idle" | "busy" | "done" | "error"; values: MeasureValue[]; error: string | null }
+export interface MeasureState { status: "idle" | "busy" | "done" | "error"; values: MeasureValue[]; error: string | null; distances?: MeasureDistances }
+
+/** Onshape's distance choice, kept across picks (and across the part and build views). */
+export const distanceMode = signal<DistanceMode>("min");
+/** The Δ row under the pointer: its leg is drawn on the model (Onshape's dashed X / Y / Z). */
+export const hoverAxis = signal<"dx" | "dy" | "dz" | null>(null);
+
+const MODES: { key: DistanceMode; label: string }[] = [{ key: "min", label: "Minimum" }, { key: "center", label: "Center" }, { key: "max", label: "Maximum" }];
+
+/** The Minimum / Center / Maximum switch, shown when a circle, an arc or a cylinder is picked. */
+export function DistanceModes({ distances }: { distances?: MeasureDistances }): JSX.Element | null {
+  if (!distances?.center) return null;
+  return (
+    <div class="vx-modes" role="radiogroup" aria-label="Distance" data-testid="distance-modes">
+      {MODES.map((m) => (
+        <button key={m.key} type="button" role="radio" aria-checked={distanceMode.value === m.key} class="vx-mode"
+          data-mode={m.key} onClick={() => { distanceMode.value = m.key; }}>{m.label}</button>
+      ))}
+    </div>
+  );
+}
+
+/** The value rows; hovering ΔX / ΔY / ΔZ draws that leg on the model. */
+export function MeasureRows({ values, exact = false }: { values: readonly MeasureValue[]; exact?: boolean }): JSX.Element {
+  return (
+    <dl class="vx-values" data-exact={exact ? "" : undefined}>
+      {values.map((v) => {
+        const axis = v.key === "dx" || v.key === "dy" || v.key === "dz" ? v.key : null;
+        return (
+          <div key={v.key} class="vx-row" data-value={v.key} data-axis={axis ?? undefined}
+            onMouseEnter={axis ? () => { hoverAxis.value = axis; } : undefined}
+            onMouseLeave={axis ? () => { hoverAxis.value = null; } : undefined}>
+            <dt>{v.label}</dt><dd>{fmtValueOnly(v)}</dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
+/** The chosen distance drawn on the model, as Onshape does: a line between its two ends with
+ *  the value at its middle, and the ΔX / ΔY / ΔZ legs (red, green, blue) while one is hovered. */
+export function DimensionLine({ span, toScreen, bounds, label }: {
+  span: MeasureSpan | null | undefined; toScreen: (p: Vec3) => [number, number]; bounds: Bounds; label: string;
+}): JSX.Element | null {
+  if (!span) return null;
+  const [a, b] = span.points;
+  const sa = toScreen(a);
+  const sb = toScreen(b);
+  const corners: Vec3[] = [a, [b[0], a[1], a[2]], [b[0], b[1], a[2]], b];
+  const legs = (["dx", "dy", "dz"] as const).map((k, i) => ({ k, from: toScreen(corners[i]), to: toScreen(corners[i + 1]) }));
+  const axis = hoverAxis.value;
+  const mid = { x: (sa[0] + sb[0]) / 2, y: (sa[1] + sb[1]) / 2 };
+  return (
+    <svg class="vx-dim" width={bounds.w} height={bounds.h} aria-hidden="true" data-testid="dimension-line">
+      {axis && legs.map((l) => (
+        <line key={l.k} class={`vx-leg vx-leg-${l.k}${l.k === axis ? " on" : ""}`} x1={l.from[0]} y1={l.from[1]} x2={l.to[0]} y2={l.to[1]} />
+      ))}
+      <line class="vx-dim-line" x1={sa[0]} y1={sa[1]} x2={sb[0]} y2={sb[1]} />
+      <circle class="vx-dim-end" cx={sa[0]} cy={sa[1]} r="3" />
+      <circle class="vx-dim-end" cx={sb[0]} cy={sb[1]} r="3" />
+      <foreignObject x={mid.x - 60} y={mid.y - 13} width="120" height="26">
+        <div class="vx-dim-label">{label}</div>
+      </foreignObject>
+    </svg>
+  );
+}
 
 /** Measure: the picks and their values (exact, from the core; the metrics' own until it answers). */
-export function MeasurePanel({ picks, state, onClear, onClose }: { picks: readonly Picked[]; state: MeasureState; onClear(): void; onClose(): void }): JSX.Element {
-  const values = shownValues(state.values);
+export function MeasurePanel({ picks, state, onClear, onClose, mixed = false }: { picks: readonly Picked[]; state: MeasureState; onClear(): void; onClose(): void; mixed?: boolean }): JSX.Element {
+  const values = valuesForMode(state.values, state.distances, distanceMode.value);
   return (
     <section class="vx-panel" data-testid="measure-panel" aria-label="Measure">
       <header class="vx-panel-head">
@@ -46,22 +113,18 @@ export function MeasurePanel({ picks, state, onClear, onClose }: { picks: readon
         <button type="button" class="vx-x" aria-label="Close measure" onClick={onClose}>×</button>
       </header>
       {picks.length === 0
-        ? <p class="vx-hint faint">Click an edge, a face or a corner, then a second one to measure between them.</p>
+        ? <p class="vx-hint faint">Click a vertex, an edge, a circle or a face; click more to measure between them.</p>
         : (
           <>
             <ul class="vx-picks">
               {picks.map((p, i) => <li key={i}><span class="vx-n">{i + 1}</span>{labelFor(p)}</li>)}
             </ul>
-            {values.length > 0 && (
-              <dl class="vx-values" data-exact={state.status === "done" ? "" : undefined}>
-                {values.map((v) => (
-                  <div key={v.key} class="vx-row" data-value={v.key}><dt>{v.label}</dt><dd>{fmtValueOnly(v)}</dd></div>
-                ))}
-              </dl>
-            )}
+            <DistanceModes distances={state.distances} />
+            {values.length > 0 && <MeasureRows values={values} exact={state.status === "done"} />}
+            {mixed && <p class="vx-hint faint">With more than two picks, pick only edges (total length) or only faces (total area).</p>}
             {state.error && <p class="vx-error" role="alert">{state.error}</p>}
             <div class="vx-actions">
-              <span class="faint vx-hint">{picks.length === 1 ? "Click a second feature" : "A click starts a new pair · Esc clears"}</span>
+              <span class="faint vx-hint">{picks.length === 1 ? "Click a second item" : "Click a pick again to drop it · Esc or empty space clears"}</span>
               <button type="button" class="btn btn-ghost" onClick={onClear}>Clear</button>
             </div>
           </>

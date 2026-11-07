@@ -263,3 +263,85 @@ async def test_a_dead_worker_falls_back_to_the_one_shot(box):
     await w.proc.wait()
     v = _values(await measure_part(d, [{"face_id": _face(m, "plane", [0.0, 0.0, 1.0])["id"]}]))
     assert v["area"] == pytest.approx(2400.0, abs=1e-9)
+
+
+# ---- Onshape's distance choices: min / center / max when a circle or a cylinder is picked
+
+async def test_a_point_and_a_hole_edge_give_min_center_and_max(plate):
+    d, m = plate
+    # the top rim of the hole at x = +20 (r 2.1), and the plate's top corner at (30, 20, 2.5)
+    rim = next(e for e in m["edge_list"] if e["type"] == "circle" and e["center"][0] > 0
+               and e["center"][2] > 0)
+    res = await measure_part(d, [{"point": [30, 20, 2.5]}, {"edge_id": rim["id"]}])
+    dist = res["distances"]
+    c = math.hypot(10, 20)                            # corner → the hole's centre
+    assert dist["center"]["distance"] == pytest.approx(c, abs=1e-6)
+    assert dist["min"]["distance"] == pytest.approx(c - 2.1, abs=1e-6)
+    assert dist["max"]["distance"] == pytest.approx(c + 2.1, abs=1e-3)   # sampled at 1°
+    assert dist["center"]["points"][0] == pytest.approx([30, 20, 2.5])
+    assert dist["center"]["points"][1] == pytest.approx([20, 0, 2.5], abs=1e-6)
+    assert (dist["center"]["dx"], dist["center"]["dy"]) == pytest.approx((10, 20), abs=1e-6)
+    v = _values(res)
+    assert v["center_distance"] == pytest.approx(c, abs=1e-6)
+    assert v["max_distance"] == pytest.approx(c + 2.1, abs=1e-3)
+
+
+async def test_a_point_and_a_hole_wall_measure_to_its_axis(plate):
+    d, m = plate
+    wall = next(f for f in m["face_list"] if f["type"] == "cylinder" and f["center"][0] > 0)
+    res = await measure_part(d, [{"point": [30, 20, -2.5]}, {"face_id": wall["id"]}])
+    assert res["distances"]["center"]["distance"] == pytest.approx(math.hypot(10, 20), abs=1e-6)
+    assert res["distances"]["min"]["distance"] == pytest.approx(math.hypot(10, 20) - 2.1, abs=1e-6)
+
+
+async def test_two_vertices_have_only_a_min_distance_with_its_end_points(box):
+    d, _ = box
+    res = await measure_part(d, [{"point": [-30, -20, 2.5]}, {"point": [30, 20, -2.5]}])
+    assert set(res["distances"]) == {"min"}
+    mn = res["distances"]["min"]
+    assert mn["distance"] == pytest.approx(math.sqrt(60**2 + 40**2 + 5**2), abs=1e-6)
+    assert mn["points"] == [[-30.0, -20.0, 2.5], [30.0, 20.0, -2.5]]
+    assert "center_distance" not in _values(res)
+
+
+async def test_two_hole_rims_center_is_40_and_max_is_44_2(plate):
+    d, m = plate
+    rims = [e for e in m["edge_list"] if e["type"] == "circle" and e["center"][2] > 0]
+    res = await measure_part(d, [{"edge_id": rims[0]["id"]}, {"edge_id": rims[1]["id"]}])
+    dist = res["distances"]
+    assert dist["center"]["distance"] == pytest.approx(40.0, abs=1e-6)
+    assert dist["min"]["distance"] == pytest.approx(40 - 4.2, abs=1e-6)
+    assert dist["max"]["distance"] == pytest.approx(44.2, abs=1e-3)
+
+
+# ---- the build view: two posed parts
+
+I4 = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+
+
+async def test_two_posed_parts_measure_exactly_in_the_assembly_frame(box, plate):
+    from mises.measure import measure_pair
+    bd, _ = box
+    pd, pm = plate
+    # the plate shifted 100 mm along X and turned 90° about Z: its hole at (+20, 0) lands at (100, 20)
+    turn = [[0, -1, 0, 100], [1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    rim = next(e for e in pm["edge_list"] if e["type"] == "circle" and e["center"][0] > 0
+               and e["center"][2] > 0)
+    res = await measure_pair(bd, {"point": [30, 20, 2.5]}, I4, pd, {"edge_id": rim["id"]}, turn)
+    c = res["distances"]["center"]
+    assert c["points"][1] == pytest.approx([100, 20, 2.5], abs=1e-6)
+    assert c["distance"] == pytest.approx(70.0, abs=1e-6)
+    assert (c["dx"], c["dy"], c["dz"]) == pytest.approx((70, 0, 0), abs=1e-6)
+    assert res["distances"]["min"]["distance"] == pytest.approx(70 - 2.1, abs=1e-6)
+    # two corners of the same box, posed: the vertex-to-vertex distance is the diagonal
+    v = await measure_pair(bd, {"point": [-30, -20, 2.5]}, I4, bd, {"point": [30, 20, 2.5]}, I4)
+    assert v["distances"]["min"]["distance"] == pytest.approx(math.hypot(60, 40), abs=1e-6)
+
+
+async def test_a_pose_that_is_not_rigid_is_refused(box):
+    from mises.measure import measure_pair
+    bd, _ = box
+    scaled = [[2, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    with pytest.raises(MeasureError) as e:
+        await measure_pair(bd, {"point": [0, 0, 2.5]}, I4, bd, {"point": [1, 0, 2.5]}, scaled)
+    assert e.value.code == "invalid_input"

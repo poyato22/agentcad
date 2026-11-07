@@ -353,6 +353,7 @@ const COVERAGE: Record<string, string> = {
   "GET /sims/calibrations/{cal_id}": "EXEMPT: the app reads the list (GET /sims/calibrations); one record has the list item's shape (s3_cal_list.json)",
   // Plan 7 U2a measure and feedback pins: contract.measure.test.ts
   "POST /parts/{part_id}/measure": "part_measure_edge.json",
+  "POST /measure/pair": "EXEMPT: the build view's measure across two posed parts needs two real built STEPs in the sandboxed worker; core test_measure covers it (posed parts, a non-rigid pose refused)",
   // POST /projects/{project_id}/feedback (U3c's agents_api.py, declared `@r.post`, which this scan
   // does not read) is covered by project_feedback*.json in contract.measure.test.ts
   // Plan 7 U4c agent browser / part cards / parts list / sites: contract.browser.test.ts (U4a),

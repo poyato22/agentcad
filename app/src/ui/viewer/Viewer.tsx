@@ -22,8 +22,8 @@ import { SourceEditor } from "../editor/SourceEditor";
 import type { PartScene } from "./loadPart";
 import { PartLoader } from "./partLoader";
 import { edgeEnds, matchFace, nearestEdge } from "./pick";
-import { circleOf, labelFor, pickTarget, provisionalValues, refOf, togglePick, type Picked } from "./interact";
-import { CommentBox, MeasurePanel, PinLayer, SelectionLabel, type MeasureState } from "./Overlays";
+import { circleOf, dimLabel, labelFor, measurable, pickTarget, provisionalValues, refOf, togglePick, type Picked } from "./interact";
+import { CommentBox, DimensionLine, distanceMode, MeasurePanel, PinLayer, SelectionLabel, type MeasureState } from "./Overlays";
 import { addLocalPin, buildPins, type Pin } from "./pins";
 import { modifyRequest, takeModify, viewerTool, type ViewerTool } from "./tool";
 import { modalOpen } from "../pages/router";
@@ -372,12 +372,12 @@ export function Viewer(): JSX.Element {
   useEffect(() => {
     const seq = ++measureSeq.current;
     const focus = activePart.peek();
-    if (tool !== "measure" || !focus || picks.length === 0) { setMeasured(IDLE); return; }
+    if (tool !== "measure" || !focus || picks.length === 0 || !measurable(picks)) { setMeasured(IDLE); return; }
     setMeasured({ status: "busy", values: provisionalValues(picks), error: null });
     let client;
     try { client = actions.client(); } catch { return; }
     void client.measurePart(focus.part_id, picks.map(refOf), focus.version ?? undefined).then(
-      (r) => { if (seq === measureSeq.current) setMeasured({ status: "done", values: r.values, error: null }); },
+      (r) => { if (seq === measureSeq.current) setMeasured({ status: "done", values: r.values, error: null, distances: r.distances }); },
       (e: unknown) => {
         if (seq !== measureSeq.current) return;
         const msg = e instanceof CoreError && e.status === 409 ? "This part just changed. Pick again on the new version."
@@ -464,6 +464,7 @@ export function Viewer(): JSX.Element {
     if (!hit) {
       setOps(null); setChip(null); setOpenPin(null);
       if (mode === "comment") setComment(null);
+      if (mode === "measure") setPicks([]);          // Onshape: a click on empty space clears
       return;
     }
     const target = parts.peek().find((p) => p.part_id === hit.partId);
@@ -574,7 +575,11 @@ export function Viewer(): JSX.Element {
           onModify={() => modifyChip(chip)} onClose={() => setChip(null)} />
       )}
       {tab === "model" && tool === "measure" && part && (
-        <MeasurePanel picks={picks} state={measured} onClear={() => setPicks([])} onClose={() => { viewerTool.value = "select"; }} />
+        <MeasurePanel picks={picks} state={measured} mixed={!measurable(picks)} onClear={() => setPicks([])} onClose={() => { viewerTool.value = "select"; }} />
+      )}
+      {tab === "model" && tool === "measure" && v && picks.length === 2 && measured.distances && (
+        <DimensionLine span={measured.distances[distanceMode.value] ?? measured.distances.min} toScreen={(p) => v.toScreen(p)} bounds={bounds}
+          label={dimLabel(measured.distances[distanceMode.value] ?? measured.distances.min)} />
       )}
       {tab === "model" && tool === "comment" && comment && (
         <CommentBox key={`${comment.at.x},${comment.at.y}`} at={comment.at} bounds={room} where={comment.where} busy={sending} error={commentError}

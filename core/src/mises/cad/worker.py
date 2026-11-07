@@ -594,15 +594,84 @@ def _direction(info: dict):
     return None
 
 
-def _measure_two(sa, ia: dict, sb, ib: dict) -> list[dict]:
+def _round_pt(p) -> list[float]:
+    return [round(float(c), 6) + 0.0 for c in p]
+
+
+def _span(pa, pb) -> dict:
+    """One distance as the app draws it: the length, |ΔX| |ΔY| |ΔZ| and the two end points."""
+    d = [pb[i] - pa[i] for i in range(3)]
+    return {"distance": round(math.sqrt(sum(c * c for c in d)), 6) + 0.0,
+            "dx": round(abs(d[0]), 6) + 0.0, "dy": round(abs(d[1]), 6) + 0.0,
+            "dz": round(abs(d[2]), 6) + 0.0, "points": [_round_pt(pa), _round_pt(pb)]}
+
+
+def _min_span(sa, sb) -> dict:
     from OCP.BRepExtrema import BRepExtrema_DistShapeShape
     ext = BRepExtrema_DistShapeShape(sa.wrapped, sb.wrapped)
     if not ext.IsDone() or ext.NbSolution() == 0:
         raise ValueError("could not measure the distance between these two")
-    pa, pb = _pnt(ext.PointOnShape1(1)), _pnt(ext.PointOnShape2(1))
-    out = [_val("distance", "Distance", ext.Value(), "mm"),
-           _val("dx", "ΔX", abs(pb[0] - pa[0]), "mm"), _val("dy", "ΔY", abs(pb[1] - pa[1]), "mm"),
-           _val("dz", "ΔZ", abs(pb[2] - pa[2]), "mm")]
+    return _span(_pnt(ext.PointOnShape1(1)), _pnt(ext.PointOnShape2(1)))
+
+
+def _circular(info: dict) -> bool:
+    """A circle / arc edge or a cylindrical face: Onshape offers min, center and max for it."""
+    return "radius" in info and (info["kind"] == "edge" or "axis_point" in info)
+
+
+def _center_shape(shape, info: dict):
+    """What Center measures from (Onshape's rules): a circle's centre point, a cylinder's axis
+    (as a long segment through it), and anything else itself."""
+    from build123d import Edge, Vector, Vertex
+    if info["kind"] == "edge" and "radius" in info:
+        return Vertex(*info["center"])
+    if info["kind"] == "face" and "axis_point" in info:
+        a, d = Vector(*info["axis_point"]), Vector(*info["axis"])
+        return Edge.make_line(a - d * 1e5, a + d * 1e5)
+    return shape
+
+
+def _samples(shape, info: dict) -> list[list[float]]:
+    """Points spread over a pick's boundary (distance is convex, so the farthest point of a face
+    or an edge from anything is on its boundary): a vertex itself; each edge at 361 points."""
+    if info["kind"] in ("vertex", "point"):
+        return [list(info["point"])]
+    edges = [shape] if info["kind"] == "edge" else list(shape.edges())
+    out: list[list[float]] = []
+    for e in edges:
+        out += [_vec(e.position_at(i / 360)) for i in range(361)]
+    return out
+
+
+def _max_span(sa, ia: dict, sb, ib: dict) -> dict:
+    import numpy as np
+    a, b = np.asarray(_samples(sa, ia)), np.asarray(_samples(sb, ib))
+    best, pair = -1.0, (a[0], b[0])
+    for i in range(0, len(a), 512):                 # in blocks: never a huge matrix at once
+        d = ((a[i:i + 512, None, :] - b[None, :, :]) ** 2).sum(-1)
+        k = int(d.argmax())
+        if d.flat[k] > best:
+            r, c = divmod(k, len(b))
+            best, pair = float(d.flat[k]), (a[i + r], b[c])
+    return _span([float(x) for x in pair[0]], [float(x) for x in pair[1]])
+
+
+def _distances(sa, ia: dict, sb, ib: dict) -> dict:
+    """{min, center?, max?}: Onshape's distance choices for the two picks. Center and max are
+    offered only when a circle, an arc or a cylinder is picked."""
+    out = {"min": _min_span(sa, sb)}
+    if _circular(ia) or _circular(ib):
+        out["center"] = _min_span(_center_shape(sa, ia), _center_shape(sb, ib))
+        out["max"] = _max_span(sa, ia, sb, ib)
+    return out
+
+
+def _measure_two(sa, ia: dict, sb, ib: dict) -> tuple[list[dict], dict]:
+    dist = _distances(sa, ia, sb, ib)
+    m = dist["min"]
+    out = [_val("distance", "Distance", m["distance"], "mm"),
+           _val("dx", "ΔX", m["dx"], "mm"), _val("dy", "ΔY", m["dy"], "mm"),
+           _val("dz", "ΔZ", m["dz"], "mm")]
     da, db = _direction(ia), _direction(ib)
     if da is not None and db is not None:
         ang = _angle_deg(da, db)
@@ -615,17 +684,10 @@ def _measure_two(sa, ia: dict, sb, ib: dict) -> list[dict]:
             n = ia["normal"]
             gap = abs(sum((ib["center"][i] - ia["center"][i]) * n[i] for i in range(3)))
             out.insert(0, _val("normal_distance", "Normal distance", gap, "mm"))
-    if all(i["kind"] == "edge" and "radius" in i for i in (ia, ib)):
-        out.append(_val("center_distance", "Center distance",
-                        math.dist(ia["center"], ib["center"]), "mm"))
-    if (all(i["kind"] == "face" and "axis" in i for i in (ia, ib))
-            and _angle_deg(ia["axis"], ib["axis"]) < _PARALLEL_DEG):
-        a, d = ia["axis_point"], ia["axis"]
-        w = [ib["axis_point"][i] - a[i] for i in range(3)]
-        t = sum(w[i] * d[i] for i in range(3))
-        out.append(_val("center_distance", "Center distance",
-                        math.sqrt(max(0.0, sum(x * x for x in w) - t * t)), "mm"))
-    return out
+    if "center" in dist:
+        out.append(_val("center_distance", "Center distance", dist["center"]["distance"], "mm"))
+        out.append(_val("max_distance", "Max distance", dist["max"]["distance"], "mm"))
+    return out, dist
 
 
 def _measure_compute(shape, metrics: dict, refs, cache: dict | None = None) -> dict:
@@ -645,10 +707,11 @@ def _measure_compute(shape, metrics: dict, refs, cache: dict | None = None) -> d
                     cache[key] = hit
             picked.append((hit[0], copy.deepcopy(hit[1])))
         infos = [i for _, i in picked]
+        distances = None
         if len(picked) == 1:
             values = _measure_one(infos[0])
         elif len(picked) == 2:
-            values = _measure_two(picked[0][0], infos[0], picked[1][0], infos[1])
+            values, distances = _measure_two(picked[0][0], infos[0], picked[1][0], infos[1])
         elif all(i["kind"] == "edge" for i in infos):
             values = [_val("total_length", "Total length", sum(i["length"] for i in infos), "mm")]
         elif all(i["kind"] == "face" for i in infos):
@@ -662,7 +725,8 @@ def _measure_compute(shape, metrics: dict, refs, cache: dict | None = None) -> d
             for k in ("area", "length", "radius", "arc_deg"):
                 if k in i:
                     i[k] = round(float(i[k]), 6) + 0.0
-        return {"items": infos, "values": values}
+        return {"items": infos, "values": values,
+                **({"distances": distances} if distances else {})}
     except LookupError as e:
         return {"error": {"code": "not_found", "message": str(e)}}
     except ValueError as e:
@@ -675,6 +739,76 @@ def _measure(part_dir: Path, args: dict, nonce: str) -> None:
     metrics = json.loads((part_dir / "metrics.json").read_text())
     shape = b3.import_step(str(part_dir / "model.step"))
     result = {"nonce": nonce, **_measure_compute(shape, metrics, args.get("refs"))}
+    tmp = part_dir / "tmp"
+    (tmp / "new_measure.json").write_text(json.dumps(result))
+    os.replace(tmp / "new_measure.json", tmp / "measure.json")
+
+
+def _pose_trsf(m):
+    """A rigid 4 × 4 pose (row-major, mm) as an OCCT transform."""
+    from OCP.gp import gp_Trsf
+    if (not isinstance(m, list) or len(m) < 3
+            or not all(isinstance(r, list) and len(r) == 4 for r in m[:3])
+            or not all(isinstance(c, (int, float)) and math.isfinite(c) for r in m[:3] for c in r)):
+        raise ValueError("pose must be a 4 x 4 matrix")
+    t = gp_Trsf()
+    t.SetValues(*[float(c) for c in m[0]], *[float(c) for c in m[1]], *[float(c) for c in m[2]])
+    return t
+
+
+def _posed(shape, info: dict, m):
+    """A resolved pick moved to where the assembly puts it: the shape, and its info's points and
+    directions (points by the whole pose, directions by its rotation)."""
+    from OCP.TopLoc import TopLoc_Location
+    from build123d import Location
+    trsf = _pose_trsf(m)
+    R = [[float(m[i][j]) for j in range(3)] for i in range(3)]
+    T = [float(m[i][3]) for i in range(3)]
+    pt = lambda p: [sum(R[i][j] * p[j] for j in range(3)) + T[i] for i in range(3)]
+    dr = lambda d: [sum(R[i][j] * d[j] for j in range(3)) for i in range(3)]
+    out = dict(info)
+    for k in ("center", "point", "axis_point", "start", "end"):
+        if k in out:
+            out[k] = pt(out[k])
+    for k in ("normal", "axis", "direction"):
+        if k in out:
+            out[k] = dr(out[k])
+    return shape.moved(Location(TopLoc_Location(trsf))), out
+
+
+def _measure_pair_compute(shape_a, metrics_a: dict, shape_b, metrics_b: dict, args: dict) -> dict:
+    """Two picks on two posed parts (or one part twice): {items, values, distances} in the
+    assembly's frame, exact on the B-rep, or {error}."""
+    try:
+        ha = _measure_resolve(shape_a, metrics_a, args.get("ref_a"))
+        hb = _measure_resolve(shape_b, metrics_b, args.get("ref_b"))
+        sa, ia = _posed(ha[0], ha[1], args.get("pose_a"))
+        sb, ib = _posed(hb[0], hb[1], args.get("pose_b"))
+        values, distances = _measure_two(sa, ia, sb, ib)
+        for i in (ia, ib):
+            for k in ("center", "normal", "axis", "axis_point", "start", "end", "direction", "point"):
+                if k in i:
+                    i[k] = _round_list(i[k])
+        return {"items": [ia, ib], "values": values, "distances": distances}
+    except LookupError as e:
+        return {"error": {"code": "not_found", "message": str(e)}}
+    except ValueError as e:
+        return {"error": {"code": "invalid_input", "message": str(e)}}
+
+
+def _measure_pair(part_dir: Path, args: dict, nonce: str) -> None:
+    """worker.py <part_dir> <args.json> --measure-pair: args name the other part's dir
+    (`other_dir`, read-only in the sandbox), the two refs and the two poses."""
+    import build123d as b3
+    other = Path(str(args.get("other_dir") or part_dir)).resolve()
+    ma = json.loads((part_dir / "metrics.json").read_text())
+    sa = b3.import_step(str(part_dir / "model.step"))
+    if other == part_dir:
+        mb, sb = ma, sa
+    else:
+        mb = json.loads((other / "metrics.json").read_text())
+        sb = b3.import_step(str(other / "model.step"))
+    result = {"nonce": nonce, **_measure_pair_compute(sa, ma, sb, mb, args)}
     tmp = part_dir / "tmp"
     (tmp / "new_measure.json").write_text(json.dumps(result))
     os.replace(tmp / "new_measure.json", tmp / "measure.json")
@@ -1496,6 +1630,12 @@ def main(argv: list[str]) -> int:
         if not nonce:
             raise RuntimeError("missing build nonce")
         _measure_serve(part_dir, nonce)
+        return 0
+    if len(argv) > 3 and argv[3] == "--measure-pair":
+        nonce = os.environ.pop("MISES_NONCE", "")
+        if not nonce:
+            raise RuntimeError("missing build nonce")
+        _measure_pair(part_dir, json.loads(Path(argv[2]).read_text()), nonce)
         return 0
     if len(argv) > 3 and argv[3] == "--measure":
         nonce = os.environ.pop("MISES_NONCE", "")

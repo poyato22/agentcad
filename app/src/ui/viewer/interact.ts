@@ -2,7 +2,7 @@
 // ("Face · planar · 1,200 mm²", "Edge · circle Ø4.2") says what was clicked; measure sends the
 // picks to the core (exact B-rep) and shows the metrics' own values meanwhile.
 import type { PartEdge } from "../../api/builds";
-import type { MeasureRef, MeasureValue } from "../../api/measure";
+import type { DistanceMode, MeasureDistances, MeasureRef, MeasureValue } from "../../api/measure";
 import type { PartFace, PartHole, PartMetrics, Vec3 } from "../../api/types";
 import type { ViewerHit } from "./scene";
 import { edgeEnds, matchFace, nearestEdge } from "./pick";
@@ -78,14 +78,19 @@ export function refOf(p: Picked): MeasureRef {
 
 const keyOf = (p: Picked): string => JSON.stringify(refOf(p));
 
-/** Measure's selection after a click (Plan 10 E16): a click adds to the first pick (two picks →
- *  the distance / angle between them), a third starts a new pair; a pick made twice is dropped
- *  again. Shift keeps adding past two (several edges' total length, several faces' area). */
-export function togglePick(list: readonly Picked[], p: Picked, add = false): Picked[] {
+/** Measure's selection after a click, by Onshape's rules: each click adds to the selection (two
+ *  picks: the distance and angle between them; several edges: their total length; several
+ *  faces: their total area), a pick clicked again is deselected, and a click on empty space or
+ *  Esc clears it all. (`_add` is kept for callers that still pass Shift: it changes nothing.) */
+export function togglePick(list: readonly Picked[], p: Picked, _add = false): Picked[] {
   const k = keyOf(p);
   if (list.some((x) => keyOf(x) === k)) return list.filter((x) => keyOf(x) !== k);
-  if (!add && list.length >= 2) return [p];
   return [...list, p];
+}
+
+/** Whether the core can measure this selection: one or two picks, or only edges, or only faces. */
+export function measurable(list: readonly Picked[]): boolean {
+  return list.length <= 2 || list.every((p) => p.kind === "edge") || list.every((p) => p.kind === "face");
 }
 
 const val = (key: string, label: string, value: number, unit: string): MeasureValue => ({ key, label, value, unit });
@@ -139,4 +144,21 @@ export function circleOf(e: PartEdge, holes: readonly PartHole[] | undefined): {
     return { center: [r(c[0]), r(c[1]), r(c[2])], axis: [a[0], a[1], a[2]], radius: e.radius };
   }
   return null;
+}
+
+/** The panel's rows for the chosen distance (Onshape's Minimum / Center / Maximum): Distance and
+ *  ΔX / ΔY / ΔZ follow the choice; the center and max rows are the choice itself, never listed. */
+export function valuesForMode(list: readonly MeasureValue[], distances: MeasureDistances | undefined, mode: DistanceMode): MeasureValue[] {
+  const span = distances?.[mode] ?? distances?.min;
+  const out = shownValues(list).filter((v) => v.key !== "center_distance" && v.key !== "max_distance");
+  if (!span) return out;
+  const pick: Record<string, number> = { distance: span.distance, dx: span.dx, dy: span.dy, dz: span.dz };
+  return out
+    .filter((v) => !(v.key === "normal_distance" && mode !== "min"))
+    .map((v) => (v.key in pick ? { ...v, value: pick[v.key] } : v));
+}
+
+/** The dimension line's label: "22.361 mm". */
+export function dimLabel(span: { distance: number }): string {
+  return `${num(span.distance, 3)} mm`;
 }

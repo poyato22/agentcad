@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 from ..cad import safe_io
 from ..cad.tools import PART_ID_RE
-from ..measure import MeasureError, check_refs, measure_part, warm_part
+from ..measure import MeasureError, check_refs, measure_pair, measure_part, warm_part
 from ..types import ErrorCode, MisesError
 
 if TYPE_CHECKING:
@@ -63,6 +63,33 @@ def build_measure_router(runtime: Runtime) -> APIRouter:
             raise MisesError(ErrorCode(e.code), e.message) from None
         version = res.pop("version")
         return {"part_id": part_id, "version": version, **res}
+
+    @router.post("/measure/pair")
+    async def measure_two_parts(request: Request):
+        """The build view's measure: one pick on each of two posed parts (or one part twice),
+        {a: {part_id, ref, pose}, b: {...}} with poses as row-major 4 x 4 matrices in mm."""
+        try:
+            body: Any = await request.json()
+        except ValueError:
+            raise MisesError(ErrorCode.INVALID_INPUT, "body must be JSON") from None
+        sides = []
+        for k in ("a", "b"):
+            s = body.get(k) if isinstance(body, dict) else None
+            if not isinstance(s, dict):
+                raise MisesError(ErrorCode.INVALID_INPUT, f"{k} must be {{part_id, ref, pose}}")
+            pid = s.get("part_id")
+            if not isinstance(pid, str) or not PART_ID_RE.fullmatch(pid):
+                raise MisesError(ErrorCode.NOT_FOUND, f"unknown part {pid!r}")
+            d = runtime.home / "parts" / pid
+            if not safe_io.exists(d, "model.step"):
+                raise MisesError(ErrorCode.NOT_FOUND, f"no built part {pid!r}")
+            sides.append((pid, d, s.get("ref"), s.get("pose")))
+        try:
+            res = await measure_pair(sides[0][1], sides[0][2], sides[0][3],
+                                     sides[1][1], sides[1][2], sides[1][3])
+        except MeasureError as e:
+            raise MisesError(ErrorCode(e.code), e.message) from None
+        return {"part_ids": [sides[0][0], sides[1][0]], **res}
 
     return router
 

@@ -26,9 +26,19 @@ export const measureItemSchema = z.object({
   start: vec3.optional(), end: vec3.optional(), direction: vec3.optional(), point: vec3.optional(),
 });
 
-export interface MeasureResult { part_id: string; version: number; items: MeasureItem[]; values: MeasureValue[] }
+/** One distance between two picks, as Onshape draws it: the length, |ΔX| |ΔY| |ΔZ| and its two ends (mm). */
+export interface MeasureSpan { distance: number; dx: number; dy: number; dz: number; points: [Vec3, Vec3] }
+const spanSchema = z.object({ distance: z.number(), dx: z.number(), dy: z.number(), dz: z.number(), points: z.tuple([vec3, vec3]) });
+/** Onshape's distance choices: minimum always; center (a circle's centre, a cylinder's axis) and
+ *  maximum when a circle, an arc or a cylinder is picked. */
+export type DistanceMode = "min" | "center" | "max";
+export interface MeasureDistances { min: MeasureSpan; center?: MeasureSpan; max?: MeasureSpan }
+export const measureDistancesSchema = z.object({ min: spanSchema, center: spanSchema.optional(), max: spanSchema.optional() });
+
+export interface MeasureResult { part_id: string; version: number; items: MeasureItem[]; values: MeasureValue[]; distances?: MeasureDistances }
 export const measureResultSchema = z.object({
   part_id: z.string(), version: z.number(), items: z.array(measureItemSchema), values: z.array(measureValueSchema),
+  distances: measureDistancesSchema.optional(),
 });
 
 /** Measure mode opened: the core loads the part in its warm measure worker ahead of the first pick. */
@@ -73,3 +83,11 @@ export function pinOf(payload: Record<string, unknown>): FeedbackPin | null {
   const p = feedbackPinSchema.safeParse(payload["feedback"]);
   return p.success ? p.data : null;
 }
+
+/** The build view's measure: one pick on each of two posed parts (POST /measure/pair), exact. */
+export interface PairSide { part_id: string; ref: MeasureRef; pose: number[][] }
+export interface PairResult { part_ids: [string, string]; items: MeasureItem[]; values: MeasureValue[]; distances: MeasureDistances }
+export const pairResultSchema = z.object({
+  part_ids: z.tuple([z.string(), z.string()]), items: z.array(measureItemSchema), values: z.array(measureValueSchema),
+  distances: measureDistancesSchema,
+});
