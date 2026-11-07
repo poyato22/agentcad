@@ -52,6 +52,7 @@ from .claude_code.prompts import context_block
 from .claude_code.session import ClaudeCodeSession, model_alias
 from .context_tools import build_context, ui_context
 from .drawing_pregen import DrawingPregenerator
+from .error_log import ErrorLog
 from .events import ActivityTracker, Event, EventBus
 from .gate import Gate
 from .onshape import browse as onshape_browse
@@ -226,6 +227,11 @@ class Runtime:
         self.store = Store(self.home / "mises.db")
         self.assembly_store = AssemblyStore(self.home / "assembly.db")
         self.events = EventBus()
+        # every user-visible error (failed tool steps, runs, studies) lands in logs/errors.jsonl
+        self.error_log = ErrorLog(self.home / "logs",
+                                  secrets=lambda: self.gate.services.get("secrets") or (),
+                                  build_of=lambda rid: self.store.get_run(rid).project_id)
+        self.events.taps.append(self.error_log.observe_event)
         self.approvals = ApprovalService(self.store, self.events)
         self.registry = ToolRegistry()
         register_mirror_tools(self.registry)

@@ -33,6 +33,7 @@ from starlette.datastructures import Headers
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ..error_log import install_log_handler as install_error_log_handler
 from ..types import ErrorCode, MisesError, finite_json
 from .. import effort as _effort
 from .. import projects as _projects
@@ -63,6 +64,7 @@ from .spec_api import build_spec_router
 from .ui_api import add_cors, build_ui_router
 from .agents_api import build_agents_router
 from ..concept.api import build_concept_router
+from .logs_api import build_logs_router
 from .effort_api import build_effort_router
 from ..orchestrator import lead as _lead
 from ..orchestrator.router import Attachment
@@ -287,6 +289,7 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     if hmac.compare_digest(mcp_token.encode(), token.encode()):
         raise ValueError("the MCP-only token must differ from the admin token")
     runtime.register_secrets(token, mcp_token)  # defense in depth: scrub them from tool results
+    install_error_log_handler(runtime.error_log)  # the core's log.exception paths -> errors.jsonl
     mcp_server = build_mcp_server(runtime)
     manager = StreamableHTTPSessionManager(
         app=mcp_server, json_response=True, stateless=True,
@@ -381,6 +384,13 @@ def create_app(runtime: Runtime, token: str, *, mcp_token: str | None = None,
     app.include_router(build_agents_router(runtime))
     app.include_router(build_concept_router(runtime))
     app.include_router(build_effort_router(runtime))       # Plan 11 F8: the Think control
+    app.include_router(build_logs_router(runtime))
+
+    @app.exception_handler(Exception)
+    async def _uncaught(_req, e: Exception):
+        runtime.error_log.record_exception("core", e)
+        return JSONResponse({"error": "tool_failed", "message": "internal error", "hint": None,
+                             "retryable": False}, status_code=500)
 
     @app.exception_handler(MisesError)
     async def _mises_error(_req, e: MisesError):
