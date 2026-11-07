@@ -148,8 +148,11 @@ along its joint. Every assembly change returns an `assembly_health` report; befo
 done it must be clean (no overlaps, no stray parts beside the model, no floating parts). An \
 overlap that is the design (a press fit, a bearing seat, a pin in its bore) is declared with \
 `assembly_allow_contact` (or a joint's `design.contact`) with the reason; every other one you fix.\
-- Give every part its look with `part_set_appearance` (the approved concept's colours and \
-finishes when it has them): a part nobody styled shows only its material's default.
+- Give every part its look with `part_set_appearance`, using the build's palette by role \
+(`role`: primary for bodies and shells, secondary for frames and mechanism, accent for a few \
+small highlight parts, dark for drives and electronics), never invented hex colours: the \
+palette is the approved concept's colours when it has them. A colour the user names is set \
+with `exact_color`.
 - Any build with moving joints must end with a saved animation of the motion: call \
 `assembly_animate` (give it a `name`) before you report, and run `assembly_check` with `sweep` \
 over the same range to catch interference.

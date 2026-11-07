@@ -128,3 +128,20 @@ def test_an_untinted_preset_keeps_the_parts_color(store, tmp_path):
     # a tinted preset brings its own tint
     row = projects.patch_part(store, tmp_path, "arm", appearance={"preset": "brushed_aluminum"})
     assert row["color"] == appearance.PRESETS["brushed_aluminum"]["color"]
+
+
+async def test_agent_colours_come_from_the_build_palette(store, tmp_path):
+    _part(store, tmp_path)
+    ctx = SimpleNamespace(run_id="r", store=store, events=EventBus(), workdir=tmp_path)
+    tool = appearance.part_set_appearance
+    pal = looks.palette_for(store.get_part("arm").project_id)
+    out = await tool.handler(ctx, tool.input_model(part_id="arm", role="accent"))
+    assert out.data["appearance"]["color"] == pal["accent"] and "build palette" in out.summary
+    out = await tool.handler(ctx, tool.input_model(part_id="arm", color="#123456"))
+    assert out.data["appearance"]["color"] in pal.values() and "snapped" in out.summary
+    out = await tool.handler(ctx, tool.input_model(part_id="arm", color="#123456", exact_color=True))
+    assert out.data["appearance"]["color"] == "#123456"           # the user asked for it
+    out = await tool.handler(ctx, tool.input_model(part_id="arm", preset="anodized", color="#3d6fb0"))
+    assert out.data["appearance"]["color"] == "#3d6fb0"           # a metal keeps its own
+    with pytest.raises(MisesError):
+        await tool.handler(ctx, tool.input_model(part_id="arm", role="neon"))

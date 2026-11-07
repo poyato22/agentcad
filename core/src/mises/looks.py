@@ -112,13 +112,84 @@ def concept_cmf(store, project_id: str | None) -> list[dict]:
         return []
 
 
-#: muted part colours (the render palette's hues), picked per part id when nothing else applies
-PART_PALETTE = ["#9ea8b8", "#cc8c6b", "#78a38a", "#8c91bd", "#c7b873", "#99809e", "#73a8b3",
-                "#bd949e"]
+#: kept for older callers and tests: every colour any palette can give a plastic part
+PART_PALETTE: list[str] = []
+
+#: Curated build palettes: a main body colour, a second structural tone, one accent used
+#: sparingly, a dark for frames / electronics, and a light. One palette per build (its concept's
+#: colours when it has an approved concept), so every part of a build belongs together.
+PALETTES: list[dict[str, str]] = [
+    {"name": "Graphite and signal orange", "primary": "#d4d6d9", "secondary": "#4b5058",
+     "accent": "#e8642c", "dark": "#202327", "light": "#f0f0ee"},
+    {"name": "Workshop teal", "primary": "#2f6f73", "secondary": "#d8d4c8", "accent": "#e3a33b",
+     "dark": "#23272b", "light": "#eceae4"},
+    {"name": "Navy and sand", "primary": "#2a4463", "secondary": "#d6cbb4", "accent": "#d9583b",
+     "dark": "#1d2229", "light": "#efece6"},
+    {"name": "Field green", "primary": "#55715a", "secondary": "#cbc5b2", "accent": "#e0b23c",
+     "dark": "#22261f", "light": "#eeece4"},
+    {"name": "Arctic blue", "primary": "#e6e9ec", "secondary": "#7d8996", "accent": "#2f7de1",
+     "dark": "#25292e", "light": "#f5f6f7"},
+    {"name": "Racing red", "primary": "#b8352e", "secondary": "#dedcd7", "accent": "#f0b429",
+     "dark": "#1e1f22", "light": "#f2f1ee"},
+]
+ROLES = ("primary", "secondary", "accent", "dark", "light")
+PART_PALETTE[:] = sorted({c for pal in PALETTES for k, c in pal.items() if k in ROLES})
+
+_ACCENT_NAME = re.compile(r"button|knob|cap\b|tip|fin\b|fins|trim|handle|grip|bumper|led\b|"
+                          r"light|logo|badge|foot|feet|pad\b|pads|nozzle|eye|trigger|switch", re.I)
+_SECOND_NAME = re.compile(r"frame|chassis|base|bracket|mount|plate|arm|link|leg|strut|rib|"
+                          r"spar|beam|rail|truss|joint|hinge|gear|pulley|hub|wheel|ring", re.I)
+_DARK_NAME = re.compile(r"motor|servo|battery|lipo|board|pcb|esc\b|controller|camera|sensor|"
+                        r"cable|wire|tire|tyre|track|belt", re.I)
+
+
+def palette_for(project_id: str | None, cmf: list[dict] | None = None) -> dict[str, str]:
+    """The build's palette: from its approved concept's colours when it has them (the body
+    colour is the primary, a second distinct colour the accent), else one of PALETTES chosen
+    once per build (stable: the same build always gets the same one)."""
+    base = PALETTES[zlib.crc32((project_id or "").encode()) % len(PALETTES)]
+    if not cmf:
+        return dict(base)
+    body = next((e["color"].lower() for e in cmf if _role(e) == "body"), None)
+    if body is None:
+        return dict(base)
+    others = [e["color"].lower() for e in cmf if e["color"].lower() != body and _role(e) == "body"]
+    return {**base, "name": "From the concept", "primary": body,
+            "accent": others[0] if others else base["accent"]}
+
+
+def part_role(part_id: str, label: str | None = None) -> str:
+    """Which palette colour a part takes by default, from its name: small highlight parts the
+    accent, frames and mechanism the secondary tone, electronics and drives the dark, the rest
+    (shells, bodies, covers) the primary."""
+    name = f"{part_id} {label or ''}".replace("_", " ")
+    if _DARK_NAME.search(name):
+        return "dark"
+    if _ACCENT_NAME.search(name):
+        return "accent"
+    if _SECOND_NAME.search(name):
+        return "secondary"
+    return "primary"
+
+
+def _hex_rgb(c: str) -> tuple[int, int, int]:
+    return int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)
+
+
+def nearest_in_palette(color: str, palette: dict[str, str]) -> tuple[str, str]:
+    """(role, colour) of the palette colour closest to `color` (a weighted RGB distance that
+    follows how eyes weigh red, green and blue)."""
+    r, g, b = _hex_rgb(color)
+    def dist(c: str) -> float:
+        r2, g2, b2 = _hex_rgb(c)
+        rm = (r + r2) / 2
+        return (2 + rm / 256) * (r - r2) ** 2 + 4 * (g - g2) ** 2 + (2 + (255 - rm) / 256) * (b - b2) ** 2
+    role = min(ROLES, key=lambda k: dist(palette[k]))
+    return role, palette[role]
 
 
 def default_look(part_id: str, label: str | None, material: str | None,
-                 cmf: list[dict]) -> dict | None:
+                 cmf: list[dict], project_id: str | None = None) -> dict | None:
     """The normalised appearance a part shows by default (see the module doc), or None."""
     name = f"{part_id} {label or ''}"
     roles = {}
@@ -137,10 +208,10 @@ def default_look(part_id: str, label: str | None, material: str | None,
         elif "body" in roles:
             look = _cmf_look(roles["body"])
     if look is None:
-        # no material look and no concept colour: a stable muted colour per part, so the app,
-        # covers and the agent's renders all show the same distinct colours (never default grey)
-        look = {"preset": "matte_plastic",
-                "color": PART_PALETTE[zlib.crc32(part_id.encode()) % len(PART_PALETTE)]}
+        # no material look and no concept colour: the build's palette, by the part's role, so
+        # the parts of one build go together (it was a hashed colour per part: random-looking)
+        pal = palette_for(project_id, cmf)
+        look = {"preset": "matte_plastic", "color": pal[part_role(part_id, label)]}
     try:
         return _appearance.normalize(look)
     except Exception:  # noqa: BLE001

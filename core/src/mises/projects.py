@@ -534,7 +534,7 @@ def _row_view(home: Path, r: Part, disk: dict | None, version: bool = True,
     from .looks import default_look
     # G4: what the part shows while nobody gave it a look (its material, the concept's CMF)
     look = None if r.appearance or r.kind != "part" else \
-        default_look(r.id, r.label, r.material, cmf or [])
+        default_look(r.id, r.label, r.material, cmf or [], getattr(r, "project_id", None))
     return {**r.model_dump(), "version": part_version(home, r) if version else r.version,
             "part_id": r.id, "default_appearance": look, **(disk or _NO_DISK)}
 

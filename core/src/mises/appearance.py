@@ -94,7 +94,8 @@ def render_params(row: Any, store: Any = None) -> dict:
         from .looks import concept_cmf, default_look
         if getattr(row, "kind", "part") == "part" and getattr(row, "id", None):
             look = default_look(row.id, getattr(row, "label", None), getattr(row, "material", None),
-                                concept_cmf(store, getattr(row, "project_id", None)))
+                                concept_cmf(store, getattr(row, "project_id", None)),
+                                getattr(row, "project_id", None))
             if look is not None:
                 return {**look, "color": color or look["color"]}
         return {"preset": None, "color": color, **DEFAULT}
@@ -108,7 +109,12 @@ def render_params(row: Any, store: Any = None) -> dict:
 class SetAppearanceArgs(BaseModel):
     part_id: str
     preset: str | None = None
+    #: the build palette's colour to use (primary, secondary, accent, dark, light)
+    role: str | None = None
     color: str | None = None
+    #: keep `color` exactly (only when the user asked for that colour); otherwise it is snapped
+    #: to the nearest colour of the build's palette
+    exact_color: bool = False
     metalness: float | None = None
     roughness: float | None = None
     opacity: float | None = None
@@ -116,23 +122,49 @@ class SetAppearanceArgs(BaseModel):
 
 @tool("part_set_appearance", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
       description="Set how a part looks in the viewer and thumbnails: a material preset "
-                  f"({', '.join(PRESETS)}) and/or a color #rrggbb, metalness and roughness "
-                  "(0..1), opacity (0.05..1). Fields left out come from the preset. Does not "
-                  "change the geometry or the mass.")
+                  f"({', '.join(PRESETS)}) and/or a colour, metalness and roughness (0..1), "
+                  "opacity (0.05..1). Colour comes from the build's palette so the parts go "
+                  "together: pass role = primary (bodies, shells), secondary (frames, "
+                  "mechanism), accent (a few small highlight parts only), dark (drives, "
+                  "electronics) or light. A `color` #rrggbb is snapped to the nearest palette "
+                  "colour unless exact_color is true, which is only for a colour the user asked "
+                  "for. The result names the palette. Fields left out come from the preset. "
+                  "Does not change the geometry or the mass.")
 async def part_set_appearance(ctx: ToolContext, args: SetAppearanceArgs) -> ToolOutput:
     from . import projects
-    raw = {k: v for k, v in args.model_dump().items() if k != "part_id" and v is not None}
+    from .looks import ROLES, concept_cmf, nearest_in_palette, palette_for
+    raw = {k: v for k, v in args.model_dump().items()
+           if k not in ("part_id", "role", "exact_color") and v is not None}
+    part = ctx.store.get_part(args.part_id) if hasattr(ctx.store, "get_part") else None
+    pid = getattr(part, "project_id", None)
+    pal = palette_for(pid, concept_cmf(ctx.store, pid))
+    snapped = None
+    if args.role is not None:
+        if args.role not in ROLES:
+            raise _bad(f"role must be one of {', '.join(ROLES)}")
+        raw["color"] = pal[args.role]
+    elif (args.color is not None and not args.exact_color
+          and args.preset in (None, "matte_plastic", "glossy_plastic")   # metals keep theirs
+          and _HEX_RE.match(str(args.color).strip().lower())):
+        role, c = nearest_in_palette(str(args.color).strip().lower(), pal)
+        if c != str(args.color).strip().lower():
+            snapped = (args.color, role)
+        raw["color"] = c
     row = projects.patch_part(ctx.store, Path(ctx.workdir), args.part_id, appearance=raw)
     a = row["appearance"]
     name = PRESETS[a["preset"]]["name"] if a["preset"] else "custom material"
     summary = f"{args.part_id}: appearance {name}" + (f" {a['color']}" if a["color"] else "")
+    if snapped:
+        summary += f" (your {snapped[0]} snapped to the palette's {snapped[1]})"
+    summary += (f" · build palette {pal['name']}: "
+                + ", ".join(f"{k} {pal[k]}" for k in ROLES))
     events = getattr(ctx, "events", None)
     if events is not None:
         # the app refetches the part list on part_changed; the version is unchanged (no rebuild)
         events.publish(Event(type="part_changed", run_id=ctx.run_id, data={
             "part_id": args.part_id, "version": row.get("version") or 1, "by": "agent",
             "run_id": ctx.run_id, "summary": summary}))
-    return ToolOutput(summary=summary, data={"part_id": args.part_id, "appearance": a},
+    return ToolOutput(summary=summary, data={"part_id": args.part_id, "appearance": a, "palette": pal},
                       step_kind=StepKind.DIFF)
 
 
