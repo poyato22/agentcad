@@ -9,6 +9,8 @@ import { activeBuildId } from "../../state/builds";
 import { Button } from "../common/Button";
 import { useImageUrl } from "../console/cards/critique/images";
 import { SketchImage, type NumberedMark } from "./SketchImage";
+import { fmtHM } from "../../lib/format";
+import { resolved, sending } from "../console/decisions/once";
 import { approve, concepts, loadConcept, notices, openReview, skip } from "./state";
 import "./sketch.css";
 
@@ -63,7 +65,10 @@ export function SketchCard({ projectId: given, sketchId }: SketchCardProps): JSX
   const own = sketchId ? sketches.find((s) => s.sketch_id === sketchId) : null;
   if (own && latest && own !== latest) return <SupersededRow projectId={projectId} sketch={own} latest={latest.version} />;
   const rec = view.concept;
-  const open = rec.status === "approved" || rec.status === "skipped";
+  // view-tab: decided once — the core's record, or this session's decision as soon as it lands
+  const res = resolved.value.get(`sketch:${projectId}`) ?? null;
+  const open = rec.status === "approved" || rec.status === "skipped" || res !== null;
+  const inFlight = busy || sending.value.has(`sketch:${projectId}`);
   const prev = sketches.find((s) => s.sketch_id === current.parent_sketch_id) ?? sketches[sketches.indexOf(current) - 1] ?? null;
   const img = current.images[Math.min(image, current.images.length - 1)];
   const prevImg = prev?.images.find((i) => i.view === img?.view) ?? prev?.images[0] ?? null;
@@ -71,7 +76,7 @@ export function SketchCard({ projectId: given, sketchId }: SketchCardProps): JSX
   const isLatest = current === latest;
   const approvedHere = rec.status === "approved" && rec.approved_sketch_id === current.sketch_id;
   const note = notices.value[projectId];
-  const act = async (f: () => Promise<boolean>) => { setBusy(true); try { await f(); } finally { setBusy(false); } };
+  const act = async (f: () => Promise<boolean>) => { if (open || inFlight) return; setBusy(true); try { await f(); } finally { setBusy(false); } };
   return (
     <section class="sk sk-card" data-testid="sketch-card" data-version={current.version} data-status={rec.status} aria-label={`Concept sketch v${current.version}`}>
       <header class="sk-head">
@@ -82,7 +87,7 @@ export function SketchCard({ projectId: given, sketchId }: SketchCardProps): JSX
               onClick={() => { setPicked(s.sketch_id); setImage(0); }} data-testid="sketch-version">v{s.version}</button>
           ))}
         </div>
-        <span class={`sk-status is-${rec.status}`} data-testid="sketch-status">{approvedHere ? `Approved v${current.version}` : STATUS_TEXT[rec.status]}</span>
+        <span class={`sk-status is-${rec.status}`} data-testid="sketch-status">{res ? `${res.text.replace(/^Approved/, `Approved v${current.version}`)} ${fmtHM(res.at)}` : approvedHere ? `Approved v${current.version}${rec.updated_at ? ` · ${fmtHM(rec.updated_at)}` : ""}` : STATUS_TEXT[rec.status]}</span>
       </header>
       {img && (
         <div class={`sk-stage${compare && prevImg ? " is-compare" : ""}`}>
@@ -121,8 +126,8 @@ export function SketchCard({ projectId: given, sketchId }: SketchCardProps): JSX
         <div class="sk-actions">
           <Button class="sk-btn" onClick={() => openReview({ projectId, sketchId: current.sketch_id, image })} data-testid="sketch-markup">Mark up</Button>
           <span class="sk-grow" />
-          <Button class="sk-btn sk-quiet" variant="ghost" disabled={busy} onClick={() => void act(() => skip(projectId))} data-testid="sketch-skip">Skip sketch</Button>
-          <Button class="sk-btn" variant="primary" disabled={busy} onClick={() => void act(() => approve(projectId, current.sketch_id))} data-testid="sketch-approve">Approve v{current.version}</Button>
+          <Button class="sk-btn sk-quiet" variant="ghost" disabled={inFlight} onClick={() => void act(() => skip(projectId))} data-testid="sketch-skip">Skip sketch</Button>
+          <Button class="sk-btn" variant="primary" disabled={inFlight} onClick={() => void act(() => approve(projectId, current.sketch_id))} data-testid="sketch-approve">Approve v{current.version}</Button>
         </div>
       )}
       {note && <p class={`sk-notice${note.error ? " is-error" : ""}`} role="status">{note.text}</p>}

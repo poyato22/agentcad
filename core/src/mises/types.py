@@ -28,6 +28,8 @@ class ErrorCode(StrEnum):
     NOT_FOUND = "not_found"
     TOOL_FAILED = "tool_failed"
     CANCELLED = "cancelled"
+    #: view-tab: the item was already decided; the error carries that decision (HTTP 409)
+    ALREADY_DECIDED = "already_decided"
 
 
 class MisesError(Exception):
@@ -44,6 +46,19 @@ class MisesError(Exception):
     def to_dict(self) -> dict[str, Any]:
         return {"error": str(self.code), "message": self.message,
                 "hint": self.hint, "retryable": self.retryable}
+
+
+class AlreadyDecided(MisesError):
+    """view-tab: deciding an item a second time (a double click, a stale tab, a replayed
+    request). Never a second action: the core answers 409 with the decision already made."""
+
+    def __init__(self, message: str, decision: dict[str, Any]):
+        super().__init__(ErrorCode.ALREADY_DECIDED, message,
+                         hint="this was already decided; refresh to see the decision")
+        self.decision = decision
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**super().to_dict(), "decision": self.decision}
 
 
 class StepKind(StrEnum):

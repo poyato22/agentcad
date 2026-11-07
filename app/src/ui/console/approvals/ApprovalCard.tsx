@@ -120,10 +120,13 @@ function mergePreviewSummary(mp: unknown): string | null {
   return parts.length ? parts.join(" · ") : null;
 }
 
-function decidedText(a: Approval, kept: boolean): string {
-  const by = a.decided_by ? ` by ${a.decided_by}` : "";
+const DONE_WORD: Readonly<Record<string, string>> = { approved: "Approved", rejected: "Rejected", executed: "Approved and done", expired: "Expired" };
+
+/** "Approved by you 14:02" (the app decides as local-user), else who decided it. */
+export function decidedText(a: Approval, kept: boolean): string {
+  const by = a.decided_by === "local-user" ? " by you" : a.decided_by ? ` by ${a.decided_by}` : "";
   const at = a.decided_at !== null ? ` ${fmtHM(a.decided_at)}` : "";
-  const what = a.status === "rejected" && kept ? "kept branch · rejected" : a.status;
+  const what = a.status === "rejected" && kept ? "Kept branch · rejected" : DONE_WORD[a.status] ?? a.status;
   return `${what}${by}${at}`;
 }
 

@@ -143,7 +143,7 @@ describe("ApprovalCard", () => {
     expect(call.path).toBe(`/approvals/${AID}/decide`);
     expect(call.body).toEqual({ payload_hash: pending().payload_hash, approve: true });
     expect(Object.keys(call.body as object).sort()).toEqual(["approve", "payload_hash"]);
-    await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/approved by local-user \d\d:\d\d/));
+    await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/Approved by you \d\d:\d\d/));
     expect(approvals.value.get(AID)?.status).toBe("approved");
     expect(screen.queryByRole("button", { name: /^Merge/ })).toBeNull();
   });
@@ -154,7 +154,7 @@ describe("ApprovalCard", () => {
     tap(screen.getByRole("button", { name: /^Keep branch/ }));
     await waitFor(() => expect(decideCalls()).toHaveLength(1));
     expect(decideCalls()[0].body).toEqual({ payload_hash: pending().payload_hash, approve: false });
-    await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/kept branch · rejected by local-user/));
+    await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/Kept branch · rejected by you/));
     cleanup();
 
     core.reset("approvals");
@@ -164,7 +164,7 @@ describe("ApprovalCard", () => {
     tap(screen.getByRole("button", { name: /^Reject/ }));
     await waitFor(() => expect(decideCalls()).toHaveLength(1));
     expect(decideCalls()[0].body).toEqual({ payload_hash: pending().payload_hash, approve: false });
-    await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/rejected by local-user/));
+    await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/Rejected by you/));
     expect(document.querySelector("[data-card]")?.textContent).not.toContain("kept branch");
   });
 
@@ -342,7 +342,7 @@ describe("ApprovalCard", () => {
     mount({ ...pending(), status: "pending" });
     armed();
     tap(screen.getByRole("button", { name: /^Merge/ }));
-    await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/rejected by local-user/));
+    await waitFor(() => expect(document.querySelector("[data-card]")?.textContent).toMatch(/Rejected by you/));
     expect(decideCalls()).toHaveLength(1);
   });
 });

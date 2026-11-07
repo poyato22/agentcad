@@ -1,0 +1,21 @@
+/* view-tab: the View tab's "Needs your decision" section and the tab's "N to decide" badge */
+.dz { margin: 0 0 10px; padding: 8px 10px 10px; border: 1px solid var(--blue); border-radius: 8px;
+  background: var(--blue-tint); }
+.dz-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dz-t { font-weight: 600; }
+.dz-n { min-width: 18px; padding: 0 6px; border-radius: 9px; background: var(--blue); color: var(--bg); font-size: 11px; line-height: 18px; text-align: center; }
+.dz-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.dz-what { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.dz-kind { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--blue); }
+.dz-text { font-weight: 500; overflow-wrap: anywhere; }
+.dz-who { margin-left: auto; font-size: 11px; }
+.dock-decide { margin-left: 4px; padding: 0 6px; border-radius: 9px; background: var(--blue); color: var(--bg); font-size: 10px; line-height: 16px; white-space: nowrap; }
+.rs-card { display: flex; flex-direction: column; gap: 6px; }
+.rs-h { display: flex; gap: 6px; align-items: baseline; font-size: 12px; }
+.rs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; }
+.rs-fig { margin: 0; }
+.rs-fig img { width: 100%; height: auto; display: block; border-radius: 6px; background: var(--vp); }
+.rs-fig figcaption { font-size: 11px; }
+.cv-render-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; color: inherit; font-size: 11px; }
+.cv-render-link img { width: 48px; height: 36px; object-fit: cover; border-radius: 4px; }
+.vs-cap { margin: 0 0 4px; font-size: 11px; }
