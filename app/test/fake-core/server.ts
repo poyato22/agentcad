@@ -60,7 +60,7 @@ const DECIDED_BY = "local-user";
 
 const HTTP_STATUS: Record<ErrorCode, number> = {
   not_found: 404, invalid_input: 400, stale_version: 409, needs_approval: 409, cancelled: 409, denied: 403,
-  out_of_scope: 403, budget_exhausted: 429, transient: 503, tool_failed: 500,
+  out_of_scope: 403, budget_exhausted: 429, transient: 503, tool_failed: 500, already_decided: 409,
 };
 
 // ---- scenario + state
