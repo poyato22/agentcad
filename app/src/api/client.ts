@@ -1,5 +1,6 @@
 // Typed HTTP client for the local core. Every request carries the bearer token; every response
 // is validated with zod. Failures always surface as CoreError (never a raw fetch/zod error).
+import { buildUsageSchema, runUsageSchema, type BuildUsage, type RunUsage } from "./usage";
 import { z } from "zod";
 import { feedbackResultSchema, measureResultSchema, measureWarmSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult } from "./measure";
 import { debug } from "../lib/log";
@@ -588,6 +589,10 @@ export class CoreClient {
   onshapeImport(body: { did: string; wid: string; eid: string; project_id: string | null }): Promise<PartResult> {
     return this.json("POST", "/onshape/import", partResultSchema, { body });
   }
+  /** Usage of a run's root, turn by turn (each with its agents and models). */
+  runUsage(runId: string): Promise<RunUsage> { return this.json("GET", `/runs/${enc(runId)}/usage`, runUsageSchema); }
+  /** A build's usage total, its turns, and what older runs used unrecorded. */
+  buildUsage(projectId: string): Promise<BuildUsage> { return this.json("GET", `/projects/${enc(projectId)}/usage`, buildUsageSchema); }
   onshapeBudget(runId?: string | null): Promise<OnshapeBudget> {
     return this.json("GET", "/onshape/budget", onshapeBudgetSchema, { query: { run_id: runId ?? undefined } });
   }

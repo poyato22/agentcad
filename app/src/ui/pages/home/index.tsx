@@ -10,6 +10,7 @@
 // New build; a drawing dropped anywhere on Home starts a part. A tile's ⋯ button and its context
 // menu move it to the Trash, with a 5 s Undo (D30); the Trash shows Restore and "Delete forever"
 // per tile, and Empty trash. Opening a tile opens that build.
+import { EQUIV_NOTE, usageText } from "../../../lib/usage";
 import type { JSX } from "preact";
 import { type MutableRef, useEffect, useRef, useState } from "preact/hooks";
 import { lastEditedAt, type Build } from "../../../api/builds";
@@ -251,6 +252,10 @@ function BuildTile({ build: b, onTrash }: { build: Build; onTrash(): void }): JS
             {mass ? <span class="num">{mass}</span> : <span>{partsLabel(b.part_count)}</span>}
             <span class="tile-dot" aria-hidden="true">·</span>
             <span>{fmtLastEdited(edited)}</span>
+            {b.usage?.recorded && (<>
+              <span class="tile-dot" aria-hidden="true">·</span>
+              <span class="tile-usage" data-tile-usage title={EQUIV_NOTE}>{usageText({ ...b.usage, usd_source: b.usage.usd > 0 ? "reported" : "unknown" })}</span>
+            </>)}
           </span>
         </div>
       </button>

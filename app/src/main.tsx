@@ -9,6 +9,7 @@ import { installTabReach } from "./lib/tabReach";
 import { startActivity } from "./state/activity";
 import { startAssemblyAnimation } from "./state/assemblyAnimation";
 import { startOnshapeBudget } from "./state/onshapeBudget";
+import { startUsage } from "./state/usage";
 import { startBuilds } from "./state/builds";
 import { watchJobs } from "./state/jobs";
 import { startPartEdits } from "./state/partEdits";
@@ -26,6 +27,7 @@ installTabReach(document.body);   // I7: every control reachable by Tab in WebKi
 startActivity();
 startAssemblyAnimation();
 startOnshapeBudget();
+startUsage();
 startThinking();
 startBuilds();
 watchJobs();

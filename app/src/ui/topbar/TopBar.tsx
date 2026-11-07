@@ -9,6 +9,8 @@ import { goHome } from "../../state/home";
 import { NavButtons } from "../common/NavButtons";
 import { ActivityPill } from "./ActivityPill";
 import { BudgetChip } from "./BudgetMeter";
+import { BuildUsageChip } from "../usage/UsageLine";
+import { buildUsage } from "../../state/usage";
 import { ModeTabs } from "./ModeTabs";
 import { ProfileButton } from "./ProfileButton";
 import { StatusLights } from "./StatusLights";
@@ -35,6 +37,8 @@ export function TopBar(): JSX.Element {
         {/* U2b: the live Onshape count (only while connected), then one Status button whose card
             holds the lights and the budget details */}
         <BudgetChip />
+        {/* this build's usage so far (tokens, API-price-equivalent dollars), by message on click */}
+        <BuildUsageChip usage={activeBuild.value ? buildUsage.value.get(activeBuild.value.id) : null} />
         <StatusLights />
         <ProfileButton />
         {/* FW-layout (D2/D20): no Stop all button — the composer's Stop is the visible control;
