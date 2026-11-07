@@ -1,0 +1,14 @@
+.usage-line { margin: 2px 0 8px; font-size: 11px; color: var(--faint); }
+.usage-sum, .usage-chip { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; font-variant-numeric: tabular-nums; }
+.usage-sum:hover, .usage-chip:hover { color: var(--dim); text-decoration: underline dotted; }
+.usage-table { margin-top: 4px; border-collapse: collapse; font-size: 11px; }
+.usage-table th, .usage-table td { padding: 1px 8px 1px 0; text-align: left; white-space: nowrap; }
+.usage-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.usage-chip-wrap { position: relative; }
+.usage-chip { font-size: 11px; color: var(--faint); padding: 2px 6px; }
+.usage-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50; min-width: 280px; max-height: 360px; overflow: auto;
+  padding: 8px 10px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); font-size: 11px; }
+.usage-turns { margin: 4px 0; padding-left: 0; list-style: none; }
+.usage-turns li { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
+.usage-note { margin: 2px 0; color: var(--faint); }
+.tile-usage { font-variant-numeric: tabular-nums; }

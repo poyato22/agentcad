@@ -289,7 +289,8 @@ class AcpSession:
             self.stop_reason = resp.stop_reason
             if resp.usage is not None:
                 self.runtime.store.add_usage(self.run_id, input_tokens=resp.usage.input_tokens,
-                                             output_tokens=resp.usage.output_tokens)
+                                             output_tokens=resp.usage.output_tokens,
+                                             usd_known=False)
         except (RequestError, ConnectionError) as e:
             if self._cancelling:
                 self.stop_reason = "cancelled"

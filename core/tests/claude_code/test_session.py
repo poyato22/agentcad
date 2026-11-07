@@ -131,6 +131,10 @@ async def test_text_streams_as_message_step_and_deltas(rt, claude_bin, caplog):
     run = rt.store.get_run(s.run_id)
     assert run.status == "done" and run.input_tokens == 11 and run.output_tokens == 7
     assert run.usd == pytest.approx(0.0123)                # stream-json total_cost_usd
+    from mises import usage                                 # and a per-turn usage event
+    turn = usage.run_turns(rt.store, s.run_id)[0]
+    assert turn["usd"] == pytest.approx(0.0123) and turn["usd_source"] == "reported"
+    assert turn["tokens"] == 18
     finished = [e for e in events if e.type == "run_finished"]
     assert finished and finished[-1].data["status"] == "done"
     assert any("non-JSON" in r.getMessage() for r in caplog.records)

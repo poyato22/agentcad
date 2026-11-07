@@ -35,6 +35,9 @@ import { TopoptCardSlot } from "../topopt/TopoptCard";
 import { activeBuildId } from "../../state/builds";
 import { ChatImages } from "./ChatImages";
 import { EffortChip } from "./think/EffortChip";
+import { UsageLine } from "../usage/UsageLine";
+import { runUsage } from "../../state/usage";
+import { placeTurns, turnFor } from "../../lib/usage";
 
 const AT_BOTTOM_PX = 24;
 /** Rows rendered at once (the last ones); "show earlier" adds this many more. Same as StepLog. */
@@ -61,6 +64,8 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
   const start = Math.max(0, items.length - span);
   const shown = start > 0 ? items.slice(start) : items;
   const newCount = atBottom ? 0 : Math.max(0, items.length - seenLen.current);
+  const usage = run ? runUsage.value.get(run.id) : undefined;
+  const turnAt = usage && run ? placeTurns(shown, usage.turns) : null;
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -122,6 +127,7 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
             <div key={r.item.key} class="cv-item" data-key={r.item.key}>
               <Item item={r.item} agent={run?.agent ?? "agent"} runId={run?.id ?? null} run={run ?? null}
                 stopped={r.item.kind === "error" && stoppedAt(items, r.item.key, run?.status ?? null)} />
+              {run && turnAt?.has(r.item.key) && <TurnUsageLine turn={turnFor(turnAt.get(r.item.key)!, run.id)} />}
             </div>
           )))}
         {run && items.length === 0 && run.task && (
@@ -134,6 +140,10 @@ export function Conversation({ items: given }: { items?: ThreadItem[] } = {}): J
       <AssemblyAnimationChip />
     </div>
   );
+}
+
+function TurnUsageLine({ turn }: { turn: ReturnType<typeof turnFor> }): JSX.Element | null {
+  return turn ? <UsageLine turn={turn} /> : null;
 }
 
 /** One of your own edits to a part (vars, code, a feature op). */
