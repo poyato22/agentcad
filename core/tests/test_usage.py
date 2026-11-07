@@ -94,3 +94,16 @@ def test_native_loop_unreported_cost_is_priced_by_the_store(tmp_path):
     t = usage.run_turns(s, rid)[0]
     assert t["usd"] == pytest.approx(1.0) and t["usd_source"] == "priced"
     assert usage.build_summary(s, "p1") == {"recorded": True, "tokens": 1_000_000, "usd": 1.0}
+
+
+def test_current_model_prices_match_the_most_specific_prefix():
+    from mises import usage
+    m = 1_000_000
+    assert usage.price("anthropic", "claude-opus-5-5", m, m) == 24.0
+    assert usage.price("anthropic", "claude-opus-5", m, m) == 30.0
+    assert usage.price("anthropic", "claude-sonnet-5-5", m, m) == 12.0
+    assert usage.price("anthropic", "claude-fable-5-1", m, m) == 60.0
+    assert usage.price("anthropic", "claude-haiku-5-5", m, m) == 0.6
+    assert usage.price("anthropic", "claude-opus-4-8", m, m) == 30.0
+    assert usage.price("anthropic", "claude-opus-4-1", m, m) == 90.0
+    assert usage.price("anthropic", "claude-opus-5-5", 0, 0, m, m) == 5.2

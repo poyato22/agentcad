@@ -12,14 +12,22 @@ from __future__ import annotations
 
 from .store import Store
 
-# USD per million tokens: (input, output, cache read, cache write). Matched by the model id's
-# family. Public Anthropic API list prices; edit here when they change.
+# USD per million tokens: (input, output, cache read, cache write). Matched by model-id prefix,
+# first match wins, so the most specific prefixes come first. Anthropic first-party API list
+# prices (Oct 2026 model table); cache write is the 5-minute rate, 1.25x input. Edit here when
+# prices change.
 PRICES: tuple[tuple[str, tuple[float, float, float, float]], ...] = (
+    ("claude-fable-5", (10.0, 50.0, 0.25, 12.5)),     # Fable 5 / 5.1
+    ("claude-mythos-5", (10.0, 50.0, 0.25, 12.5)),
+    ("claude-opus-5-5", (4.0, 20.0, 0.2, 5.0)),
+    ("claude-opus-5", (5.0, 25.0, 0.5, 6.25)),
     ("claude-opus-4-0", (15.0, 75.0, 1.5, 18.75)),
     ("claude-opus-4-1", (15.0, 75.0, 1.5, 18.75)),
     ("claude-opus-4-2", (15.0, 75.0, 1.5, 18.75)),   # "claude-opus-4-20250514"
-    ("claude-opus", (5.0, 25.0, 0.5, 6.25)),          # Opus 4.5 and later
-    ("claude-sonnet", (3.0, 15.0, 0.3, 3.75)),
+    ("claude-opus-4", (5.0, 25.0, 0.5, 6.25)),        # Opus 4.5 - 4.8
+    ("claude-sonnet-5", (2.0, 10.0, 0.2, 2.5)),       # Sonnet 5 / 5.5
+    ("claude-sonnet-4", (3.0, 15.0, 0.3, 3.75)),
+    ("claude-haiku-5-5", (0.1, 0.5, 0.01, 0.125)),    # prompts up to 100K tokens
     ("claude-haiku-4", (1.0, 5.0, 0.1, 1.25)),
     ("claude-3-5-haiku", (0.8, 4.0, 0.08, 1.0)),
 )
