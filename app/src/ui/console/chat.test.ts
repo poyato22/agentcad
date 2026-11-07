@@ -97,3 +97,18 @@ describe("one chat per build", () => {
     expect(JSON.parse(localStorage.getItem("mises.chat.edited") ?? "[]")).toEqual(["r1/msg/7"]);
   });
 });
+
+describe("outbox: your message shows at once", () => {
+  it("shows until the thread has the same words, only in its build and run", async () => {
+    const { pendingFor } = await import("./chat");
+    const o = { id: 1, buildId: "b1", runId: null, text: "make it red", body: "make it red", ts: 100 };
+    expect(pendingFor([o], "b1", "r1", []).show).toEqual([o]);
+    expect(pendingFor([o], "b2", "r1", []).show).toEqual([]);
+    expect(pendingFor([{ ...o, runId: "r2" }], "b1", "r1", []).show).toEqual([]);
+    const r = pendingFor([o], "b1", "r1", [{ text: "make it red", ts: 101 }]);
+    expect(r.show).toEqual([]);
+    expect(r.done).toEqual([1]);
+    // the same words sent long before are an older message, not this one
+    expect(pendingFor([o], "b1", "r1", [{ text: "make it red", ts: 10 }]).show).toEqual([o]);
+  });
+});
