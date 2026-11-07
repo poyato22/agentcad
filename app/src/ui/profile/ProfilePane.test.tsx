@@ -116,7 +116,7 @@ describe("ProfilePane shell", () => {
     await pane();
     const nav = await screen.findByRole("navigation", { name: "Profile sections" });
     const names = within(nav).getAllByRole("button").map((b) => b.textContent);
-    expect(names).toEqual(["Profile", "Models", "Claude Code", "Onshape", "Printers", "Agents & budgets", "Browsing", "Data", "System", "Setup", "Developer", "About"]);
+    expect(names).toEqual(["Profile", "Models", "Claude Code", "Onshape", "Printers", "Agents & budgets", "Browsing", "Data", "System", "Setup", "Developer", "Error log", "About"]);
     expect(within(nav).getByRole("button", { name: "Profile" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(within(nav).getByRole("button", { name: "Onshape" }));
     expect(within(nav).getByRole("button", { name: "Onshape" }).getAttribute("aria-current")).toBe("page");

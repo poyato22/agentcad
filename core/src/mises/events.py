@@ -78,8 +78,15 @@ class EventBus:
 
     def __init__(self) -> None:
         self._subs: list[tuple[str | None, asyncio.Queue[Event]]] = []
+        #: synchronous observers of every event (the error log); a failing tap is ignored
+        self.taps: list[Callable[[Event], None]] = []
 
     def publish(self, event: Event) -> None:
+        for tap in self.taps:
+            try:
+                tap(event)
+            except Exception:  # noqa: BLE001 - an observer never breaks delivery
+                log.debug("event tap failed", exc_info=True)
         for run_id, q in list(self._subs):
             if run_id is not None and event.run_id != run_id:
                 continue

@@ -14,7 +14,7 @@ import { buildUsage } from "../../state/usage";
 import { ModeTabs } from "./ModeTabs";
 import { ProfileButton } from "./ProfileButton";
 import { StatusLights } from "./StatusLights";
-import { toast } from "./stopAll";
+import { toast, toastError } from "./stopAll";
 import "./topbar.css";
 
 export function TopBar(): JSX.Element {
@@ -44,7 +44,7 @@ export function TopBar(): JSX.Element {
         {/* FW-layout (D2/D20): no Stop all button — the composer's Stop is the visible control;
             ⇧⌘. (App) and /stopall still stop everything */}
       </div>
-      <div class="toast" role="status" aria-live="polite">{toast.value}</div>
+      <div class="toast" role="status" aria-live="polite" data-error={toastError.value ? "" : undefined}>{toast.value}</div>
     </header>
   );
 }

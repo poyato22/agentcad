@@ -96,7 +96,7 @@ export function ErrorCard({ item, stopped, run }: {
   if (item.recovery) {
     const n = item.recovery.tried;
     return (
-      <div class="cv-err" data-error data-error-kind="recovery" data-recovery-exhausted data-row data-kind="error" role="group" aria-label="The run stopped">
+      <div class="cv-err" data-error data-error-source="agent" data-error-code={v.code} data-run-id={run?.id} data-error-kind="recovery" data-recovery-exhausted data-row data-kind="error" role="group" aria-label="The run stopped">
         <div class="cv-err-head">
           <span class="cv-fail cv-err-glyph" aria-hidden="true">✕</span>
           <span class="cv-err-title">The run stopped</span>
@@ -111,7 +111,7 @@ export function ErrorCard({ item, stopped, run }: {
     );
   }
   return (
-    <div class="cv-err" data-error data-error-kind={v.kind} data-row data-kind="error" role="group" aria-label={v.title}>
+    <div class="cv-err" data-error data-error-source="agent" data-error-code={v.code} data-run-id={run?.id} data-error-kind={v.kind} data-row data-kind="error" role="group" aria-label={v.title}>
       <div class="cv-err-head">
         <span class="cv-fail cv-err-glyph" aria-hidden="true">✕</span>
         <span class="cv-err-title">{v.title}</span>

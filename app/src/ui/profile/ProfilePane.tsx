@@ -12,6 +12,7 @@ import { describeError, type ProfileData, type SectionProps } from "./common";
 import { AgentsSection } from "./sections/AgentsSection";
 import { ClaudeCodeSection } from "./sections/ClaudeCodeSection";
 import { DeveloperSection } from "./sections/DeveloperSection";
+import { ErrorLogSection } from "./sections/ErrorLogSection";
 import { AboutSection, DataSection, SetupSection, SystemSection } from "./sections/MiscSections";
 import { ModelsSection } from "./sections/ModelsSection";
 import { OnshapeSection } from "./sections/OnshapeSection";
@@ -34,6 +35,8 @@ export const SECTIONS = [
   { id: "setup", label: "Setup" },
   // Plan 10 E22: the full agent log and the agent browser (out of the dock's everyday menu)
   { id: "developer", label: "Developer" },
+  // every error Mises showed (logs/errors.jsonl), for bug reports
+  { id: "errors", label: "Error log" },
   { id: "about", label: "About" },
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];
@@ -113,6 +116,7 @@ function ProfilePaneBody({ onClose, initial }: { onClose: () => void; initial: S
           {props && section === "system" && <SystemSection />}
           {props && section === "setup" && <SetupSection onClose={onClose} />}
           {props && section === "developer" && <DeveloperSection onClose={onClose} />}
+          {props && section === "errors" && <ErrorLogSection />}
           {props && section === "about" && <AboutSection {...props} />}
         </div>
       </div>
