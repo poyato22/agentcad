@@ -118,7 +118,7 @@ describe("SketchCard + SketchReview", () => {
     render(<SketchCard projectId={PID} sketchId={null} />);
     fireEvent.click(await screen.findByTestId("sketch-approve"));
     await waitFor(() => expect(c.approveConcept).toHaveBeenCalledWith(PID, VIEW.sketches[1].sketch_id));
-    await waitFor(() => expect(screen.getByTestId("sketch-status").textContent).toMatch(/^Approved v\d$/));
+    await waitFor(() => expect(screen.getByTestId("sketch-status").textContent).toMatch(/^Approved v\d by you \d\d:\d\d$/));
     expect(screen.queryByTestId("sketch-approve")).toBeNull();
   });
 

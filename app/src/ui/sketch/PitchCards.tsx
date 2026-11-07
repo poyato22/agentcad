@@ -10,6 +10,8 @@ import { Button } from "../common/Button";
 import { useImageUrl } from "../console/cards/critique/images";
 import { useConcept } from "./SketchCard";
 import { SketchImage } from "./SketchImage";
+import { fmtHM } from "../../lib/format";
+import { resolved, sending } from "../console/decisions/once";
 import { choose, notices } from "./state";
 import "./sketch.css";
 
@@ -92,8 +94,15 @@ export function PitchCards({ projectId: given, pitchId }: PitchCardsProps): JSX.
   const [busy, setBusy] = useState(false);
   const pitch: ConceptPitch | null = view?.pitches.find((p) => p.pitch_id === pitchId) ?? view?.pitches[view.pitches.length - 1] ?? null;
   if (!projectId || !pitch) return <div class="sk sk-card sk-card-empty" data-testid="pitch-cards" data-state="loading"><span class="sk-dim">Loading the design directions…</span></div>;
+  // view-tab: chosen once — by the core's record, or by this session's decision the moment it lands
+  const res = resolved.value.get(`pitch:${pitch.pitch_id}`) ?? null;
   const chosen = pitch.chosen;
-  const send = async (body: Parameters<typeof choose>[2]) => { setBusy(true); try { await choose(projectId, pitch.pitch_id, body); } finally { setBusy(false); } };
+  const decided = !!chosen || res !== null;
+  const inFlight = busy || sending.value.has(`pitch:${pitch.pitch_id}`);
+  const send = async (body: Parameters<typeof choose>[2]) => {
+    if (decided || inFlight) return;
+    setBusy(true); try { await choose(projectId, pitch.pitch_id, body); } finally { setBusy(false); }
+  };
   const picks = pitch.options.filter((o) => mix[o.name]?.on).map((o) => ({ option: o.name, take: (mix[o.name]?.take ?? "").trim() }));
   const note = notices.value[projectId];
   return (
@@ -101,27 +110,31 @@ export function PitchCards({ projectId: given, pitchId }: PitchCardsProps): JSX.
       <header class="sk-head">
         <h3 class="sk-title">Design directions</h3>
         <span class="sk-dim sk-small">{pitch.options.length} options</span>
-        {!chosen && (
+        {!decided && (
           <button type="button" tabIndex={0} class={`sk-toggle sk-push${mixing ? " is-on" : ""}`} aria-pressed={mixing} onClick={() => setMixing(!mixing)} data-testid="pitch-mix">Mix options</button>
         )}
       </header>
       {pitch.question && <p class="sk-notes text">{pitch.question}</p>}
       <div class="sk-options">
         {pitch.options.map((o) => (
-          <OptionCard key={o.name} o={o} busy={busy || !!chosen} mixing={mixing && !chosen}
+          <OptionCard key={o.name} o={o} busy={inFlight || decided} mixing={mixing && !decided}
             chosen={!!chosen && (chosen.option === o.name || chosen.mix.some((m) => m.option === o.name))}
             mix={mix[o.name] ?? { on: false, take: "" }} onMix={(m) => setMix({ ...mix, [o.name]: m })}
             onPick={() => void send({ option: o.name, comment: comment.trim() })} />
         ))}
       </div>
       {chosen ? (
-        <p class="sk-chosen" data-testid="pitch-chosen">You chose <strong class="text">{chosen.label}</strong>{chosen.comment ? <span class="sk-dim text"> — {chosen.comment}</span> : null}</p>
+        <p class="sk-chosen" data-testid="pitch-chosen" data-resolved="">You chose <strong class="text">{chosen.label}</strong>
+          {(chosen.decided_at ?? res?.at) ? <span class="sk-dim num"> · {fmtHM((chosen.decided_at ?? res?.at) as number)}</span> : null}
+          {chosen.comment ? <span class="sk-dim text"> — {chosen.comment}</span> : null}</p>
+      ) : res ? (
+        <p class="sk-chosen" data-testid="pitch-chosen" data-resolved="">{res.text} <span class="sk-dim num">{fmtHM(res.at)}</span></p>
       ) : (
         <div class="sk-pitch-foot">
           <textarea class="sk-input" rows={2} value={comment} placeholder={mixing ? "How should they combine?" : "Comment (optional)"} aria-label="Comment on the directions"
             onInput={(e) => setComment(e.currentTarget.value)} />
           {mixing && (
-            <Button class="sk-btn" variant="primary" disabled={busy || picks.length < 2} onClick={() => void send({ mix: picks, comment: comment.trim() })} data-testid="pitch-send-mix">
+            <Button class="sk-btn" variant="primary" disabled={inFlight || picks.length < 2} onClick={() => void send({ mix: picks, comment: comment.trim() })} data-testid="pitch-send-mix">
               Send mix
             </Button>
           )}

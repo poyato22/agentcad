@@ -3,6 +3,7 @@
 // the store on success, and again on question_answered (reduce.ts). Text renders as text only.
 // An agent can phrase a decision as a question ("merge now?"), so answering follows the card
 // click rules: a trusted click, at least ARM_MS after the question appeared or changed.
+import { alreadyDecided, once, sending } from "../decisions/once";
 import type { JSX } from "preact";
 import { useRef, useState } from "preact/hooks";
 import type { Question } from "../../../api/types";
@@ -35,13 +36,24 @@ function SingleQuestionCard(props: { question: Question; runLabel: string }): JS
     void send(answer());
   };
 
+  // view-tab: one answer per question (decisions/once): a double click or the same card in the
+  // View tab and the conversation share one request; a 409 already_decided closes the card too; answered, it
+  // leaves the store (and so every place it shows) at once
+  const key = `question:${q.question_id}`;
+  const locked = busy || sending.value.has(key);
   const send = async (answer: string) => {
-    if (busy || !answer.trim()) return;
+    if (locked || !answer.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await actions.client().answer(q.question_id, answer);
-      actions.removeQuestion(q.question_id);
+      await once(key, async () => {
+        try {
+          await actions.client().answer(q.question_id, answer);
+        } catch (e) {
+          if (!alreadyDecided(e)) throw e;     // answered already (another tab, a replay): close it
+        }
+        actions.removeQuestion(q.question_id);
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -60,15 +72,15 @@ function SingleQuestionCard(props: { question: Question; runLabel: string }): JS
       {q.options.length > 0 && (
         <div class="qcard-options">
           {q.options.map((o, i) => (
-            <Button key={`${i}:${o}`} disabled={busy} onClick={onAnswer(() => o)}><span class="text">{o}</span></Button>
+            <Button key={`${i}:${o}`} disabled={locked} onClick={onAnswer(() => o)}><span class="text">{o}</span></Button>
           ))}
         </div>
       )}
       <div class="qcard-free">
-        <input type="text" aria-label="Answer" placeholder="or type an answer" value={text} disabled={busy}
+        <input type="text" aria-label="Answer" placeholder="or type an answer" value={text} disabled={locked}
           onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)}
           onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} />
-        <Button disabled={busy || !text.trim()} onClick={onAnswer(() => text)}>Send</Button>
+        <Button disabled={locked || !text.trim()} onClick={onAnswer(() => text)}>Send</Button>
       </div>
       {error && <div class="qcard-error tone-red text" data-error>{error}</div>}
     </div>

@@ -6,6 +6,7 @@ import { signal, type Signal } from "@preact/signals";
 import { CoreError } from "../../../api/client";
 import type { Approval } from "../../../api/types";
 import { actions, approvals, retiredApprovals } from "../../../state/store";
+import { isResolved, markResolved, resetOnce } from "../decisions/once";
 
 export type Decision = "approve" | "keep_branch" | "reject";
 export interface CardNotice { text: string; tone: "blue" | "red" }
@@ -29,7 +30,7 @@ export function isExpired(a: Approval, nowS: number = Date.now() / 1000): boolea
 
 /** Can this card still be decided (pending, not expired, not replaced)? */
 export function canDecide(a: Approval, nowS?: number): boolean {
-  return a.status === "pending" && !isExpired(a, nowS) && !retired.peek().has(a.id);
+  return a.status === "pending" && !isExpired(a, nowS) && !retired.peek().has(a.id) && !isResolved(`approval:${a.id}`);
 }
 
 export function decide(a: Approval, action: Decision): Promise<Approval> {
@@ -60,6 +61,8 @@ async function send(a: Approval, action: Decision): Promise<Approval> {
     return a;
   }
   if (action === "keep_branch" && out.status === "rejected") setIn(keptBranch, a.id, true);
+  // view-tab: decided once, read-only everywhere from now on (a replayed pending copy included)
+  if (out.status !== "pending") markResolved(`approval:${a.id}`, out.status, out.decided_at ?? undefined);
   actions.upsertApproval(out);
   return out;
 }
@@ -115,6 +118,7 @@ async function recheck(a: Approval, cause: unknown): Promise<Approval> {
 /** Tests only. */
 export function resetApprovalUi(): void {
   inflight.clear();
+  resetOnce();
   deciding.value = new Set();
   notices.value = new Map();
   keptBranch.value = new Set();

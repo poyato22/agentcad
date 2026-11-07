@@ -71,6 +71,8 @@ export const pitchChoiceSchema = z.object({
   option: z.string().nullable(),
   mix: z.array(z.object({ option: z.string(), take: z.string(), comment: z.string() })),
   comment: z.string(), label: z.string(),
+  /** view-tab: when the user chose (s); an older core has none. */
+  decided_at: num.nullable().optional().default(null),
 });
 
 export const conceptPitchSchema = z.object({

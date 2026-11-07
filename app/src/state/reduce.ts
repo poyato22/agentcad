@@ -105,6 +105,9 @@ function reduceUnsafe(s: AppState, e: MisesEvent): Out {
       if (!a.success) return { state: s, effects: [{ kind: "fetchApprovals" }, { kind: "fetchStatus" }] };
       // fetchApprovals too: a fetch already in flight may predate this approval and would drop it;
       // the runner's dirty re-run guarantees one more fetch that starts after now.
+      // view-tab: a replayed request never re-opens a decided card (decisions are one-time)
+      const had = s.approvals.get(a.data.id);
+      if (had && had.status !== "pending" && a.data.status === "pending") return { state: s, effects: [] };
       return { state: { ...s, approvals: setIn(s.approvals, a.data.id, a.data) }, effects: [{ kind: "fetchStatus" }, { kind: "fetchApprovals" }] };
     }
     case "question_asked": {

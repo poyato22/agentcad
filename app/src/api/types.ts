@@ -6,11 +6,11 @@ import type { Appearance } from "../lib/appearance";
 import type { SuggestedSite } from "./browser";
 
 export type ErrorCode = "stale_version" | "budget_exhausted" | "needs_approval" | "transient" | "invalid_input"
-  | "out_of_scope" | "denied" | "not_found" | "tool_failed" | "cancelled";
+  | "out_of_scope" | "denied" | "not_found" | "tool_failed" | "cancelled" | "already_decided";
 
 export const ERROR_CODES = [
   "stale_version", "budget_exhausted", "needs_approval", "transient", "invalid_input",
-  "out_of_scope", "denied", "not_found", "tool_failed", "cancelled",
+  "out_of_scope", "denied", "not_found", "tool_failed", "cancelled", "already_decided",
 ] as const satisfies readonly ErrorCode[];
 
 /** "queued": waiting for a parallel-agents slot (event `run_queued`); it starts when one frees. */

@@ -7,6 +7,7 @@ import { onCoreEvent } from "../../api/events";
 import type { MisesEvent } from "../../api/types";
 import { activeBuildId } from "../../state/builds";
 import { actions } from "../../state/store";
+import { alreadyDecided, markResolved, once, resetOnce } from "../console/decisions/once";
 import { canSend, feedbackBody, type DraftMark } from "./marks";
 
 export const concepts: Signal<Record<string, ConceptView>> = signal({});
@@ -85,34 +86,63 @@ export async function sendFeedback(projectId: string, sketchId: string): Promise
   } catch (e) { notice(projectId, `Could not send the feedback: ${why(e)}`, true); return false; }
 }
 
-export async function approve(projectId: string, sketchId: string | null): Promise<boolean> {
-  try {
-    await actions.client().approveConcept(projectId, sketchId);
-    notice(projectId, "Approved. The agent starts building.");
-    void loadConcept(projectId);
-    return true;
-  } catch (e) { notice(projectId, `Could not approve: ${why(e)}`, true); return false; }
+// view-tab: each decision is sent once (decisions/once: one request per item, never again once
+// decided); a 409 already_decided from the core (a stale tab, a replay) shows the decision made.
+const at = (d: Record<string, unknown>): number | undefined => (typeof d.decided_at === "number" ? d.decided_at : undefined);
+
+export function approve(projectId: string, sketchId: string | null): Promise<boolean> {
+  return once(`sketch:${projectId}`, async () => {
+    try {
+      await actions.client().approveConcept(projectId, sketchId);
+      markResolved(`sketch:${projectId}`, "Approved by you");
+      notice(projectId, "Approved. The agent starts building.");
+      void loadConcept(projectId);
+      return true;
+    } catch (e) {
+      const d = alreadyDecided(e);
+      if (d) { markResolved(`sketch:${projectId}`, "Already approved", at(d)); void loadConcept(projectId); return false; }
+      notice(projectId, `Could not approve: ${why(e)}`, true); return false;
+    }
+  }).then((r) => r ?? false);
 }
 
-export async function skip(projectId: string): Promise<boolean> {
-  try {
-    await actions.client().skipConcept(projectId);
-    notice(projectId, "Sketch skipped. The agent starts building.");
-    void loadConcept(projectId);
-    return true;
-  } catch (e) { notice(projectId, `Could not skip: ${why(e)}`, true); return false; }
+export function skip(projectId: string): Promise<boolean> {
+  return once(`sketch:${projectId}`, async () => {
+    try {
+      await actions.client().skipConcept(projectId);
+      markResolved(`sketch:${projectId}`, "Skipped by you");
+      notice(projectId, "Sketch skipped. The agent starts building.");
+      void loadConcept(projectId);
+      return true;
+    } catch (e) {
+      const d = alreadyDecided(e);
+      if (d) { markResolved(`sketch:${projectId}`, "Already skipped", at(d)); void loadConcept(projectId); return false; }
+      notice(projectId, `Could not skip: ${why(e)}`, true); return false;
+    }
+  }).then((r) => r ?? false);
 }
 
-export async function choose(projectId: string, pitchId: string, body: ChooseBody): Promise<boolean> {
-  try {
-    const out = await actions.client().choosePitch(pitchId, body);
-    notice(projectId, `Chose ${out.chosen.label}. The agent sketches it next.`);
-    void loadConcept(projectId);
-    return true;
-  } catch (e) { notice(projectId, `Could not send the choice: ${why(e)}`, true); return false; }
+export function choose(projectId: string, pitchId: string, body: ChooseBody): Promise<boolean> {
+  return once(`pitch:${pitchId}`, async () => {
+    try {
+      const out = await actions.client().choosePitch(pitchId, body);
+      markResolved(`pitch:${pitchId}`, `Chose ${out.chosen.label} · by you`);
+      notice(projectId, `Chose ${out.chosen.label}. The agent sketches it next.`);
+      void loadConcept(projectId);
+      return true;
+    } catch (e) {
+      const d = alreadyDecided(e);
+      if (d) {
+        markResolved(`pitch:${pitchId}`, `Already chose ${typeof d.label === "string" ? d.label : "a direction"}`, at(d));
+        void loadConcept(projectId);
+        return false;
+      }
+      notice(projectId, `Could not send the choice: ${why(e)}`, true); return false;
+    }
+  }).then((r) => r ?? false);
 }
 
 /** Tests: forget every build's view, draft and notice. */
 export function resetConceptState(): void {
-  concepts.value = {}; drafts.value = {}; notices.value = {}; review.value = null; loading.clear();
+  concepts.value = {}; drafts.value = {}; notices.value = {}; review.value = null; loading.clear(); resetOnce();
 }

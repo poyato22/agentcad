@@ -31,6 +31,8 @@ import { SimStream, simExtras, simExtrasRunning } from "./SimStream";
 import { simRunning, splitStreams } from "./streams";
 import { markSeen, unreadOf } from "./unread";
 import { ViewStream } from "./ViewStream";
+import { DecisionsSection } from "./decisions/DecisionsSection";
+import { pendingDecisions } from "./decisions/pending";
 import "./dock.css";
 
 const TITLE: Record<StreamKind, string> = { view: "View", sim: "Simulations", text: "Conversation" };
@@ -63,7 +65,7 @@ export function Dock(): JSX.Element {
   const simCount = tree.sim.length + extras.length;
   const split = !layout.collapsed.text && !layout.collapsed.top;
   const streams: Record<TopStream, { keys: readonly string[]; count: number; running: number; body: ComponentChildren }> = {
-    view: { keys: viewKeys, count: tree.view.length, running: 0, body: <ViewStream entries={tree.view} /> },
+    view: { keys: viewKeys, count: tree.view.length, running: 0, body: <><DecisionsSection /><ViewStream entries={tree.view} /></> },
     sim: { keys: simKeys, count: simCount, running, body: <SimStream entries={tree.sim} /> },
   };
   return (
@@ -98,16 +100,19 @@ function Switcher({ runId, streams, active, ready }: {
         const st = streams[s];
         // (only once the build's tree has been read: its first, empty frame is no baseline)
         const unread = on || !ready ? 0 : unreadOf(runId, s, st.keys);
+        // view-tab: what waits on you sits at the top of View: its count, on the tab, always
+        const decide = s === "view" ? pendingDecisions.value.length : 0;
         return (
           <button key={s} type="button" role="tab" class="dock-seg-t" data-stream-tab={s} aria-selected={on}
             aria-controls={`dock-b-${s}`} id={`dock-tab-${s}`}
-            aria-label={`${TITLE[s]}${unread > 0 ? ` · ${unread} new` : ""}${st.running > 0 ? ` · ${st.running} running` : ""}`}
+            aria-label={`${TITLE[s]}${decide > 0 ? ` · ${decide} to decide` : ""}${unread > 0 ? ` · ${unread} new` : ""}${st.running > 0 ? ` · ${st.running} running` : ""}`}
             onClick={() => setDockLayout(showStream(dockLayout.peek(), s))}>
             <span class="dock-title">{TITLE[s]}</span>
             {on && st.count > 0 && st.running === 0 && <span class="dock-n num">{st.count}</span>}
             {st.running > 0 && <span class="dock-running" data-changing data-running={st.running} title={`${st.running} running`}>
               {on && <span class="num">{st.running}</span>}<span class="dock-dot" aria-hidden="true" /></span>}
             {unread > 0 && <span class="dock-unread num" data-unread={unread} aria-hidden="true">{unread}</span>}
+            {decide > 0 && <span class="dock-decide" data-to-decide={decide} aria-hidden="true">{decide} to decide</span>}
           </button>
         );
       })}
