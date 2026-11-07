@@ -4,6 +4,7 @@
 import "./styles/theme";
 import { render } from "preact";
 import { App } from "./App";
+import { watchErrors } from "./lib/errorLog";
 import { trackPastes } from "./lib/keys";
 import { installTabReach } from "./lib/tabReach";
 import { startActivity } from "./state/activity";
@@ -20,6 +21,7 @@ import "./styles/fonts";
 import "./styles/tokens.css";
 import "./styles/base.css";
 
+watchErrors(document.body);   // every red text / error card -> <MISES_HOME>/logs/errors.jsonl
 trackPastes(document);
 trackFocusModality(document);
 render(<App />, document.getElementById("app") as HTMLElement);

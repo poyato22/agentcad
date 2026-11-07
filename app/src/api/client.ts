@@ -4,6 +4,7 @@ import { buildUsageSchema, runUsageSchema, type BuildUsage, type RunUsage } from
 import { z } from "zod";
 import { feedbackResultSchema, measureResultSchema, measureWarmSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult } from "./measure";
 import { debug } from "../lib/log";
+import { errorLogSchema, type ErrorLogList, type ErrorReport } from "./errorLog";
 import type { Appearance } from "../lib/appearance";
 import {
   agentDetailSchema, agentInfoSchema, agentRunSchema, approvalSchema, cancelAllSchema, claudeCodeStatusSchema, cleanupResultSchema, coreErrorBodySchema, coreStatusSchema, deleteRefusedSchema,
@@ -905,6 +906,13 @@ export class CoreClient {
       throw new CoreError("network", `reading ${path} failed: ${errText(e)}`, { retryable: true });
     }
   }
+
+  // ---- the error log (core server/logs_api.py)
+  async reportError(e: ErrorReport): Promise<void> { await this.json("POST", "/logs/errors", anyBody, { body: e }); }
+  async errorLog(opts: { source?: string; q?: string; limit?: number } = {}): Promise<ErrorLogList> {
+    return this.json("GET", "/logs/errors", errorLogSchema, { query: opts });
+  }
+  async revealErrorLog(): Promise<void> { await this.json("POST", "/logs/errors/reveal", anyBody); }
 
   private async json<T>(method: Method, path: string, schema: z.ZodType<T>, opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
     const res = await this.request(method, path, opts);
