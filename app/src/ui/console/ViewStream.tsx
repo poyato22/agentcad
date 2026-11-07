@@ -21,11 +21,34 @@ import { Item } from "./Conversation";
 import { manyRuns, RunTag } from "./SimStream";
 import type { ThreadItem } from "./threadModel";
 import type { DockEntry } from "./treeStreams";
+import { activeBuildId } from "../../state/builds";
+import { fmtHM } from "../../lib/format";
+import { PitchCards } from "../sketch/PitchCards";
+import { SketchCard } from "../sketch/SketchCard";
+import { labelOf } from "./derived";
+import { renderSetOf, type RenderSet } from "./decisions/renders";
 
 /** Memoized: re-renders only when the entries change (a streamed token never changes them). */
 export const ViewStream = memo(ViewStreamList);
 
-function ViewStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Element {
+/** view-tab: a concept card the core announced is shown once: the tool call that made it isn't
+ *  a second card. */
+export function viewEntries(all: readonly DockEntry[]): DockEntry[] {
+  const announced = new Set<string>();
+  for (const e of all) {
+    if (e.item.kind !== "announce") continue;
+    const r = e.item.announcement.ref as { sketch_id?: string | null; pitch_id?: string | null };
+    if (r.sketch_id) announced.add(r.sketch_id);
+    if (r.pitch_id) announced.add(r.pitch_id);
+  }
+  return all.filter((e) => {
+    const rs = renderSetOf(e.item);
+    return !rs || !((rs.sketchId && announced.has(rs.sketchId)) || (rs.pitchId && announced.has(rs.pitchId)));
+  });
+}
+
+function ViewStreamList({ entries: all }: { entries: readonly DockEntry[] }): JSX.Element {
+  const entries = viewEntries(all);
   const newest = entries[entries.length - 1] ?? null;
   const [pick, setPick] = useState<string | null>(null);
   const strip = useRef<HTMLDivElement>(null);
@@ -41,6 +64,7 @@ function ViewStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Ele
     <div class="vs" data-view-stream>
       <div class="vs-main" data-view-main={main.key} data-run={main.runId}>
         {manyRuns.value && <RunTag runId={main.runId} />}
+        <p class="vs-cap faint text" data-view-caption>{captionOf(main)}</p>
         <Large key={main.key} item={main.item} agent={main.agent} runId={main.runId} />
       </div>
       {entries.length > 1 && (
@@ -56,7 +80,41 @@ function ViewStreamList({ entries }: { entries: readonly DockEntry[] }): JSX.Ele
   );
 }
 
+/** What made the shown view, by whom and when: "render views · Engineer · 14:02". */
+export function captionOf(e: DockEntry): string {
+  const rs = renderSetOf(e.item);
+  const what = rs ? rs.tool : e.item.kind === "view" ? "presented view" : e.item.kind === "critique" ? "critique round"
+    : e.item.kind === "announce" ? (ANNOUNCE_META[e.item.announcement.kind]?.label ?? "update") : tileLabel(e.item);
+  const when = rs?.ts ?? (Number.isFinite(e.order) ? e.order : null);
+  return [what, labelOf(e.runId), when !== null ? fmtHM(when) : null].filter(Boolean).join(" · ");
+}
+
+/** view-tab: a render tool's pictures, large (the newest render set, or the one picked). */
+export function RenderSetCard({ set }: { set: RenderSet }): JSX.Element {
+  return (
+    <figure class="rs-card" data-render-set={set.images.length} aria-label={`${set.tool}: ${set.images.length} image${set.images.length === 1 ? "" : "s"}`}>
+      <div class="rs-grid">
+        {set.images.map((im) => <RenderImg key={im.id} id={im.id} label={im.label} />)}
+      </div>
+    </figure>
+  );
+}
+
+function RenderImg({ id, label }: { id: string; label: string }): JSX.Element {
+  const url = useImageUrl({ id });
+  return (
+    <figure class="rs-fig" data-render-image={id}>
+      {url ? <img src={url} alt={label} draggable={false} /> : <div class="vs-tile-glyph faint" aria-label={`Loading ${label}`}>◫</div>}
+      <figcaption class="faint text">{label}</figcaption>
+    </figure>
+  );
+}
+
 function Large({ item, agent, runId }: { item: ThreadItem; agent: AgentRun["agent"]; runId: string }): JSX.Element {
+  const rs = renderSetOf(item);
+  if (rs?.sketchId) return <div class="cv-card sk-slot"><SketchCard projectId={activeBuildId.value} sketchId={rs.sketchId} /></div>;
+  if (rs?.pitchId) return <div class="cv-card sk-slot"><PitchCards projectId={activeBuildId.value} pitchId={rs.pitchId} /></div>;
+  if (rs && rs.images.length > 0) return <RenderSetCard set={rs} />;
   switch (item.kind) {
     case "view": return <ViewCard view={item.view} group={item.group} />;
     case "critique": return <CritiqueCard round={item.round} large />;
@@ -93,12 +151,14 @@ function useSeenIn(root: { current: HTMLElement | null }): [{ current: HTMLButto
 
 function Tile({ entry, root, current, onPick }: { entry: DockEntry; root: { current: HTMLElement | null }; current: boolean; onPick(): void }): JSX.Element {
   const item = entry.item;
-  const label = tileLabel(item);
+  const label = `${tileLabel(item)} · ${captionOf(entry)}`;
   const [ref, seen] = useSeenIn(root);
   const ann = item.kind === "announce" ? item.announcement : null;
   const view = seen && item.kind === "view" ? item.view.thumbnail : null;
+  const rs = renderSetOf(item);
   const crit = seen && item.kind === "critique" ? item.round.after ?? item.round.before
-    : seen && ann?.ref.image_id ? { id: ann.ref.image_id } : null;
+    : seen && ann?.ref.image_id ? { id: ann.ref.image_id }
+      : seen && rs?.images[0] ? { id: rs.images[0].id } : null;
   const keyed = useKeyedImageUrl(view);
   const plain = useImageUrl(crit);
   const img = keyed ?? plain;
@@ -108,7 +168,7 @@ function Tile({ entry, root, current, onPick }: { entry: DockEntry; root: { curr
   const glyph = ann ? ANNOUNCE_META[ann.kind]?.glyph ?? "◫" : "◫";
   return (
     <button type="button" ref={ref} class="vs-tile" aria-current={current ? "true" : undefined} aria-label={`Show ${label}`} title={label}
-      data-tile={entry.key} data-tile-kind={item.kind === "view" ? item.view.spec.kind : ann ? ann.kind : item.kind} data-seen={seen ? "" : undefined} onClick={onPick}>
+      data-tile={entry.key} data-tile-kind={item.kind === "view" ? item.view.spec.kind : ann ? ann.kind : rs ? "render" : item.kind} data-seen={seen ? "" : undefined} onClick={onPick}>
       {img ? <img src={img} alt="" draggable={false} data-tile-img />
         : partId && seen ? <PartTile partId={partId} glyph={glyph} />
           : <span class="vs-tile-glyph faint" aria-hidden="true">{glyph}</span>}
