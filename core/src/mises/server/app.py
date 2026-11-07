@@ -77,7 +77,7 @@ DECIDED_BY = "local-user"
 
 _HTTP_STATUS = {
     ErrorCode.NOT_FOUND: 404, ErrorCode.INVALID_INPUT: 400, ErrorCode.STALE_VERSION: 409,
-    ErrorCode.NEEDS_APPROVAL: 409, ErrorCode.CANCELLED: 409, ErrorCode.DENIED: 403,
+    ErrorCode.NEEDS_APPROVAL: 409, ErrorCode.CANCELLED: 409, ErrorCode.ALREADY_DECIDED: 409, ErrorCode.DENIED: 403,
     ErrorCode.OUT_OF_SCOPE: 403, ErrorCode.BUDGET_EXHAUSTED: 429, ErrorCode.TRANSIENT: 503,
     ErrorCode.TOOL_FAILED: 500,
 }

@@ -70,7 +70,7 @@ from .tools.registry import ToolRegistry
 from . import budget as budget_mod
 from . import projects as projects_mod
 from . import sketch as sketch_mod
-from .types import (Block, Caps, ErrorCode, ImageBlock, Message, MisesError, SafetyClass,
+from .types import (AlreadyDecided, Block, Caps, ErrorCode, ImageBlock, Message, MisesError, SafetyClass,
                     StepKind, TextBlock)
 from .ui_tools import register_ui_tools
 from .output_tools import register_output_tools
@@ -303,6 +303,8 @@ class Runtime:
         # build id -> that build's long-lived ui run (spec panel apply; Plan 5 A7)
         self._ui_runs: dict[str, str] = {}
         self._questions: dict[str, tuple[str, asyncio.Future[str]]] = {}
+        #: view-tab: answered questions (bounded), so a second answer is refused with the first
+        self._answered: dict[str, dict] = {}
         # Plan 7 U3c: messages waiting for a busy lead (orchestrator/lead.py), per lead run, and
         # the per-build locks around find-or-start-lead
         self.lead_queues: dict[str, list] = {}
@@ -2784,10 +2786,17 @@ class Runtime:
                       key=lambda d: d["asked_at"])
 
     def answer(self, question_id: str, text: str) -> None:
+        done = self._answered.get(question_id)
+        if done is not None:
+            raise AlreadyDecided("this question was already answered", dict(done))
         entry = self._questions.get(question_id)
         if entry is None or entry[1].done():
             raise MisesError(ErrorCode.NOT_FOUND, f"no open question {question_id}")
         run_id, fut = entry
+        self._answered[question_id] = {"kind": "answer", "question_id": question_id,
+                                       "run_id": run_id, "text": text, "decided_at": time.time()}
+        while len(self._answered) > 512:
+            self._answered.pop(next(iter(self._answered)))
         fut.set_result(text)
         self.events.publish(Event(type="question_answered", run_id=run_id,
                                   data={"question_id": question_id}))

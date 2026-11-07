@@ -126,6 +126,46 @@ def test_decide_approval_endpoint(client, rt):
                        json={"payload_hash": "x", "approve": False}).status_code == 404
 
 
+def test_deciding_an_approval_twice_never_acts_twice(client, rt):
+    """view-tab: a double click or a stale tab re-sends the decision: the first one stands."""
+    a = _pending_approval(rt)
+    first = client.post("/approvals/ap1/decide", headers=AUTH,
+                        json={"payload_hash": a.payload_hash, "approve": False})
+    again = client.post("/approvals/ap1/decide", headers=AUTH,
+                        json={"payload_hash": a.payload_hash, "approve": True})
+    assert first.status_code == again.status_code == 200
+    assert again.json()["status"] == "rejected"
+    assert again.json()["decided_at"] == first.json()["decided_at"]
+    assert rt.store.get_approval("ap1").status == "rejected"
+
+
+def test_answering_a_question_twice_is_409_with_the_first_answer(rt, client, fake):
+    """view-tab: an ask is answered once; a second answer is refused with the one given."""
+    from mises.providers.base import Done, ToolCall
+    fake._turns[:] = [[ToolCall(id="c1", name="ui_ask_user",
+                                input={"question": "Which phone?", "options": ["a", "b"]}),
+                       Done(stop_reason="tool_use")],
+                      [TextDelta(text="ok"), Done(stop_reason="end_turn")]]
+    rid = client.post("/runs", headers=AUTH,
+                      json={"agent": "designer", "prompt": "ask me"}).json()["run_id"]
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        pend = client.get(f"/runs/{rid}/pending", headers=AUTH).json()
+        if pend["questions"]:
+            break
+        time.sleep(0.02)
+    (q,) = pend["questions"]
+    url = f"/questions/{q['question_id']}/answer"
+    assert client.post(url, headers=AUTH, json={"text": "a"}).status_code == 200
+    again = client.post(url, headers=AUTH, json={"text": "b"})
+    assert again.status_code == 409
+    body = again.json()
+    assert body["error"] == "already_decided"
+    assert body["decision"]["kind"] == "answer" and body["decision"]["text"] == "a"
+    wait_status(client, rid)
+    assert client.post(url, headers=AUTH, json={"text": "b"}).status_code == 409
+
+
 def test_answer_unknown_question(client):
     r = client.post("/questions/nope/answer", headers=AUTH, json={"text": "yes"})
     assert r.status_code == 404 and r.json()["error"] == "not_found"

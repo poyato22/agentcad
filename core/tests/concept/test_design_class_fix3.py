@@ -62,7 +62,12 @@ def test_choosing_an_agent_named_option_never_moves_the_class(home):
         assert rt.store.get_run(lead).design_class["cls"] == "design"
         after = gate.design_class(rt.store, project)
         assert after["cls"] == "design" and after.get("stage") == before.get("stage"), after
-        # a mix of agent-named options, no comment: still nothing classified
+        # a mix of agent-named options, no comment: still nothing classified (on a new pitch:
+        # a pitch is chosen once, view-tab)
+        p2 = rt.concepts.add_pitch(project, {"pitch_id": "ckp_" + "d" * 12, "options": [
+            {"name": "Utilitarian"}, {"name": "Simple Monolith", "baseline": True}],
+            "chosen": None})
+        url = f"/concept/pitches/{p2['pitch_id']}/choose"
         r = client.post(url, headers=AUTH, json={"mix": [
             {"option": "Simple Monolith", "take": "plain body"},
             {"option": "Utilitarian", "take": "basic legs"}]})

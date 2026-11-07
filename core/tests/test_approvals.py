@@ -159,3 +159,12 @@ async def test_payload_swapped_in_db_before_decide_is_stale(svc):
     with pytest.raises(MisesError) as e:
         svc.decide(a.id, h(evil), True, "u")
     assert e.value.code == ErrorCode.STALE_VERSION
+
+
+async def test_a_second_decision_is_a_no_op_even_after_execution(svc):
+    """view-tab: a replayed decide on a used approval changes nothing (never a second action)."""
+    a = await svc.request("r1", "x", P)
+    svc.decide(a.id, a.payload_hash, True, "u1")
+    svc.consume(a.id, a.payload_hash)
+    again = svc.decide(a.id, a.payload_hash, True, "u2")
+    assert again.status == "executed" and again.decided_by == "u1"

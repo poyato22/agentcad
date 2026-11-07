@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import base64
 import re
+import time
 from typing import TYPE_CHECKING
 
-from ..types import ErrorCode, MisesError
+from ..types import AlreadyDecided, ErrorCode, MisesError
 from . import ChooseIn, ConceptStore, FeedbackIn, bad, new_id
 from . import gate as gate_mod
 from . import sketch as sk
@@ -145,6 +146,12 @@ async def approve(rt: Runtime, project_id: str, sketch_id: str | None) -> dict:
         raise bad("there is no sketch to approve", hint="ask the agent for a concept sketch")
     if sketch["project_id"] != project_id:
         raise MisesError(ErrorCode.OUT_OF_SCOPE, "that sketch belongs to another build")
+    cur = store.get(project_id)
+    if cur.get("status") == "approved" and cur.get("approved_sketch_id") == sketch["sketch_id"]:
+        # view-tab: one decision per sketch; a second approve never tells the lead again
+        raise AlreadyDecided(f"sketch v{sketch['version']} is already approved",
+                             {"kind": "concept_approve", "sketch_id": sketch["sketch_id"],
+                              "version": sketch["version"], "decided_at": cur.get("updated_at")})
     rec = store.update(project_id, status="approved", approved_sketch_id=sketch["sketch_id"])
     lead = _lead(rt, project_id)
     if lead is not None:
@@ -165,6 +172,10 @@ async def approve(rt: Runtime, project_id: str, sketch_id: str | None) -> dict:
 
 async def skip(rt: Runtime, project_id: str) -> dict:
     store = _store(rt)
+    cur = store.get(project_id)
+    if cur.get("status") == "skipped":
+        raise AlreadyDecided("the concept sketch was already skipped",
+                             {"kind": "concept_skip", "decided_at": cur.get("updated_at")})
     rec = store.update(project_id, status="skipped")
     lead = _lead(rt, project_id)
     if lead is not None:
@@ -203,6 +214,12 @@ def _chosen_label(body: ChooseIn) -> str:
 async def choose(rt: Runtime, pitch_id: str, body: ChooseIn) -> dict:
     store = _store(rt)
     pitch = store.get_pitch(pitch_id)
+    done = pitch.get("chosen")
+    if done:
+        # view-tab: a pitch is chosen once (no await before put_pitch below: no race either)
+        raise AlreadyDecided(f"this pitch was already decided: {done.get('label')}",
+                             {"kind": "pitch_choose", "pitch_id": pitch_id,
+                              "label": done.get("label"), "decided_at": done.get("decided_at")})
     names = {o["name"] for o in pitch["options"]}
     if not body.option and not body.mix:
         raise bad("pick an option or mix some", hint="send option, or mix[]")
@@ -211,7 +228,7 @@ async def choose(rt: Runtime, pitch_id: str, body: ChooseIn) -> dict:
             raise bad(f"no option {n!r} in this pitch", hint=f"options: {', '.join(names)}")
     label = _chosen_label(body)
     chosen = {"option": body.option, "mix": [m.model_dump() for m in body.mix],
-              "comment": body.comment, "label": label}
+              "comment": body.comment, "label": label, "decided_at": time.time()}
     store.put_pitch({**pitch, "chosen": chosen})
     project = pitch["project_id"]
     _mark_chosen(store, project, pitch, [body.option, *(m.option for m in body.mix)])
