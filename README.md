@@ -4,7 +4,7 @@
 
 ![A quadruped robot dog built by AgentCAD, rendered photoreal](docs/media/photoreal.jpg)
 
-**Demo video (2:13):** [watch it](https://github.com/poyato22/agentcad/releases/latest)
+**Demo video (2:13):** [watch agentcad-demo.mp4](https://github.com/poyato22/agentcad/releases/download/v0.1.0/agentcad-demo.mp4)
 
 ![The robot dog walking](docs/media/walk.gif)
 
