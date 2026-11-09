@@ -60,19 +60,22 @@ async def _watch_memory(proc: asyncio.subprocess.Process, limit_mb: float,
 async def run_sandboxed(argv: list[str], job_dir: Path, *, timeout_s: float, what: str,
                         env: dict[str, str] | None = None,
                         memory_limit_mb: float | None = None,
-                        read_dirs: "tuple[Path, ...] | list[Path]" = ()) -> tuple[int, str, str]:
+                        read_dirs: "tuple[Path, ...] | list[Path]" = (),
+                         extra_rules: str = "") -> tuple[int, str, str]:
     """Run a heavy sandboxed worker (render, gmsh, CalculiX, the CFD lattice) in one of the
     global heavy-worker slots (heavy.py, M9); the wait for a slot is not part of timeout_s."""
     from ..heavy import heavy_slot
     async with heavy_slot(what):
         return await _run_sandboxed(argv, job_dir, timeout_s=timeout_s, what=what, env=env,
-                                    memory_limit_mb=memory_limit_mb, read_dirs=read_dirs)
+                                    memory_limit_mb=memory_limit_mb, read_dirs=read_dirs,
+                                    extra_rules=extra_rules)
 
 
 async def _run_sandboxed(argv: list[str], job_dir: Path, *, timeout_s: float, what: str,
                          env: dict[str, str] | None = None,
                          memory_limit_mb: float | None = None,
-                         read_dirs: "tuple[Path, ...] | list[Path]" = ()) -> tuple[int, str, str]:
+                         read_dirs: "tuple[Path, ...] | list[Path]" = (),
+                         extra_rules: str = "") -> tuple[int, str, str]:
     """Returns (returncode, stdout tail, stderr tail). Raises SimError("timeout") on timeout,
     and SimError("memory") when memory_limit_mb is given and the process group exceeds it.
     `read_dirs` are extra dirs the process may read (e.g. the job root holding model.step when
@@ -81,7 +84,8 @@ async def _run_sandboxed(argv: list[str], job_dir: Path, *, timeout_s: float, wh
     base = {"PATH": "/usr/bin:/bin", "HOME": str(job_dir), "TMPDIR": str(job_dir),
             "PYTHONDONTWRITEBYTECODE": "1"}
     proc = await asyncio.create_subprocess_exec(
-        *sandboxed_command(argv, job_dir, read_dirs=read_dirs), cwd=str(job_dir),
+        *sandboxed_command(argv, job_dir, read_dirs=read_dirs, extra_rules=extra_rules),
+        cwd=str(job_dir),
         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE, env={**base, **(env or {})}, start_new_session=True)
     hit: list[float] = []

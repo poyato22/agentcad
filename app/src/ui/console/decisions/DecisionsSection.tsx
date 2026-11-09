@@ -11,16 +11,20 @@ import { ApprovalCard } from "../approvals/ApprovalCard";
 import { QuestionCard } from "../approvals/QuestionCard";
 import { labelOf } from "../derived";
 import { pendingDecisions, type PendingDecision } from "./pending";
+import { SimRequestCard } from "./SimRequestCard";
+import { bindSimRequestEvents, loadSimRequests } from "./simRequests";
 import "./decisions.css";
 
 const KIND_WORD: Readonly<Record<PendingDecision["kind"], string>> = {
-  approval: "Approval", question: "Question", pitch: "Design direction", sketch: "Concept sketch",
+  approval: "Approval", question: "Question", pitch: "Design direction", sketch: "Concept sketch", simulator: "Simulator",
 };
 
 export function DecisionsSection(): JSX.Element | null {
   const pid = activeBuildId.value;
   // the concept stage's decisions come from the build's concept view: read it once per build
   useEffect(() => { if (pid) void loadConcept(pid); }, [pid]);
+  // simulator requests (any build): read once, then kept live by their events
+  useEffect(() => { void loadSimRequests(); return bindSimRequestEvents(); }, []);
   const items = pendingDecisions.value;
   if (items.length === 0) return null;
   return (
@@ -51,5 +55,6 @@ function Body({ item }: { item: PendingDecision }): JSX.Element {
     case "question": return <QuestionCard question={item.question} runLabel={labelOf(item.runId)} />;
     case "pitch": return <PitchCards projectId={item.projectId} pitchId={item.pitchId} />;
     case "sketch": return <SketchCard projectId={item.projectId} sketchId={item.sketchId} />;
+    case "simulator": return <SimRequestCard request={item.request} />;
   }
 }

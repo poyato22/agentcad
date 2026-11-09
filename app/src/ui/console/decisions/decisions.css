@@ -25,3 +25,13 @@
 .anim-head { display: flex; gap: 10px; align-items: baseline; }
 .anim-steps { margin: 0; padding-left: 18px; color: var(--dim); }
 .anim-steps li { text-transform: none; }
+
+/* agent-built simulators: the request card (SimRequestCard) */
+.simreq { display: grid; gap: 6px; }
+.simreq p { margin: 0; }
+.simreq-cost { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 0; }
+.simreq-cost dt { color: var(--faint, #888); }
+.simreq-cost dd { margin: 0; }
+.simreq-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.simreq-actions textarea { flex: 1 1 100%; min-height: 3em; }
+.simreq-err { color: var(--danger, #d33); }

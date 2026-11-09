@@ -9,18 +9,22 @@ import { approvals, questions, retiredApprovals } from "../../../state/store";
 import { concepts } from "../../sketch/state";
 import { isExpired } from "../approvals/decide";
 import { resolved } from "./once";
+import type { SimRequest } from "../../../api/simRequests";
+import { simKey, simRequests } from "./simRequests";
 
 export type PendingDecision =
   | { key: string; kind: "approval"; what: string; runId: string; approval: Approval }
   | { key: string; kind: "question"; what: string; runId: string; question: Question }
   | { key: string; kind: "pitch"; what: string; runId: string | null; projectId: string; pitchId: string }
-  | { key: string; kind: "sketch"; what: string; runId: string | null; projectId: string; sketchId: string };
+  | { key: string; kind: "sketch"; what: string; runId: string | null; projectId: string; sketchId: string }
+  | { key: string; kind: "simulator"; what: string; runId: string | null; request: SimRequest };
 
 /** Pure: the pending decisions, oldest first within each kind (approvals, asks, concept). */
 export function pendingOf(input: {
   approvals: ReadonlyMap<string, Approval>; questions: ReadonlyMap<string, Question>;
   retired: ReadonlySet<string>; resolved: ReadonlyMap<string, unknown>;
   concept: { projectId: string; view: import("../../../api/concept").ConceptView } | null; nowS?: number;
+  sims?: ReadonlyMap<string, SimRequest>;
 }): PendingDecision[] {
   const out: PendingDecision[] = [];
   for (const a of input.approvals.values()) {
@@ -47,6 +51,14 @@ export function pendingOf(input: {
         runId: sk.run_id ?? null, projectId: c.projectId, sketchId: sk.sketch_id });
     }
   }
+  // agent-built simulators: a request to accept / reject / change, or a build paused at its budget
+  for (const r of input.sims?.values() ?? []) {
+    if (r.status !== "pending" && r.status !== "paused_budget") continue;
+    const key = simKey(r);
+    if (input.resolved.has(key)) continue;
+    out.push({ key, kind: "simulator", runId: r.run_id,
+      what: r.status === "pending" ? `New simulator: ${r.name.replace(/_/g, " ")}` : `Simulator build over budget: ${r.name.replace(/_/g, " ")}`, request: r });
+  }
   return out;
 }
 
@@ -54,7 +66,7 @@ export const pendingDecisions: ReadonlySignal<PendingDecision[]> = computed(() =
   const pid = activeBuildId.value;
   const view = pid ? concepts.value[pid] : undefined;
   return pendingOf({
-    approvals: approvals.value, questions: questions.value, retired: retiredApprovals.value, resolved: resolved.value,
+    approvals: approvals.value, questions: questions.value, retired: retiredApprovals.value, resolved: resolved.value, sims: simRequests.value,
     concept: pid && view ? { projectId: pid, view } : null,
   });
 });

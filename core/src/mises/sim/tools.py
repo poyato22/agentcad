@@ -347,8 +347,15 @@ async def sim_types_list(ctx: ToolContext, args: TypesArgs) -> ToolOutput:
     analytic = [{**GEAR_STUDY, "available": True,
                  "schema": GearStrengthArgs.model_json_schema()}]
     a = "; ".join(f"{t['id']} (tool {t['tool']}, {t['fidelity_class']})" for t in analytic)
+    # agent-built simulators (S7): run with simulator_run; only validated ones are available
+    from .plugins import SimPlugins
+    home = studies._home(ctx)
+    ab = SimPlugins(ctx.store, home).registry() if home is not None else []
+    if ab:
+        s += "; agent-built: " + "; ".join(
+            f"{t['id']} v{t['version']} ({t['validation']})" for t in ab)
     return ToolOutput(summary=f"{len(ts)} study types: {s}. Analytic studies: {a}",
-                      data={"types": ts, "analytic": analytic})
+                      data={"types": ts, "analytic": analytic, "agent_built": ab})
 
 
 @tool("sim_result_get", safety=SafetyClass.READ,
@@ -896,6 +903,8 @@ def register_sim_tools(registry: ToolRegistry) -> None:
         if not registry.list([t.name]):
             registry.register(t)
     from .calibration_tools import register_calibration_tools  # S3
+    from .request_tools import register_request_tools  # agent-built simulators S1
+    register_request_tools(registry)
     register_calibration_tools(registry)
     from .gear_tools import register_gear_tools  # GEARS
     register_gear_tools(registry)
