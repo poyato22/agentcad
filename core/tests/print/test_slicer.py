@@ -42,6 +42,7 @@ def test_find_slicer_missing(monkeypatch, tmp_path):
     monkeypatch.delenv("MISES_PRUSASLICER", raising=False)
     monkeypatch.setattr(slicer, "APP_PATH", tmp_path / "nope")
     monkeypatch.setattr(slicer, "USER_APP_PATH", tmp_path / "nope2")
+    monkeypatch.setattr(slicer, "DRIVERS_APP_PATH", tmp_path / "nope3")
     monkeypatch.setattr(slicer, "_mdfind_bundles", lambda: [])
     monkeypatch.setattr("shutil.which", lambda *_: None)
     assert slicer.find_slicer() is None
@@ -104,6 +105,7 @@ async def test_run_slice_failure_and_timeout(tmp_path, monkeypatch):
 async def test_run_slice_missing_slicer_hint(tmp_path, monkeypatch):
     monkeypatch.delenv("MISES_PRUSASLICER", raising=False)
     monkeypatch.setattr(slicer, "APP_PATH", tmp_path / "nope")
+    monkeypatch.setattr(slicer, "DRIVERS_APP_PATH", tmp_path / "nope3")
     monkeypatch.setattr("shutil.which", lambda *_: None)
     stl = tmp_path / "m.stl"
     stl.write_bytes(b"x")

@@ -73,6 +73,7 @@ def test_printer_validation_never_echoes_key(client):
 def test_capabilities(client, monkeypatch, tmp_path):
     monkeypatch.delenv("MISES_PRUSASLICER", raising=False)
     monkeypatch.setattr(slicer, "APP_PATH", tmp_path / "nope")
+    monkeypatch.setattr(slicer, "DRIVERS_APP_PATH", tmp_path / "nope3")
     monkeypatch.setattr("shutil.which", lambda *_: None)
     c = client.get("/print/capabilities", headers=AUTH).json()
     assert c["slicer"] == {"installed": False, "path": None,
@@ -120,6 +121,7 @@ def test_slice_flow_and_preview(client, rt, fake_slicer):
 def test_slice_without_slicer_is_424_with_install_hint(client, rt, monkeypatch, tmp_path):
     monkeypatch.delenv("MISES_PRUSASLICER", raising=False)
     monkeypatch.setattr(slicer, "APP_PATH", tmp_path / "nope")
+    monkeypatch.setattr(slicer, "DRIVERS_APP_PATH", tmp_path / "nope3")
     monkeypatch.setattr("shutil.which", lambda *_: None)
     add(client, "10.0.0.9")
     make_part(rt)
