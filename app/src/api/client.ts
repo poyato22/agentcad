@@ -2,6 +2,9 @@
 // is validated with zod. Failures always surface as CoreError (never a raw fetch/zod error).
 import { buildUsageSchema, runUsageSchema, type BuildUsage, type RunUsage } from "./usage";
 import { z } from "zod";
+import { simRequestDecidedSchema, simRequestListSchema, type SimBudgetDecision, type SimDecision } from "./simRequests";
+type SimRequestList = z.infer<typeof simRequestListSchema>;
+type SimRequestDecided = z.infer<typeof simRequestDecidedSchema>;
 import { feedbackResultSchema, measureResultSchema, measureWarmSchema, pairResultSchema, type FeedbackBody, type FeedbackResult, type MeasureRef, type MeasureResult, type PairResult, type PairSide } from "./measure";
 import { debug } from "../lib/log";
 import { errorLogSchema, type ErrorLogList, type ErrorReport } from "./errorLog";
@@ -402,6 +405,15 @@ export class CoreClient {
   skipConcept(projectId: string): Promise<ConceptDecision> { return this.json("POST", `/projects/${enc(projectId)}/concept/skip`, conceptDecisionSchema); }
   choosePitch(pitchId: string, body: ChooseBody): Promise<PitchChosen> {
     return this.json("POST", `/concept/pitches/${enc(pitchId)}/choose`, pitchChosenSchema, { body });
+  }
+  listSimRequests(status?: string): Promise<SimRequestList> {
+    return this.json("GET", "/sim-requests", simRequestListSchema, status ? { query: { status } } : {});
+  }
+  decideSimRequest(id: string, action: SimDecision, reason: string): Promise<SimRequestDecided> {
+    return this.json("POST", `/sim-requests/${enc(id)}/decide`, simRequestDecidedSchema, { body: { action, reason } });
+  }
+  simRequestBudget(id: string, action: SimBudgetDecision): Promise<SimRequestDecided> {
+    return this.json("POST", `/sim-requests/${enc(id)}/budget`, simRequestDecidedSchema, { body: { action } });
   }
   compareStudies(ids: readonly string[]): Promise<StudyCompare> { return this.json("POST", "/sims/compare", studyCompareSchema, { body: { ids } }); }
   studyTemplates(): Promise<StudyTemplate[]> { return this.json("GET", "/sims/templates", z.array(studyTemplateSchema)); }

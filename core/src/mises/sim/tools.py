@@ -888,4 +888,6 @@ def register_sim_tools(registry: ToolRegistry) -> None:
         if not registry.list([t.name]):
             registry.register(t)
     from .calibration_tools import register_calibration_tools  # S3
+    from .request_tools import register_request_tools  # agent-built simulators S1
+    register_request_tools(registry)
     register_calibration_tools(registry)
