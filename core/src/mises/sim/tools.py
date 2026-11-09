@@ -335,12 +335,18 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
 @tool("sim_types_list", safety=SafetyClass.READ,
       description="List the study types (static, modal, buckling, thermal, drop, wind) with "
                   "their solver, fidelity class, availability and the JSON schema of their "
-                  "settings (defaults, ranges, units, docs).")
+                  "settings (defaults, ranges, units, docs), plus the analytic studies run by "
+                  "their own tool (gear_strength for every geared drive).")
 async def sim_types_list(ctx: ToolContext, args: TypesArgs) -> ToolOutput:
     ts = studies.types_list()
     s = "; ".join(f"{t['id']} ({t['fidelity_class']}{'' if t['available'] else ', unavailable'})"
                   for t in ts)
-    return ToolOutput(summary=f"{len(ts)} study types: {s}", data={"types": ts})
+    from .gear_tools import GEAR_STUDY, GearStrengthArgs
+    analytic = [{**GEAR_STUDY, "available": True,
+                 "schema": GearStrengthArgs.model_json_schema()}]
+    a = "; ".join(f"{t['id']} (tool {t['tool']}, {t['fidelity_class']})" for t in analytic)
+    return ToolOutput(summary=f"{len(ts)} study types: {s}. Analytic studies: {a}",
+                      data={"types": ts, "analytic": analytic})
 
 
 @tool("sim_result_get", safety=SafetyClass.READ,
@@ -889,3 +895,5 @@ def register_sim_tools(registry: ToolRegistry) -> None:
             registry.register(t)
     from .calibration_tools import register_calibration_tools  # S3
     register_calibration_tools(registry)
+    from .gear_tools import register_gear_tools  # GEARS
+    register_gear_tools(registry)

@@ -50,7 +50,9 @@ LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "agent_continue", "as
               # Plan 11 F6: rocketry (LEAD_ROCKETRY tells every lead to run them on a rocket)
               "rocket_analyze", "rocket_flight", "rocket_motor",
               # Plan 11 F8: divergent ideation for open-ended challenges, egg-drop estimate
-              "ideate_concepts", "concepts_tried", "egg_drop_estimate")
+              "ideate_concepts", "concepts_tried", "egg_drop_estimate",
+              # GEARS: tooth bending / contact of every geared drive (LEAD_ENGINEERING)
+              "gear_strength")
 
 #: Plan 11 F6: any rocket build is flown and checked, not guessed (in every lead's prompt)
 LEAD_ROCKETRY = """## Rocket builds (model rockets, ARC / TARC, egg lofters)
@@ -124,9 +126,11 @@ into the enclosure) and `power_budget`.
 `dyn_rom_sweep`, `dyn_to_fem` on the most loaded links, and `assembly_health` when it exists; \
 revise until they pass. Give every moving joint an actuator (an unjudged joint does not pass). \
 `dyn_to_fem` runs in the background: `job_wait` its job and read the safety factors before you \
-claim done. `engineering_checks` shows what is missing, failing or stale. State the \
-margins (torque % of stall, stability margin, link safety factors, runtime) in your final \
-message: a turn that ends with checks missing gets a warning.
+claim done. Every geared drive (pair, train, planetary, a designed reduction): run \
+`gear_strength` with its input torque and material and fix any gear below a safety factor of \
+1.5. `engineering_checks` shows what is missing, failing or stale. State the \
+margins (torque % of stall, stability margin, link safety factors, the weakest gear's \
+safety factors, runtime) in your final message: a turn that ends with checks missing gets a warning.
 
 """
 #: the tools a body must name for its own engineering section to stand in for LEAD_ENGINEERING
