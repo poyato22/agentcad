@@ -897,3 +897,5 @@ def register_sim_tools(registry: ToolRegistry) -> None:
     register_calibration_tools(registry)
     from .gear_tools import register_gear_tools  # GEARS
     register_gear_tools(registry)
+    from .impact_tools import register_impact_tools  # IMPACT: drop / crash dynamics
+    register_impact_tools(registry)
