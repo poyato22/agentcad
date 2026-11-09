@@ -97,6 +97,44 @@ SCORERS = {"cadbench_t2": score_cadbench_t2, "cadbench": score_cadbench, "cadtes
            "physics_test": score_physics, "physics": score_physics}
 
 
+def score_cadprompt(task: Task, d: Path) -> dict:
+    """CADPrompt's metrics (cadprompt_metric.py; a shape that was not produced scores the
+    paper's worst case), plus CADBench's aligned volumetric IoU as a secondary metric."""
+    from . import cadprompt_metric as cm
+    from . import geometry as g
+    gt = g.load_stl_bytes(Path(task.meta["gt_stl"]).read_bytes())
+    step = d / "result.step"
+    r: dict = {"valid": False}
+    tris = None
+    if step.is_file():
+        try:
+            v, tris = g.validity(step)
+            r.update(valid=v.valid, validity=v.as_dict())
+        except Exception as e:  # noqa: BLE001
+            r["load_error"] = f"{type(e).__name__}: {e}"
+    r.update(cm.evaluate(tris, gt))
+    r.update(official_iou=0.0, official_siou=0.0, official_chamfer=None)
+    if r["compiled"] and (d / "result.stl").is_file():
+        out = d / "official.json"
+        args = ["nice", "-n", "15", "uv", "run", "--no-project", "--with", "trimesh", "--with",
+                "manifold3d", "--with", "pymeshlab", "--with", "scipy", "--with", "rtree",
+                "--with", "networkx", "python", "-I", str(HERE / "cadbench_official.py"),
+                str(d / "result.stl"), task.meta["gt_stl"], str(out)]
+        try:
+            p = subprocess.run(args, capture_output=True, text=True, timeout=1200, cwd=d)
+            o = read_json(out)
+            if o:
+                r.update(o)
+            else:
+                r["official_error"] = p.stderr[-800:]
+        except subprocess.TimeoutExpired:
+            r["official_error"] = "timeout"
+    return r
+
+
+SCORERS["cadprompt"] = score_cadprompt
+
+
 def score_dir(task: Task, d: Path, force: bool = False) -> dict:
     f = d / "score.json"
     if f.is_file() and not force:

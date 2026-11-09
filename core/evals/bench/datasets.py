@@ -156,3 +156,42 @@ def fetch_cadtestbench(n: int = 50, seed: int = 0, partition: str = "detailed",
                          "cadtests": str(d / "cadtests.json"),
                          "n_tests": len(by_id.get(s["sample_id"], []))}))
     return out
+
+
+#: CADPrompt (Alrashedy et al., ICLR 2025): github.com/Kamel773/CAD_Code_Generation, main as of
+#: its last push (2025-02-28). The repo has no LICENSE file; its README asks users to cite the
+#: paper and says the STLs come from DeepCAD. So: local evaluation only, the data is never
+#: committed or redistributed.
+CADPROMPT_TARBALL = "https://codeload.github.com/Kamel773/CAD_Code_Generation/tar.gz/refs/heads/main"
+CADPROMPT_PROMPT_FILE = "Natural_Language_Descriptions_Prompt_with_specific_measurements.txt"
+
+
+def fetch_cadprompt(n: int = 100, seed: int = 0, cache: Path = CACHE,
+                    split: str = "bench4") -> list[Task]:
+    """CADPrompt's 200 objects ranked with the same seed-pinned hash as CADTestBench, whose 200
+    sample ids are these objects. Ranks 0-99 were CADTestBench DEV and TEST (rounds 1 and 2);
+    split "bench4" takes ranks 100-199, which no AgentCAD build has seen. Each task gets the
+    "with specific measurements" prompt, with the CadQuery framing made neutral as for
+    CADTestBench, plus the units line. The order returned is the rank order, so a --limit
+    prefix (the pilot) is itself a seed-pinned random sample."""
+    import tarfile
+
+    raw = cache / "cadprompt_raw"
+    root = raw / "CAD_Code_Generation-main" / "CADPrompt"
+    if not root.is_dir():
+        tgz = _download(CADPROMPT_TARBALL, raw / "repo.tar.gz")
+        with tarfile.open(tgz) as tf:
+            members = [m for m in tf.getmembers() if m.isfile() and ".." not in m.name
+                       and not m.name.startswith("/")]
+            tf.extractall(raw, members=members)
+    ids = sorted(p.name for p in root.iterdir() if p.is_dir() and re.fullmatch(r"\d+", p.name))
+    ranked = sorted(ids, key=lambda i: _rank(seed, i))
+    lo = {"bench4": 100, "seen": 0}[split]
+    out = []
+    for k, i in enumerate(ranked[lo:lo + n]):
+        d = root / i
+        prompt = (d / CADPROMPT_PROMPT_FILE).read_text(errors="replace").strip()
+        out.append(Task("cadprompt", i, neutral_prompt(prompt) + "\n\n" + UNITS_NOTE, [],
+                        {"original_prompt": prompt, "gt_stl": str(d / "Ground_Truth.stl"),
+                         "rank": lo + k}))
+    return out
