@@ -23,7 +23,10 @@ STREAMS = ("text", "sim", "view")
 SIM_TOOLS = frozenset({"design_review", "design_review_get", "study_run", "study_get",
                        "job_wait",
                        # Plan 11 F6: the rocket cards (rocket_motor is a library lookup: text)
-                       "rocket_analyze", "rocket_flight"})
+                       "rocket_analyze", "rocket_flight",
+                       # 2026-11-09: impact / descent, gear strength and the print check are
+                       # studies: their results belong in the Simulations stream
+                       "impact_study", "descent_estimate", "gear_strength", "print_check"})
 VIEW_TOOLS = frozenset({"render_views", "present_view", "critique_model", "part_show",
                         "section_check", "assembly_animate",
                         # Plan 9 G-A: the concept stage's cards live in the View stream
