@@ -278,23 +278,27 @@ def camera_record(view: str, framing: dict, size: int, style: str,
 
 async def render_sketch(jobs_root: Path, massing_dir: Path, extras: dict[str, Path],
                         views: list[str], *, size: int = SKETCH_SIZE,
-                        massing_size: list[float] | None = None) -> RenderOut:
-    """The sketch images of `views` (key "sk"): massing + ground + figure, style "sketch"."""
+                        massing_size: list[float] | None = None,
+                        framing: dict | None = None) -> RenderOut:
+    """The sketch images of `views` (key "sk"): massing + figure, style "sketch". No ground
+    disc: it drew an outlined white plate under the design (a pedestal). The 3/4 view's ground
+    is the soft contact shadow; the elevations draw a ground line (render.py)."""
     meshes = [MeshIn(massing_dir, "massing", MASSING_COLOR)]
-    if "ground" in extras:
-        meshes.append(MeshIn(extras["ground"], "ground", GROUND_COLOR))
     if "figure" in extras:
         meshes.append(MeshIn(extras["figure"], "figure", FIGURE_COLOR))
     persp = [v for v in views if v in PERSPECTIVE_VIEWS]
     ortho = [v for v in views if v not in PERSPECTIVE_VIEWS]
+    # framed as the images' cameras record (the scene's box, ground room included), so marks
+    # made on an image map back to the same 3D points
+    box = {"frame_box": [framing["min"], framing["max"]]} if framing else {}
     renders = []
     if persp:
         renders.append({"key": "sk_p", "views": persp, "size": size, "style": "sketch",
                         "perspective": True,
-                        "cameras": cameras_for(persp, massing_size)})
+                        "cameras": cameras_for(persp, massing_size), **box})
     if ortho:
         renders.append({"key": "sk_o", "views": ortho, "size": size, "style": "sketch",
-                        "perspective": False, "cameras": cameras_for(ortho)})
+                        "perspective": False, "cameras": cameras_for(ortho), **box})
     out = await run_render_job(jobs_root, meshes, renders=renders)
     merged = {**out.pngs.get("sk_p", {}), **out.pngs.get("sk_o", {})}
     out.pngs = {"sk": {v: merged[v] for v in views if v in merged}}

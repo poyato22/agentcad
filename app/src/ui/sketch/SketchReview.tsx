@@ -14,6 +14,7 @@ import {
   type DraftMark, type MarkShape, type Pt, type Tool,
 } from "./marks";
 import { SketchImage } from "./SketchImage";
+import { resolved } from "../console/decisions/once";
 import { approve, closeReview, concepts, draftOf, review, sendFeedback, setDraft, skip } from "./state";
 import "./sketch.css";
 
@@ -42,6 +43,13 @@ function SketchReview({ projectId, sketch, image: initialImage }: { projectId: s
   const [stroke, setStroke] = useState<Stroke>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // decided once (view-tab): approved or skipped, by the core's record or this session's
+  // decision; the review then only shows the sketch, never a second Approve
+  const rec = concepts.value[projectId]?.concept;
+  const res = resolved.value.get(`sketch:${projectId}`) ?? null;
+  const decided: string | null = res ? res.text
+    : rec?.status === "approved" ? `Approved${rec.approved_sketch_id === sketch.sketch_id ? ` v${sketch.version}` : ""}`
+    : rec?.status === "skipped" ? "Sketch skipped" : null;
   const draft = draftOf(sketch.sketch_id);
   const img = sketch.images[image];
   const w = img.width || 1024;
@@ -183,6 +191,11 @@ function SketchReview({ projectId, sketch, image: initialImage }: { projectId: s
           <label class="sk-label" for="sk-general">General comment</label>
           <textarea id="sk-general" class="sk-input" rows={3} value={draft.comment} placeholder="Anything about the whole design" data-testid="review-comment"
             onInput={(e) => update(draft.marks, e.currentTarget.value)} />
+          {decided ? (
+          <div class="sk-panel-foot" data-testid="review-decided">
+            <p class="sk-dim" role="status">{decided}. Nothing more to approve here; ask the agent in the chat to change the design.</p>
+          </div>
+          ) : (
           <div class="sk-panel-foot">
             <Button class="sk-btn sk-wide" variant="primary" disabled={!sendable || busy} onClick={() => void run(() => sendFeedback(projectId, sketch.sketch_id), true)} data-testid="review-send">
               Send feedback
@@ -192,6 +205,7 @@ function SketchReview({ projectId, sketch, image: initialImage }: { projectId: s
               <Button class="sk-btn" disabled={busy} onClick={() => void run(() => approve(projectId, sketch.sketch_id), true)} data-testid="review-approve">Approve v{sketch.version}</Button>
             </div>
           </div>
+          )}
         </aside>
       </div>
     </div>

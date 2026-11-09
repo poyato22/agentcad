@@ -26,10 +26,22 @@ import { fmtHM } from "../../lib/format";
 import { PitchCards } from "../sketch/PitchCards";
 import { SketchCard } from "../sketch/SketchCard";
 import { labelOf } from "./derived";
+import { parseAnimateSpec, playAnimation, type AnimateSpec } from "../../state/assemblyAnimation";
 import { renderSetOf, type RenderSet } from "./decisions/renders";
 
 /** Memoized: re-renders only when the entries change (a streamed token never changes them). */
 export const ViewStream = memo(ViewStreamList);
+
+/** An `assembly_animate` call's motion (its result's `animation`), and whether it was also
+ *  presented as a view card (then that card shows it, not this call). Null for anything else. */
+export function animationOf(item: ThreadItem): { spec: AnimateSpec | null; presented: boolean; text: string } | null {
+  if (item.kind !== "activity" || !item.call || !/(^|__)assembly_animate$/.test(item.call.name)) return null;
+  const out = (item.call.result?.payload as { output?: { data?: Record<string, unknown> } } | undefined)?.output;
+  const data = out?.data ?? {};
+  const anim = data.animation;
+  const spec = anim && typeof anim === "object" ? parseAnimateSpec({ type: "assembly_animate", data: anim as Record<string, unknown> } as never) : null;
+  return { spec, presented: data.view_spec != null, text: item.text };
+}
 
 /** view-tab: a concept card the core announced is shown once: the tool call that made it isn't
  *  a second card. */
@@ -42,6 +54,8 @@ export function viewEntries(all: readonly DockEntry[]): DockEntry[] {
     if (r.pitch_id) announced.add(r.pitch_id);
   }
   return all.filter((e) => {
+    const an = animationOf(e.item);
+    if (an && (an.presented || !an.spec)) return false;     // its view card shows it, or nothing to play
     const rs = renderSetOf(e.item);
     return !rs || !((rs.sketchId && announced.has(rs.sketchId)) || (rs.pitchId && announced.has(rs.pitchId)));
   });
@@ -115,12 +129,34 @@ function Large({ item, agent, runId }: { item: ThreadItem; agent: AgentRun["agen
   if (rs?.sketchId) return <div class="cv-card sk-slot"><SketchCard projectId={activeBuildId.value} sketchId={rs.sketchId} /></div>;
   if (rs?.pitchId) return <div class="cv-card sk-slot"><PitchCards projectId={activeBuildId.value} pitchId={rs.pitchId} /></div>;
   if (rs && rs.images.length > 0) return <RenderSetCard set={rs} />;
+  const an = animationOf(item);
+  if (an?.spec) return <AnimationCard spec={an.spec} runId={runId} />;
   switch (item.kind) {
     case "view": return <ViewCard view={item.view} group={item.group} />;
     case "critique": return <CritiqueCard round={item.round} large />;
     case "announce": return <AnnouncementCard announcement={item.announcement} />;
     default: return <Item item={item} agent={agent} runId={runId} />;
   }
+}
+
+/** A saved motion of the assembly: what moves, and Play (on the build's assembly). */
+function AnimationCard({ spec, runId }: { spec: AnimateSpec; runId: string }): JSX.Element {
+  const [err, setErr] = useState<string | null>(null);
+  const secs = spec.steps.reduce((t, st) => t + st.duration_s, 0) * spec.loops;
+  const joints = spec.steps.map((st) => st.joint_id.replace(/[_-]+/g, " "));
+  return (
+    <figure class="cv-card anim-card" data-testid="animation-card">
+      <div class="anim-head">
+        <span class="label">Animation</span>
+        <span class="faint">{`${spec.steps.length === 1 ? "1 joint" : `${spec.steps.length} joints in sequence`} · ${Number(secs.toFixed(1))} s`}</span>
+      </div>
+      <ol class="anim-steps">{joints.map((j, i) => <li key={i}>{j}</li>)}</ol>
+      <button type="button" class="btn" onClick={() => { setErr(null); void playAnimation(spec, runId).then((ok) => { if (!ok) setErr("Open the build's assembly to play it."); }); }}>
+        ▶ Play on the assembly
+      </button>
+      {err && <p class="vx-error" role="alert">{err}</p>}
+    </figure>
+  );
 }
 
 /** What a filmstrip tile says about its item. */

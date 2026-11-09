@@ -19,3 +19,9 @@
 .cv-render-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; color: inherit; font-size: 11px; }
 .cv-render-link img { width: 48px; height: 36px; object-fit: cover; border-radius: 4px; }
 .vs-cap { margin: 0 0 4px; font-size: 11px; }
+
+/* View tab: a saved motion of the assembly, with Play */
+.anim-card { margin: 0; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.anim-head { display: flex; gap: 10px; align-items: baseline; }
+.anim-steps { margin: 0; padding-left: 18px; color: var(--dim); }
+.anim-steps li { text-transform: none; }

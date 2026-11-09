@@ -122,6 +122,17 @@ describe("SketchCard + SketchReview", () => {
     expect(screen.queryByTestId("sketch-approve")).toBeNull();
   });
 
+  it("an approved sketch opened again offers no second Approve", async () => {
+    const c = client([APPROVED]);
+    render(<><SketchCard projectId={PID} sketchId={null} /><SketchReviewRoot /></>);
+    expect(screen.queryByTestId("sketch-approve")).toBeNull();
+    fireEvent.click(await screen.findByTestId("sketch-open"));
+    expect((await screen.findByTestId("review-decided")).textContent).toMatch(/^Approved/);
+    expect(screen.queryByTestId("review-approve")).toBeNull();
+    expect(screen.queryByTestId("review-send")).toBeNull();
+    expect(c.approveConcept).not.toHaveBeenCalled();
+  });
+
   it("an older version's card folds to one line; the newest holds the chips and compare", async () => {
     client([VIEW]);
     render(<>{conceptCardFor({ kind: "concept_sketch", ref: { sketch_id: VIEW.sketches[0].sketch_id }, projectId: PID })}

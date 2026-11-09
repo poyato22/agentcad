@@ -44,6 +44,17 @@ def _cameras(spec) -> dict | None:
     return {str(k): (tuple(v[0]), tuple(v[1])) for k, v in dict(spec).items()}
 
 
+def _frame_box(spec):
+    """A framing box from the host ([min, max], finite, min < max), else None."""
+    if not spec:
+        return None
+    a = np.asarray(spec, dtype=np.float64)
+    if a.shape != (2, 3) or not np.isfinite(a).all() or (np.abs(a) > 1e7).any() \
+            or not (a[1] > a[0]).all():
+        raise render.RenderError("frame_box must be [[x, y, z], [x, y, z]] with min < max")
+    return a[0], a[1]
+
+
 def _transform(m) -> np.ndarray | None:
     """The mesh's 4x4 world transform (data from the host), re-checked here: finite, bounded,
     affine. None means the part's own frame."""
@@ -107,7 +118,8 @@ def run(job_dir: Path, nonce: str) -> dict:
                                    perspective=bool(r.get("perspective")),
                                    shadow=bool(r.get("shadow", True)),
                                    background=str(r.get("background") or "flat"),
-                                   figure=bool(r.get("figure")))
+                                   figure=bool(r.get("figure")),
+                                   frame_box=_frame_box(r.get("frame_box")))
         pngs[r["key"]] = {}
         cameras[r["key"]] = cams
         for view, data in imgs.items():

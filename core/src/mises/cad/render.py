@@ -1159,7 +1159,9 @@ def _render_styled(meshes: list[Mesh], view: str, size: int, framing, cameras: d
         np.maximum(ink, 0.30 * shade.soft(hatch & lines["hatch"], 0.8 * lp), out=ink)
         del hatch
         ground = np.zeros((S, S), dtype=bool)
-        if abs(float(cam.f[2])) < 0.35:          # elevations: a ground line
+        # true elevations only (side, front: a level camera); a 3/4 view looks down at ~20 deg
+        # and got this line straight across the paper behind the model, like a horizon
+        if abs(float(cam.f[2])) < 0.05:          # elevations: a ground line
             lo, hi = framing
             c = (np.asarray(lo) + np.asarray(hi)) / 2.0
             r = cam.right - np.array([0.0, 0.0, cam.right[2]])
@@ -1285,7 +1287,8 @@ def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
                  transparent: bool = False, cameras: dict | None = None,
                  style: str = "shaded", perspective: bool = False, shadow: bool = True,
                  background: str = "flat", figure: bool = False,
-                 cameras_out: dict | None = None) -> dict[str, bytes]:
+                 cameras_out: dict | None = None,
+                 frame_box: tuple | None = None) -> dict[str, bytes]:
     """Render `meshes` (a Mesh, a triangles array, or a list of them) from each named view.
 
     Returns {view_name: PNG bytes}, each under 1 MB. A mesh over SMOOTH_MAX_TRIANGLES asked
@@ -1309,7 +1312,10 @@ def render_views(meshes, *, views=DEFAULT_VIEWS, size: int = 512,
     if section is not None:
         o, n = section
         ms = [replace(m, tris=section_mesh(m.tris, o, n)) for m in ms]
-    framing = bbox(ms)
+    # `frame_box` ((min, max) mm): frame on this box instead of the meshes' own (a concept
+    # sketch frames its massing with the room a ground and figure need, as its camera records)
+    framing = bbox(ms) if frame_box is None else (np.asarray(frame_box[0], dtype=np.float64),
+                                                  np.asarray(frame_box[1], dtype=np.float64))
     normals = None if transparent else _mesh_normals(ms, style)
     size = effective_size(sum(len(m.tris) for m in ms), size)
     out: dict[str, bytes] = {}

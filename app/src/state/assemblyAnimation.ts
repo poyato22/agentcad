@@ -119,6 +119,17 @@ export function stopAgentAnimation(): void {
   player?.stop();
 }
 
+/** The View tab's Play on a saved motion: show it on the build's assembly (switching to it). */
+export async function playAnimation(spec: AnimateSpec, runId: string | null): Promise<boolean> {
+  if (!player) return false;
+  const active: ActiveAnimation = { spec, runId, startedAt: Date.now() / 1000, playing: false };
+  agentAnimation.value = active;
+  const ok = await player.watch(spec, ended(active));
+  const now = agentAnimation.peek();
+  if (ok && now && now.spec === spec) agentAnimation.value = { ...now, playing: true };
+  return ok;
+}
+
 export function resetAssemblyAnimation(): void { agentAnimation.value = null; }
 
 /** Subscribe to the event stream (default onCoreEvent). Call once at boot; returns an unsubscribe. */

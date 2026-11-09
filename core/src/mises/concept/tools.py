@@ -171,7 +171,8 @@ async def _sketch_images(ctx: ToolContext, d: Path, script: str, views: list[str
     meshes, info = sk.scene_extras(metrics["bbox"], scale_figure)
     extras = sk.write_extras(d, meshes)
     size_mm = info.get("massing_size_mm")
-    out = await sk.render_sketch(d / "jobs", d / "massing", extras, views, massing_size=size_mm)
+    out = await sk.render_sketch(d / "jobs", d / "massing", extras, views, massing_size=size_mm,
+                                 framing=info["framing"])
     images = []
     h = home(ctx)
     for view in views:
