@@ -248,6 +248,14 @@ const COVERAGE: Record<string, string> = {
   "GET /sims/{sim_id}": "sim_done.json", "GET /sims/{sim_id}/result.glb": "sim_result.glb",
   "POST /sketches": "EXEMPT: Plan 7 U2b removed the app's Sketch page; the app never calls it (core sketch tests cover it)",
   "GET /sketches/{sketch_id}": "EXEMPT: Plan 7 U2b removed the app's Sketch page; the app never calls it (core sketch tests cover it)",
+  // agent-built simulators (plan 2026-11-06): zod schemas in api/simRequests.ts; no real-core fixture yet
+  "GET /sim-requests": "EXEMPT: agent-built simulators; core test_sim_requests covers it through the real router (list, decide, 409)",
+  "GET /sim-requests/{request_id}": "EXEMPT: agent-built simulators; the app reads the list; core test_sim_requests covers the record",
+  "POST /sim-requests/{request_id}/decide": "EXEMPT: agent-built simulators; core test_sim_requests drives it (200 then 409 already_decided); app simRequest.test",
+  "POST /sim-requests/{request_id}/budget": "EXEMPT: agent-built simulators; core test_sim_requests covers budget_decide (once per pause); app simRequest.test",
+  "GET /simulators": "EXEMPT: agent-built simulator registry; no Profile -> Simulators UI yet; core test_sim_plugins covers registry()",
+  "POST /simulators/{name}/enabled": "EXEMPT: no Profile -> Simulators UI yet; core test_sim_plugins covers set_enabled (a failed plugin stays off)",
+  "DELETE /simulators/{name}": "EXEMPT: no Profile -> Simulators UI yet; core SimPlugins.delete",
   // Plan 8 G1 render images and reference uploads
   "GET /projects/{project_id}/chat-images/{image_id}": "EXEMPT: P11 F7 image bytes of a chat attachment; core test_p11_chat_images covers ids, the build scope and the bytes the agent got",
   "GET /renders/{name}": "EXEMPT: PNG bytes of a sandboxed render; core test_renders_api covers ids, links and auth, and the cards that name them are g1_cards.json (contract-checked in the critique card tests)",
