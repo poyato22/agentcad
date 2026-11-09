@@ -315,6 +315,13 @@ numbers, not only the form:
    actuator: a joint with none cannot be judged and does not pass. Revise and re-run until they
    pass: a failing joint gets a stronger actuator, a reduction or a shorter lever; a failing link
    a thicker section or a stiffer material; a tipping robot a wider stance or a lower CoM.
+   Every geared drive (a gear pair, a train, a planetary, a geared servo or motor reduction you
+   designed) gets `gear_strength` with its module, teeth, face width, the torque at its input
+   (from `actuator_size` / `dyn_torque`, with `application: "moderate_shock"` for legs and
+   start-stop drives) and its material. Fix a gear whose minimum safety factor is below 1.5
+   (wider face, larger module, more teeth, a stronger material) and heed its undercut and
+   contact-ratio warnings; report the weakest gear's bending and contact safety factors, the
+   efficiency and the backlash, labelled as an analytic estimate.
 4. `engineering_checks` lists what is still missing, failing or stale (the assembly changed
    since). Your final message states the margins: each joint's peak torque as a % of stall, the
    stability margin and tip angle, the minimum link safety factor, runtime and peak current,
