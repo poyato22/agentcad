@@ -35,3 +35,10 @@
 - If the stop is reached during the main run, the analysis uses every task that both systems finished, and the report says how many and which were not run.
 
 **What will not change after seeing results:** the tasks, the metric, the failure rule and the contrast. No task is dropped. A run that fails for infrastructure reasons (a network or usage-limit error, not a model or product failure) may be repeated once and will be listed by task id. A run that hits the cap counts as a failure.
+
+## Size decision after the pilot (added before any pilot output was scored)
+
+- Pilot, 8 tasks, both systems, all 16 runs finished with no error: AgentCAD + Sonnet averaged $0.172 a task at list price (one task $0.47), Sonnet alone $0.020. Pilot total $1.55.
+- The usage gauge read 79% before and after the pilot. It reports whole percent and is shared with four other tasks, so the pilot's own share could not be resolved; it was under one point.
+- Projection: about $0.19 per task pair. Using round 3's ratio of list cost to gauge points (about $6 per point, an estimate), N = 100 would add about 3 points and reach the 82% stop with the other tasks' use on top. N = 60 adds about 1.6 points (52 more pairs, about $10).
+- **Decision: N = 60**, the first 60 tasks in rank order, pilot included. The harness stop at 82% still applies.
