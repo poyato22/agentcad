@@ -50,7 +50,9 @@ LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "agent_continue", "as
               # Plan 11 F6: rocketry (LEAD_ROCKETRY tells every lead to run them on a rocket)
               "rocket_analyze", "rocket_flight", "rocket_motor",
               # Plan 11 F8: divergent ideation for open-ended challenges, egg-drop estimate
-              "ideate_concepts", "concepts_tried", "egg_drop_estimate")
+              "ideate_concepts", "concepts_tried", "egg_drop_estimate",
+              # IMPACT: transient drop / crash dynamics with contact, and the descent
+              "impact_study", "descent_estimate")
 
 #: Plan 11 F6: any rocket build is flown and checked, not guessed (in every lead's prompt)
 LEAD_ROCKETRY = """## Rocket builds (model rockets, ARC / TARC, egg lofters)

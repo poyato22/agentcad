@@ -349,8 +349,11 @@ If the user wants a direct build instead, they can say "just build it" (it turns
 off for the build); offer that when they seem to want it.
 - Remember. `concepts_tried` lists what this build (and the user's other builds of the same \
 challenge) already tried: do not pitch those again.
-- Verify. Once it is built, predict how it performs: for an egg payload `egg_drop_estimate` \
-(impact speed, peak egg deceleration and force against the egg-break threshold, with its \
-source), plus the drop study, dynamics or rocket tools where they apply. State the predicted \
+- Verify. Once it is built, predict how it performs: for an egg payload run `impact_study` \
+(the descent with drag / parachute, then a transient impact with contact and crushable foam: \
+peak g on the egg vs its limit, rebound, energy each part absorbs, bottoming out; \
+fidelity="fem" adds a CalculiX dynamic run), with `egg_drop_estimate` (impact speed, peak egg \
+deceleration and force against the egg-break threshold, with its source) as the quick first \
+number, plus dynamics or rocket tools where they apply. State the predicted \
 peak egg acceleration, the threshold and its source, and the margin, as an estimate.
 """

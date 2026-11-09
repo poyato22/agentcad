@@ -1,7 +1,8 @@
 """Drop / impact studies: an ESTIMATE. The impact is replaced by an equivalent static load
 F = m g k (loads.impact_equivalent, k stated) applied as a body load toward the impact face,
 which is held fixed (the floor). No explicit dynamics: a *DYNAMIC run of a drop needs contact
-and microsecond time steps that do not fit a laptop study budget (see the C7 report)."""
+and microsecond time steps that do not fit a laptop study budget (see the C7 report).
+The transient answer (payload g, cushions, rebound) is the impact_study tool (impact.py)."""
 from __future__ import annotations
 
 from ..engineering.loads import REF_DROP_M, height_scaled_k
@@ -81,4 +82,6 @@ async def run_drop(job: FemJob, s, *, sim_id: str, part_id: str) -> dict:
                               f"{imp['newtons']:.3g} N (k = {k_h:.3g} for {s.drop_m:g} m); "
                               "real impacts depend on "
                               "the floor, the contact and the drop angle")
+    out["warnings"].append("for the impact dynamics (the g a payload sees, cushion crush, "
+                           "rebound) run impact_study")
     return out

@@ -889,3 +889,5 @@ def register_sim_tools(registry: ToolRegistry) -> None:
             registry.register(t)
     from .calibration_tools import register_calibration_tools  # S3
     register_calibration_tools(registry)
+    from .impact_tools import register_impact_tools  # IMPACT: drop / crash dynamics
+    register_impact_tools(registry)
