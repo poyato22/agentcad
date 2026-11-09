@@ -50,7 +50,20 @@ LEAD_TOOLS = ("agent_spawn", "agent_wait", "agent_result", "agent_continue", "as
               # Plan 11 F6: rocketry (LEAD_ROCKETRY tells every lead to run them on a rocket)
               "rocket_analyze", "rocket_flight", "rocket_motor",
               # Plan 11 F8: divergent ideation for open-ended challenges, egg-drop estimate
-              "ideate_concepts", "concepts_tried", "egg_drop_estimate")
+              "ideate_concepts", "concepts_tried", "egg_drop_estimate",
+              # print simulation: every lead checks printability before calling a part printable
+              "print_check")
+
+#: print simulation guidance, in every lead's prompt unless its body already covers print_check
+LEAD_PRINTING = """## Printed parts
+- Before you report a design as printable (3D printed, print-in-place, "ready to print"), run \
+`print_check` (all parts, or one part_id) and read its result: it is a slicer estimate \
+(PrusaSlicer, MK4 0.4 mm, 0.2 mm layers) plus a mesh check. Pass the material when known.
+- If the user gave a print-time limit, pass it as `max_print_time_h` and keep every part under \
+it (thinner walls, less infill, a better orientation or a split part); state the estimate.
+- Use the recommended orientation and say the trade-off; if supports are needed, say how many \
+grams. Print-in-place gaps under `min_clearance_mm` (default 0.3) fuse: widen them first.
+""" 
 
 #: Plan 11 F6: any rocket build is flown and checked, not guessed (in every lead's prompt)
 LEAD_ROCKETRY = """## Rocket builds (model rockets, ARC / TARC, egg lofters)
@@ -205,9 +218,10 @@ def lead_definition(defn: AgentDefinition, *, rocket: bool = False,
                               rocketry=rocketry)
     from ..ideation import LEAD_IDEATION, LEAD_IDEATION_HINT   # Plan 11 F8
     ideation = LEAD_IDEATION if challenge else LEAD_IDEATION_HINT
+    printing = "" if "print_check" in defn.body else "\n" + LEAD_PRINTING
     return defn.model_copy(update={"tools": tools,
                                    "body": defn.body.rstrip() + "\n\n" + lead + "\n"
-                                   + ideation})
+                                   + ideation + printing})
 
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")

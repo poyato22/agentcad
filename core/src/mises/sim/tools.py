@@ -333,11 +333,13 @@ async def sim_static_run(ctx: ToolContext, args: StaticArgs) -> ToolOutput:
 
 
 @tool("sim_types_list", safety=SafetyClass.READ,
-      description="List the study types (static, modal, buckling, thermal, drop, wind) with "
+      description="List the study types (static, modal, buckling, thermal, drop, wind, and "
+                  "print: the print simulation, run with print_check) with "
                   "their solver, fidelity class, availability and the JSON schema of their "
                   "settings (defaults, ranges, units, docs).")
 async def sim_types_list(ctx: ToolContext, args: TypesArgs) -> ToolOutput:
-    ts = studies.types_list()
+    from ..print.tools import print_study_type
+    ts = [*studies.types_list(), print_study_type()]
     s = "; ".join(f"{t['id']} ({t['fidelity_class']}{'' if t['available'] else ', unavailable'})"
                   for t in ts)
     return ToolOutput(summary=f"{len(ts)} study types: {s}", data={"types": ts})

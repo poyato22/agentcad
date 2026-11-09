@@ -307,8 +307,132 @@ async def print_send(ctx: ToolContext, args: SendArgs) -> ToolOutput:
                             "file": args.file_name})
 
 
+class CheckArgs(BaseModel):
+    part_id: str | None = Field(default=None, description="one built part; omit to check every "
+                                "printable part of the build (reference parts are skipped)")
+    material: str | None = Field(default=None, description="PLA, PETG, ABS, ASA or TPU; the "
+                                 "part's own material when omitted, else PLA")
+    printer_model: str = Field(default="MK4", description="MK4 (default) or MINI; 0.4 mm nozzle, "
+                               "0.2 mm layers")
+    min_clearance_mm: float = Field(default=0.3, gt=0, le=5, description="the smallest gap "
+                                    "allowed between separate bodies (print-in-place)")
+    max_print_time_h: float | None = Field(default=None, gt=0, description="the user's print-time "
+                                           "limit per part; the check fails above it")
+    slice: bool = Field(default=True, description="false: mesh check only (fast, no times)")
+    slice_candidates: int = Field(default=3, ge=1, le=6, description="how many of the best "
+                                  "orientations (by mesh overhang) to slice, besides as-built")
+
+
+MAX_CHECK_PARTS = 16
+
+
+def print_study_type() -> dict:
+    """The print simulation as a sim_types_list entry (it runs through print_check, not
+    sim_run: it slices an STL, it does not mesh for FEA)."""
+    st = slicer.slicer_status()
+    return {"id": "print", "name": "Print simulation (slicer estimate)",
+            "solver": "PrusaSlicer CLI (sandboxed) + direct mesh check",
+            "fidelity_class": "slicer_estimate", "tool": "print_check",
+            "doc": "FDM printability: print time, filament, supports, overhangs beyond 45 deg, "
+                   "bed contact, recommended orientation, print-in-place clearance. Run it with "
+                   "print_check (not sim_run).",
+            "channels": [], "available": True,
+            "detail": None if st["installed"] else
+            f"PrusaSlicer missing ({slicer.INSTALL_COMMAND}): mesh check only",
+            "schema": CheckArgs.model_json_schema()}
+
+
+def _printable_parts(workdir: Path) -> list[str]:
+    from ..catalog.geometry import read_meta
+    out = []
+    for d in sorted((workdir / "parts").glob("*")):
+        if (d / "model.stl").is_file() and (read_meta(d) or {}).get("kind") != "reference":
+            out.append(d.name)
+    return out
+
+
+def _part_summary(pid: str, r: dict) -> str:
+    rec, s = r["recommended"], r["recommended"].get("slicer") or {}
+    bits = [f"{pid}: {'printable' if r['printable'] else 'NOT printable'}"]
+    if s:
+        bits.append(f"{s['time_text']}, {s['filament_g']:.1f} g"
+                    + (f", supports {s['support_g']:g} g" if s["needs_supports"] else ", no supports"))
+    else:
+        bits.append(f"overhang {rec['overhang_area_mm2']:.0f} mm2 (mesh)")
+    if rec["orientation"] != "as_built":
+        bits.append(f"print {rec['doc']}")
+    c = r["clearance"]
+    if c["bodies"] > 1:
+        bits.append(f"min gap {c['min_gap_mm']} mm" if c["min_gap_mm"] is not None
+                    else f"{c['bodies']} bodies, far apart")
+    return " | ".join(bits)
+
+
+@tool("print_check", safety=SafetyClass.LOCAL_MUTATE, timeout_s=900,
+      description="Print simulation (slicer estimate) of a built part, or of every printable part "
+                  "when part_id is omitted. Slices headless with PrusaSlicer in a sandbox and "
+                  "checks the mesh: print time, filament mm/g, whether supports are needed and "
+                  "how many grams, overhang area beyond 45 degrees, first-layer bed contact, a "
+                  "recommended orientation among six axis-aligned poses (least support, then "
+                  "most bed contact) with the trade-off, and a print-in-place clearance check "
+                  "between separate bodies (min_clearance_mm, default 0.3). Default printer "
+                  "Prusa MK4, 0.4 mm nozzle, 0.2 mm layers; material sets PLA/PETG/ASA/TPU "
+                  "settings. Pass max_print_time_h when the user gave a print-time limit.")
+async def print_check(ctx: ToolContext, args: CheckArgs) -> ToolOutput:
+    from . import printability as pa
+    workdir = Path(ctx.workdir)
+    if args.part_id is not None:
+        _check_part_id(args.part_id)
+        if not (workdir / "parts" / args.part_id / "model.stl").is_file():
+            raise MisesError(ErrorCode.NOT_FOUND, f"no built part {args.part_id!r}",
+                             hint="build it first; print_check reads its model.stl")
+        pids = [args.part_id]
+    else:
+        pids = _printable_parts(workdir)
+        if not pids:
+            raise MisesError(ErrorCode.NOT_FOUND, "no built parts to check",
+                             hint="build a part first")
+    skipped = pids[MAX_CHECK_PARTS:]
+    pids = pids[:MAX_CHECK_PARTS]
+    slicer.model_of(args.printer_model)
+    rt = (getattr(ctx, "services", None) or {}).get("runtime")
+    home = Path(rt.home) if rt is not None else None
+    results: dict[str, dict] = {}
+    for pid in pids:
+        material = args.material
+        if material is None:
+            try:
+                from .. import mass as _mass
+                material = _mass.part_material(getattr(ctx, "store", None), home, pid)
+            except Exception:  # noqa: BLE001 - no material known: the PLA default
+                material = None
+        material = str(material or "PLA").upper()
+        if material not in slicer.MATERIALS:
+            material = "PLA"
+        opts = pa.CheckOptions(model=args.printer_model.upper(), material=material,
+                               min_clearance_mm=args.min_clearance_mm,
+                               max_print_time_h=args.max_print_time_h, slice=args.slice,
+                               slice_candidates=args.slice_candidates)
+        out_dir = workdir / "print_checks" / pid
+        results[pid] = await pa.check_part(workdir / "parts" / pid / "model.stl", out_dir, opts,
+                                           home=home)
+    bad = [p for p, r in results.items() if not r["printable"]]
+    summary = (f"print check ({pa.FIDELITY}): " + "; ".join(_part_summary(p, r)
+                                                            for p, r in results.items()))
+    if skipped:
+        summary += f"; {len(skipped)} more part(s) not checked (limit {MAX_CHECK_PARTS})"
+    return ToolOutput(summary=summary,
+                      data={"fidelity": pa.FIDELITY, "parts": results, "not_printable": bad,
+                            "skipped": skipped,
+                            "total_time_s": sum(((r["recommended"].get("slicer") or {})
+                                                 .get("time_s") or 0) for r in results.values()),
+                            "total_filament_g": round(sum(((r["recommended"].get("slicer") or {})
+                                                           .get("filament_g") or 0)
+                                                          for r in results.values()), 2)})
+
+
 def register_print_tools(registry: ToolRegistry) -> None:
     from ..drawing import register_drawing_tools
-    for t in (print_printers_list, print_slice, print_send):
+    for t in (print_printers_list, print_slice, print_send, print_check):
         registry.register(t)
     register_drawing_tools(registry)

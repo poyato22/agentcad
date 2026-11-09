@@ -69,6 +69,7 @@ async def test_slice_without_slicer_gives_install_hint(rt, keychain, monkeypatch
     from mises.print import slicer
     monkeypatch.delenv("MISES_PRUSASLICER", raising=False)
     monkeypatch.setattr(slicer, "APP_PATH", tmp_path / "nope")
+    monkeypatch.setattr(slicer, "DRIVERS_APP_PATH", tmp_path / "nope3")
     monkeypatch.setattr("shutil.which", lambda *_: None)
     add_printer(rt, "10.0.0.5")
     make_part(rt)

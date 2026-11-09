@@ -24,6 +24,8 @@ INSTALL_COMMAND = "brew install --cask prusaslicer"
 _BUNDLE_BINARY = "Contents/MacOS/PrusaSlicer"
 APP_PATH = Path("/Applications/PrusaSlicer.app") / _BUNDLE_BINARY
 USER_APP_PATH = (Path("~/Applications/PrusaSlicer.app") / _BUNDLE_BINARY).expanduser()
+# Prusa's driver installer puts the app in a folder of its own
+DRIVERS_APP_PATH = Path("/Applications/Original Prusa Drivers/PrusaSlicer.app") / _BUNDLE_BINARY
 BUNDLE_ID = "com.prusa3d.slic3r"
 SLICE_TIMEOUT_S = 300.0
 _TAIL = 1500
@@ -105,7 +107,7 @@ def find_slicer() -> Path | None:
     """The PrusaSlicer CLI binary, everywhere it can live: MISES_PRUSASLICER, /Applications,
     ~/Applications, a `prusa-slicer`/`PrusaSlicer` on PATH, then any bundle Spotlight knows of."""
     env = os.environ.get("MISES_PRUSASLICER")
-    fixed = [Path(env) if env else None, APP_PATH, USER_APP_PATH,
+    fixed = [Path(env) if env else None, APP_PATH, USER_APP_PATH, DRIVERS_APP_PATH,
              Path(w) if (w := shutil.which("prusa-slicer")) else None,
              Path(w2) if (w2 := shutil.which("PrusaSlicer")) else None]
     for c in fixed:
