@@ -340,7 +340,15 @@ async def sim_types_list(ctx: ToolContext, args: TypesArgs) -> ToolOutput:
     ts = studies.types_list()
     s = "; ".join(f"{t['id']} ({t['fidelity_class']}{'' if t['available'] else ', unavailable'})"
                   for t in ts)
-    return ToolOutput(summary=f"{len(ts)} study types: {s}", data={"types": ts})
+    # agent-built simulators (S7): run with simulator_run; only validated ones are available
+    from .plugins import SimPlugins
+    home = studies._home(ctx)
+    ab = SimPlugins(ctx.store, home).registry() if home is not None else []
+    if ab:
+        s += "; agent-built: " + "; ".join(
+            f"{t['id']} v{t['version']} ({t['validation']})" for t in ab)
+    return ToolOutput(summary=f"{len(ts)} study types: {s}",
+                      data={"types": ts, "agent_built": ab})
 
 
 @tool("sim_result_get", safety=SafetyClass.READ,

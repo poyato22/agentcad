@@ -123,15 +123,17 @@ def sandbox_profile(write_dir: Path, *, home: Path | None = None,
 
 
 def sandboxed_command(argv: list[str], write_dir: Path, *, home: Path | None = None,
-                      read_dirs: "tuple[Path, ...] | list[Path]" = ()) -> list[str]:
+                      read_dirs: "tuple[Path, ...] | list[Path]" = (),
+                      extra_rules: str = "") -> list[str]:
     """Prefix argv with sandbox-exec so it can only write under write_dir, read the Mises home
     only through write_dir, the parts tree and any explicit read_dirs (e.g. a sim's job root,
     which holds the model.step the mesher reads while writing into a level subdir), has no
     network and cannot start other processes. `home` defaults to the Runtime-registered home
-    (see register_sandbox_home)."""
+    (see register_sandbox_home). `extra_rules` (SBPL, appended last so it wins) tightens it
+    further, e.g. agent-built simulators: no reads of the user's files."""
     home = home if home is not None else _SANDBOX_HOME
     return ["/usr/bin/sandbox-exec", "-p",
-            sandbox_profile(write_dir, home=home, read_dirs=read_dirs), *argv]
+            sandbox_profile(write_dir, home=home, read_dirs=read_dirs) + extra_rules, *argv]
 
 
 def _process_table() -> list[tuple[int, int, int]]:

@@ -36,6 +36,10 @@ class BudgetIn(BaseModel):
     action: Literal["continue", "stop"]
 
 
+class EnabledIn(BaseModel):
+    enabled: bool
+
+
 def build_sim_requests_router(runtime: Runtime) -> APIRouter:
     router = APIRouter()
 
@@ -82,5 +86,24 @@ def build_sim_requests_router(runtime: Runtime) -> APIRouter:
         runtime.events.publish(Event(type="sim_request_decided", run_id=rec.get("run_id"),
                                      data=public(rec)))
         return {"request": public(rec)}
+
+    # S7: Profile -> Simulators (list, disable / enable, delete)
+    def plugins():
+        from ..sim.plugins import SimPlugins
+        return SimPlugins(runtime.store, runtime.home)
+
+    @router.get("/simulators")
+    async def list_simulators():
+        return {"simulators": plugins().registry()}
+
+    @router.post("/simulators/{name}/enabled")
+    async def set_simulator_enabled(name: str, body: EnabledIn):
+        plugins().set_enabled(name, body.enabled)
+        return {"simulators": plugins().registry()}
+
+    @router.delete("/simulators/{name}")
+    async def delete_simulator(name: str):
+        plugins().delete(name)
+        return {"simulators": plugins().registry()}
 
     return router
