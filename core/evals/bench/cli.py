@@ -29,12 +29,16 @@ from pathlib import Path
 from .common import CACHE, Task, read_json, weekly_usage, write_json
 
 CAPS = {"cadbench_t2": 1200, "cadbench": 1200, "cadtestbench": 1200, "functional": 1800, "cadbench_test": 1200,
-        "cadtestbench_test": 1200, "physics": 1800, "physics_dev": 1800, "physics_test": 1800}
+        "cadtestbench_test": 1200, "physics": 1800, "physics_dev": 1800, "physics_test": 1800,
+        "cadprompt": 1200}
 ALL_SUITES = ["cadbench_t2", "cadbench", "cadtestbench", "functional", "cadbench_test", "cadtestbench_test",
-              "physics_dev", "physics_test"]
+              "physics_dev", "physics_test", "cadprompt"]
 
 
 def load_tasks(suite: str) -> list[Task]:
+    if suite == "cadprompt":
+        from .datasets import fetch_cadprompt
+        return fetch_cadprompt()
     if suite == "cadbench":
         from .datasets import fetch_cadbench
         return fetch_cadbench()
@@ -101,7 +105,7 @@ def run_one(task: Task, system: str, runs: Path, cap: float) -> dict:
     wait_for_load()
     stop = os.environ.get("MISES_BENCH_USAGE_STOP")
     now = (weekly_usage() or {}).get("seven_day")
-    if stop and now is not None and float(now) >= float(stop):
+    if stop and (now is None or float(now) >= float(stop)):   # an unreadable gauge fails closed
         print(f"usage {now}% reached the stop at {stop}%: skipping {task.id} {system}", flush=True)
         return {"system": system, "suite": task.suite, "id": task.id,
                 "error": f"skipped: weekly usage {now}% >= {stop}%"}

@@ -62,6 +62,15 @@ def weekly_usage() -> dict | None:
     reused in between. Shared with every other session on the account."""
     global _HELPER
     now = time.time()
+    gauge = os.environ.get("MISES_BENCH_USAGE_FILE")
+    if gauge:
+        # a file written by an operator's watcher ("<percent> <time>"): no API call at all
+        try:
+            pct, *rest = Path(gauge).expanduser().read_text().split()
+            return {"t": now, "seven_day": float(pct), "gauge_time": " ".join(rest),
+                    "source": "file"}
+        except (OSError, ValueError) as e:
+            return {"t": now, "error": f"usage file: {e}", "source": "file"}
     if _LAST["v"] is not None and now - _LAST["t"] < USAGE_EVERY_S:
         return _LAST["v"]
     try:
