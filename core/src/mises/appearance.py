@@ -106,35 +106,59 @@ def render_params(row: Any, store: Any = None) -> dict:
     return {**n, "color": n["color"] or color}
 
 
+_PRINT_WORDS = re.compile(r"print|pla\b|petg|asa\b|abs\b|filament|pa ?12|nylon|resin", re.I)
+_BOUGHT_WORDS = re.compile(r"bought|off[- ]the[- ]shelf|servo|motor|bearing|screw|bolt|nut\b|"
+                           r"battery|lipo|pcb|board|magnet|spring", re.I)
+
+
+def _printed(part: Any, args: Any) -> bool:
+    """Whether the part is printed (its colour comes off the build's filament spools): its
+    real_world says so, or it says nothing of being bought and its material is a printable
+    plastic (or unset: PLA). Metal presets and bought parts keep the colour they really have."""
+    from .looks import material_look
+    if args.preset not in (None, "matte_plastic", "glossy_plastic"):
+        return False
+    rw = args.real_world or ""
+    if _PRINT_WORDS.search(rw):
+        return True
+    if _BOUGHT_WORDS.search(rw):
+        return False
+    return material_look(getattr(part, "material", None)) is None
+
+
 class SetAppearanceArgs(BaseModel):
     part_id: str
     preset: str | None = None
     #: the build palette's colour to use (primary, secondary, accent, dark, light)
     role: str | None = None
     color: str | None = None
-    #: keep `color` exactly (only when the user asked for that colour); otherwise it is snapped
-    #: to the nearest colour of the build's palette
+    #: keep `color` exactly (a colour the user asked for); otherwise a printed part's colour is
+    #: snapped to the nearest filament of the build's set
     exact_color: bool = False
+    #: what the part really is and how it will look once made, e.g. "SG90 micro servo,
+    #: translucent blue case" or "PETG print, teal filament"
+    real_world: str | None = None
     metalness: float | None = None
     roughness: float | None = None
     opacity: float | None = None
 
 
 @tool("part_set_appearance", safety=SafetyClass.LOCAL_MUTATE, scope_arg="part_id",
-      description="Set how a part looks in the viewer and thumbnails: a material preset "
-                  f"({', '.join(PRESETS)}) and/or a colour, metalness and roughness (0..1), "
-                  "opacity (0.05..1). Colour comes from the build's palette so the parts go "
-                  "together: pass role = primary (bodies, shells), secondary (frames, "
-                  "mechanism), accent (a few small highlight parts only), dark (drives, "
-                  "electronics) or light. A `color` #rrggbb is snapped to the nearest palette "
-                  "colour unless exact_color is true, which is only for a colour the user asked "
-                  "for. The result names the palette. Fields left out come from the preset. "
-                  "Does not change the geometry or the mass.")
+      description="Set how a part looks in the viewer and thumbnails, as it will really look "
+                  "once made. Say what it is in `real_world` (e.g. 'SG90 micro servo, translucent "
+                  "blue case', 'M3 socket screw, black oxide', 'PETG print, teal filament'). A "
+                  "bought part takes its real colour and finish (`color` and a preset: "
+                  f"{', '.join(PRESETS)}). A printed part takes a filament from the build's set: "
+                  "pass role = primary (bodies, shells), secondary (frames, mechanism), accent (a "
+                  "few small highlight parts), dark or light; a printed part's `color` is snapped "
+                  "to the nearest filament of the set unless exact_color (a colour the user named). "
+                  "Metalness and roughness 0..1, opacity 0.05..1. Does not change the geometry or "
+                  "the mass.")
 async def part_set_appearance(ctx: ToolContext, args: SetAppearanceArgs) -> ToolOutput:
     from . import projects
     from .looks import ROLES, concept_cmf, nearest_in_palette, palette_for
     raw = {k: v for k, v in args.model_dump().items()
-           if k not in ("part_id", "role", "exact_color") and v is not None}
+           if k not in ("part_id", "role", "exact_color", "real_world") and v is not None}
     part = ctx.store.get_part(args.part_id) if hasattr(ctx.store, "get_part") else None
     pid = getattr(part, "project_id", None)
     pal = palette_for(pid, concept_cmf(ctx.store, pid))
@@ -143,8 +167,7 @@ async def part_set_appearance(ctx: ToolContext, args: SetAppearanceArgs) -> Tool
         if args.role not in ROLES:
             raise _bad(f"role must be one of {', '.join(ROLES)}")
         raw["color"] = pal[args.role]
-    elif (args.color is not None and not args.exact_color
-          and args.preset in (None, "matte_plastic", "glossy_plastic")   # metals keep theirs
+    elif (args.color is not None and not args.exact_color and _printed(part, args)
           and _HEX_RE.match(str(args.color).strip().lower())):
         role, c = nearest_in_palette(str(args.color).strip().lower(), pal)
         if c != str(args.color).strip().lower():
@@ -154,6 +177,8 @@ async def part_set_appearance(ctx: ToolContext, args: SetAppearanceArgs) -> Tool
     a = row["appearance"]
     name = PRESETS[a["preset"]]["name"] if a["preset"] else "custom material"
     summary = f"{args.part_id}: appearance {name}" + (f" {a['color']}" if a["color"] else "")
+    if args.real_world:
+        summary += f" ({args.real_world[:80]})"
     if snapped:
         summary += f" (your {snapped[0]} snapped to the palette's {snapped[1]})"
     summary += (f" · build palette {pal['name']}: "

@@ -24,7 +24,7 @@ def test_concept_cmf_by_role():
     assert default_look("coreless_motor", "motor", "Al 6061-T6", DRAGONFLY)["metalness"] == 1
     assert default_look("crank_gear", "gear", "PA12", DRAGONFLY)["color"] == "#12a6a0"
     # bought electronics read as what they are
-    assert default_look("battery_lipo", "battery", None, DRAGONFLY)["color"] == "#2c3e5c"
+    assert default_look("battery_lipo", "battery", None, DRAGONFLY)["color"] == "#2b3a55"
 
 
 def test_no_concept_and_a_plastic_gets_a_stable_part_colour():
@@ -45,9 +45,11 @@ def test_renders_use_the_default_look_and_a_real_appearance_wins():
     assert render_params(motor)["metalness"] == 1 and render_params(motor)["color"] == "#c4c8cc"
     red = NS(**{**vars(motor), "appearance": {"preset": "anodized", "color": "#d23c2a"}})
     assert render_params(red)["color"] == "#d23c2a"
-    plain = NS(**{**vars(motor), "material": "PLA"})
+    plain = NS(**{**vars(motor), "id": "side_panel", "label": "panel", "material": "PLA"})
     from mises.looks import PART_PALETTE
     assert render_params(plain)["color"] in PART_PALETTE
+    # a PLA part named as a bought motor looks like the motor, not like a print
+    assert render_params(NS(**{**vars(motor), "material": "PLA"}))["preset"] == "brushed_aluminum"
 
 
 def test_a_build_uses_one_palette_by_part_role():
@@ -58,10 +60,12 @@ def test_a_build_uses_one_palette_by_part_role():
     cover = default_look("top_cover", None, None, [], "build-7")
     frame = default_look("chassis_frame", None, None, [], "build-7")
     knob = default_look("volume_knob", None, None, [], "build-7")
-    motor = default_look("drive_motor_mount", "Drive motor", None, [], "build-7")
+    motor = default_look("drive_motor", "Drive motor", None, [], "build-7")
+    mount = default_look("drive_motor_mount", None, None, [], "build-7")
     assert shell["color"] == cover["color"] == pal["primary"]       # bodies match, not random
     assert frame["color"] == pal["secondary"] and knob["color"] == pal["accent"]
-    assert motor["color"] == pal["dark"]
+    assert motor["preset"] == "brushed_aluminum"                     # a bought motor looks like one
+    assert mount["color"] == pal["secondary"]                        # its printed mount is structure
     assert part_role("left_leg") == "secondary" and part_role("nose_cone") == "primary"
     # metals keep their own look
     assert default_look("bolt", None, "Stainless steel", [], "build-7")["metalness"] == 1.0
@@ -79,3 +83,18 @@ def test_an_off_palette_colour_snaps_to_the_nearest():
     pal = PALETTES[0]                     # graphite, signal orange accent
     assert nearest_in_palette("#ff5500", pal) == ("accent", pal["accent"])
     assert nearest_in_palette("#000000", pal)[0] == "dark"
+
+
+
+def test_parts_look_like_they_will_when_made():
+    from mises.looks import default_look, palette_for
+    pal = palette_for("b9")
+    assert default_look("sg90_servo", None, None, [], "b9")["opacity"] < 1          # blue see-through case
+    assert default_look("hip_servo", None, None, [], "b9")["color"] == "#1b1c1f"     # black servo
+    assert default_look("m3_screw", None, None, [], "b9")["metalness"] == 1.0
+    assert default_look("main_board", "PCB", None, [], "b9")["color"] == "#1d5a36"   # green solder mask
+    assert default_look("servo_mount", None, "PETG", [], "b9")["color"] == pal["secondary"]  # printed
+    petg = default_look("shell", None, "PETG", [], "b9")
+    pla = default_look("shell", None, "PLA", [], "b9")
+    assert petg["roughness"] < pla["roughness"]                      # PETG prints glossier
+    assert default_look("shell", None, "PA12", [], "b9")["color"] == "#7f8286"   # SLS nylon is grey

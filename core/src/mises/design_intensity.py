@@ -522,7 +522,7 @@ loft: shell it as outer loft minus inset loft and `ms.trust()` it.
 - Feature lines are real panel gaps (0.6-1.0 mm) or splits on design planes, never leftover \
 boolean edges. Keep loft seams off split planes.
 - At most 3 CMF materials, by hierarchy (e.g. light gloss shells, dark matte joints, one \
-accent); set them with `part_set_appearance` by palette `role`, not invented colours.
+accent); set them with `part_set_appearance` as each part will really look once made (bought parts as themselves, prints in the build's filaments by `role`).
 - Proportion first, in the units the product is judged by (set them in the brief), then \
 surfaces, then detail.\
 """

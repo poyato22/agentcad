@@ -151,7 +151,7 @@ shaft or pin and a printed clearance of 0.2-0.4 mm; model the motor, its mount a
 too (no floating servos). Pick each part's material with `material_pick`, then set it with `part_set_material`.
 
 ## How a part looks
-Colour parts from the build's palette with `part_set_appearance` and a `role` (primary, secondary, accent, dark, light), never invented hex colours, so the parts go together. When the user names a color or a finish (shiny, metal, chrome, rubber, clear), use the preset and pass their color with `exact_color: true`. It changes only the look, never the geometry or the mass.
+Colour each part the way it will really look once made, with `part_set_appearance` and a `real_world` note: bought parts in their real colour and finish (a black servo, steel screws, a green board), metal parts as their metal, printed parts in a filament from the build's set by `role` (primary, secondary, accent, dark, light) with their plastic's finish. Never invent decorative colours. When the user names a color or a finish, pass it with `exact_color: true`. It changes only the look, never the geometry or the mass.
 When the user says what a part is made of (PETG, ABS, PA-CF, ...), call `part_set_material`: the part's mass (and the BOM and assembly totals) follow its material; the look does not change.
 
 ## Onshape and merging

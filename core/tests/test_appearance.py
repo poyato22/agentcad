@@ -145,3 +145,17 @@ async def test_agent_colours_come_from_the_build_palette(store, tmp_path):
     assert out.data["appearance"]["color"] == "#3d6fb0"           # a metal keeps its own
     with pytest.raises(MisesError):
         await tool.handler(ctx, tool.input_model(part_id="arm", role="neon"))
+
+
+
+async def test_a_bought_part_keeps_its_real_colour_a_print_snaps_to_the_filaments(store, tmp_path):
+    _part(store, tmp_path)
+    ctx = SimpleNamespace(run_id="r", store=store, events=EventBus(), workdir=tmp_path)
+    tool = appearance.part_set_appearance
+    pal = looks.palette_for(store.get_part("arm").project_id)
+    out = await tool.handler(ctx, tool.input_model(part_id="arm", color="#e8d21d",
+                                                   real_world="TT gearmotor, yellow plastic gearbox"))
+    assert out.data["appearance"]["color"] == "#e8d21d" and "TT gearmotor" in out.summary
+    out = await tool.handler(ctx, tool.input_model(part_id="arm", color="#e8d21d",
+                                                   real_world="PLA print"))
+    assert out.data["appearance"]["color"] in pal.values()

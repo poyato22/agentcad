@@ -31,8 +31,6 @@ _ROD_NAME = re.compile(r"rod|spar|tube|boom|shaft|axle|dowel", re.I)
 _FILM_CMF = re.compile(r"film|ripstop|membrane|fabric|mylar|foil|sail", re.I)
 _ROD_CMF = re.compile(r"carbon|rod|tube|spar", re.I)
 _CLEAR = re.compile(r"clear|translucent|transparent|tinted", re.I)
-_BATTERY = re.compile(r"battery|lipo|li-?ion|cell_pack|\bcells?\b", re.I)
-_BOARD = re.compile(r"board|pcb|receiver|esc\b|controller|flight_ctrl|driver", re.I)
 
 
 def _metal_look(material: str) -> dict:
@@ -115,22 +113,22 @@ def concept_cmf(store, project_id: str | None) -> list[dict]:
 #: kept for older callers and tests: every colour any palette can give a plastic part
 PART_PALETTE: list[str] = []
 
-#: Curated build palettes: a main body colour, a second structural tone, one accent used
-#: sparingly, a dark for frames / electronics, and a light. One palette per build (its concept's
-#: colours when it has an approved concept), so every part of a build belongs together.
+#: A build's filament set: the spools its printed parts come off, so they go together and look
+#: like real prints. Each colour is a common real filament shade (PLA / PETG / ASA catalogues):
+#: a main colour, a second tone, one accent used sparingly, a dark and a light.
 PALETTES: list[dict[str, str]] = [
-    {"name": "Graphite and signal orange", "primary": "#d4d6d9", "secondary": "#4b5058",
-     "accent": "#e8642c", "dark": "#202327", "light": "#f0f0ee"},
-    {"name": "Workshop teal", "primary": "#2f6f73", "secondary": "#d8d4c8", "accent": "#e3a33b",
-     "dark": "#23272b", "light": "#eceae4"},
-    {"name": "Navy and sand", "primary": "#2a4463", "secondary": "#d6cbb4", "accent": "#d9583b",
-     "dark": "#1d2229", "light": "#efece6"},
-    {"name": "Field green", "primary": "#55715a", "secondary": "#cbc5b2", "accent": "#e0b23c",
-     "dark": "#22261f", "light": "#eeece4"},
-    {"name": "Arctic blue", "primary": "#e6e9ec", "secondary": "#7d8996", "accent": "#2f7de1",
-     "dark": "#25292e", "light": "#f5f6f7"},
-    {"name": "Racing red", "primary": "#b8352e", "secondary": "#dedcd7", "accent": "#f0b429",
-     "dark": "#1e1f22", "light": "#f2f1ee"},
+    {"name": "Grey and signal orange filaments", "primary": "#cfd1d3", "secondary": "#4d5157",
+     "accent": "#f2692a", "dark": "#1e1f22", "light": "#f1f0ec"},
+    {"name": "Teal and sand filaments", "primary": "#1f7a7a", "secondary": "#d8d1bf", "accent": "#f2b632",
+     "dark": "#232528", "light": "#eeebe3"},
+    {"name": "Navy and white filaments", "primary": "#1f3a5f", "secondary": "#e6e6e2", "accent": "#e2462f",
+     "dark": "#1c1e22", "light": "#f3f2ee"},
+    {"name": "Olive and bone filaments", "primary": "#5b6b45", "secondary": "#d9d2bd", "accent": "#e8a33a",
+     "dark": "#212320", "light": "#efece3"},
+    {"name": "White and azure filaments", "primary": "#ececea", "secondary": "#8a9199", "accent": "#1f7ae0",
+     "dark": "#212327", "light": "#f7f7f5"},
+    {"name": "Red and silver filaments", "primary": "#c0302a", "secondary": "#b9bcbf", "accent": "#f4c430",
+     "dark": "#1d1e21", "light": "#f2f1ee"},
 ]
 ROLES = ("primary", "secondary", "accent", "dark", "light")
 PART_PALETTE[:] = sorted({c for pal in PALETTES for k, c in pal.items() if k in ROLES})
@@ -141,6 +139,78 @@ _SECOND_NAME = re.compile(r"frame|chassis|base|bracket|mount|plate|arm|link|leg|
                           r"spar|beam|rail|truss|joint|hinge|gear|pulley|hub|wheel|ring", re.I)
 _DARK_NAME = re.compile(r"motor|servo|battery|lipo|board|pcb|esc\b|controller|camera|sensor|"
                         r"cable|wire|tire|tyre|track|belt", re.I)
+
+
+#: Bought parts look like themselves (name -> look). First match wins, so specific names first.
+COMPONENT_LOOKS: list[tuple[re.Pattern, dict]] = [
+    (re.compile(r"sg90|micro[ _-]?servo|9g[ _-]?servo", re.I),
+     {"preset": "glossy_plastic", "color": "#2f5fb8", "opacity": 0.85}),      # translucent blue case
+    (re.compile(r"servo", re.I), {"preset": "matte_plastic", "color": "#1b1c1f", "roughness": 0.6}),
+    (re.compile(r"bldc|brushless|outrunner|motor[ _-]?bell", re.I),
+     {"preset": "anodized", "color": "#a9adb3"}),
+    (re.compile(r"stepper|nema", re.I), {"preset": "matte_plastic", "color": "#2a2c30", "roughness": 0.5,
+                                         "metalness": 0.4}),
+    (re.compile(r"\bmotor|gearmotor|n20", re.I), {"preset": "brushed_aluminum", "color": "#b8bcc1"}),
+    (re.compile(r"bearing", re.I), {"preset": "polished_metal", "color": "#c9ccd0"}),
+    (re.compile(r"screw|bolt|\bnut\b|nuts|washer|standoff|insert|rivet|\bpin\b|dowel", re.I),
+     {"preset": "brushed_aluminum", "color": "#9ea2a7"}),
+    (re.compile(r"spring", re.I), {"preset": "polished_metal", "color": "#b4b8bd"}),
+    (re.compile(r"magnet", re.I), {"preset": "polished_metal", "color": "#c7c9cc"}),
+    (re.compile(r"lipo|battery|cell[ _-]?pack|18650", re.I),
+     {"preset": "glossy_plastic", "color": "#2b3a55"}),                          # shrink-wrapped pack
+    (re.compile(r"pcb|board|esc\b|controller|receiver|driver|arduino|esp32|raspberry|flight[ _-]?ctrl", re.I),
+     {"preset": "matte_plastic", "color": "#1d5a36", "roughness": 0.5}),        # green solder mask
+    (re.compile(r"camera", re.I), {"preset": "matte_plastic", "color": "#151618"}),
+    (re.compile(r"prop(eller)?\b|props\b", re.I), {"preset": "matte_plastic", "color": "#1c1d20"}),
+    (re.compile(r"tire|tyre|belt|o[ _-]?ring|grommet|bumper[ _-]?pad", re.I), {"preset": "rubber"}),
+    (re.compile(r"\bled\b|lens|window|canopy|visor", re.I), {"preset": "clear"}),
+    (re.compile(r"cable|wire|harness", re.I), {"preset": "matte_plastic", "color": "#1a1a1c", "roughness": 0.7}),
+]
+
+#: printed plastics: their finish (the colour is the filament's, from the build's set)
+_PLASTIC_FINISH: list[tuple[re.Pattern, dict]] = [
+    (re.compile(r"cf\b|-cf|carbon", re.I), {"preset": "matte_plastic", "roughness": 0.75}),   # matte, dark
+    (re.compile(r"petg|pctg|\bpc\b|polycarbonate", re.I), {"preset": "glossy_plastic", "roughness": 0.3}),
+    (re.compile(r"asa|abs", re.I), {"preset": "matte_plastic", "roughness": 0.55}),
+    (re.compile(r"pa ?12|pa ?11|sls|mjf", re.I), {"preset": "matte_plastic", "roughness": 0.9}),
+    (re.compile(r"pa ?6|nylon|pom|delrin|acetal", re.I), {"preset": "matte_plastic", "roughness": 0.6}),
+    (re.compile(r"resin|sla", re.I), {"preset": "glossy_plastic", "roughness": 0.35}),
+    (re.compile(r"pla", re.I), {"preset": "matte_plastic", "roughness": 0.65}),
+]
+
+
+#: a printed part made to carry a bought one ("servo mount", "battery tray") is not that part
+_HOLDER = re.compile(r"mount|bracket|holder|housing|case\b|cover|clip|cradle|plate|tray|bay\b|"
+                     r"seat|pocket|clamp|adapter|horn|arm|boss|cap\b|guard|shroud|enclosure", re.I)
+
+
+_CARRIER = re.compile(r"mount|bracket|holder|cradle|plate|tray|clamp|adapter", re.I)
+
+
+def component_look(part_id: str, label: str | None) -> dict | None:
+    """How a bought part looks, from its name (a servo, a bearing, a screw, a LiPo, a board).
+    None for a printed part that holds one (a servo mount, a battery tray)."""
+    name = f"{part_id} {label or ''}".replace("_", " ")
+    if _HOLDER.search(name):
+        return None
+    for pat, look in COMPONENT_LOOKS:
+        if pat.search(name):
+            return dict(look)
+    return None
+
+
+def printed_look(material: str | None, colour: str) -> dict:
+    """A printed part: the filament colour with its plastic's real finish. Carbon-filled
+    filaments (PA-CF, PETG-CF) only come in near-black, and SLS/MJF nylon prints grey."""
+    m = material or ""
+    for pat, fin in _PLASTIC_FINISH:
+        if pat.search(m):
+            if pat.pattern.startswith("cf"):
+                return {**fin, "color": "#2a2b2e"}
+            if "sls" in pat.pattern and re.search(r"pa ?12|pa ?11|sls|mjf", m, re.I):
+                return {**fin, "color": "#7f8286"}
+            return {**fin, "color": colour}
+    return {"preset": "matte_plastic", "roughness": 0.65, "color": colour}
 
 
 def palette_for(project_id: str | None, cmf: list[dict] | None = None) -> dict[str, str]:
@@ -163,6 +233,8 @@ def part_role(part_id: str, label: str | None = None) -> str:
     accent, frames and mechanism the secondary tone, electronics and drives the dark, the rest
     (shells, bodies, covers) the primary."""
     name = f"{part_id} {label or ''}".replace("_", " ")
+    if _CARRIER.search(name) and not _ACCENT_NAME.search(name):
+        return "secondary"                 # what carries a motor or a board: structure
     if _DARK_NAME.search(name):
         return "dark"
     if _ACCENT_NAME.search(name):
@@ -195,23 +267,20 @@ def default_look(part_id: str, label: str | None, material: str | None,
     roles = {}
     for e in cmf:
         roles.setdefault(_role(e), e)
-    look = material_look(material)
+    # what it will really look like: a bought part as itself, a metal / carbon / rubber part as
+    # its material, else a print in the build's filaments (by the part's role), with its
+    # plastic's finish; the approved concept's colours are the filament set when it has them
+    look = material_look(material) or component_look(part_id, label)
     if look is None:
         if _FILM_NAME.search(name) and "film" in roles:
             look = _cmf_look(roles["film"])
         elif _ROD_NAME.search(name) and "rod" in roles:
             look = _cmf_look(roles["rod"])
-        elif _BATTERY.search(name):
-            look = {"preset": "matte_plastic", "color": "#2c3e5c"}
-        elif _BOARD.search(name):
-            look = {"preset": "matte_plastic", "color": "#1f5c3a"}
-        elif "body" in roles:
-            look = _cmf_look(roles["body"])
+        elif "body" in roles and part_role(part_id, label) not in ("accent", "dark"):
+            look = _cmf_look(roles["body"])        # the approved concept's filament
     if look is None:
-        # no material look and no concept colour: the build's palette, by the part's role, so
-        # the parts of one build go together (it was a hashed colour per part: random-looking)
         pal = palette_for(project_id, cmf)
-        look = {"preset": "matte_plastic", "color": pal[part_role(part_id, label)]}
+        look = printed_look(material, pal[part_role(part_id, label)])
     try:
         return _appearance.normalize(look)
     except Exception:  # noqa: BLE001
